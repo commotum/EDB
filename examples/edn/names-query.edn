@@ -1,0 +1,2 @@
+[:find ?entity ?name
+ :where [?entity :person/name ?name]]

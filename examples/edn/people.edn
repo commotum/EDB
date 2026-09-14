@@ -1,0 +1,5 @@
+[{:person/name "Alice"
+  :person/email "alice@example.com"
+  :person/aliases ["Al" "A"]
+  :person/friends [{:person/name "Bob"
+                    :person/email "bob@example.com"}]}]

@@ -448,7 +448,7 @@ fn merge_guards(guards: Vec<RefCondition>) -> Result<Vec<RefCondition>, Semantic
 
 pub(crate) fn index_key(identity: &[u8; 16], index: ObjectId) -> ObjectId {
     let mut hash = Sha256::new();
-    hash.update(b"atomic/published-index/1\0");
+    hash.update(b"edb/published-index/1\0");
     hash.update(identity);
     hash.update(index);
     hash.finalize().into()

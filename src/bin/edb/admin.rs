@@ -1,7 +1,7 @@
 //! Explicit operator commands. Runtime startup never routes through this module.
-use atomic_core::sql_io::SqlClient;
-use atomic_core::storage::PgBlockStore;
-use atomic_core::{
+use edb_core::sql_io::SqlClient;
+use edb_core::storage::PgBlockStore;
+use edb_core::{
     BackupPoint, DatabaseCatalog, ErrorCategory, GarbageInventory, PortableBackup,
     PostgresConnectionConfig, PostgresOperator, Schema, SemanticError, postgres_config_from_env,
 };
@@ -12,27 +12,27 @@ use std::time::{Duration, Instant};
 
 pub const HELP: &str = "
 Administrative commands (explicit credentials/targets; no automatic provisioning):
-  atomic install [--writer-role ROLE --peer-role ROLE]
-  atomic create --database NAME
-  atomic list-databases [--retired] [--after NAME-OR-STORAGE-ID] [--limit N]
-  atomic rename --database NAME --new-name NAME [--lineage UUID --apply]
-  atomic delete --database NAME [--lineage UUID --apply]
-  atomic gc-deleted --storage-id ID --lineage UUID --postgres-database NAME
+  edb install [--writer-role ROLE --peer-role ROLE]
+  edb create --database NAME
+  edb list-databases [--retired] [--after NAME-OR-STORAGE-ID] [--limit N]
+  edb rename --database NAME --new-name NAME [--lineage UUID --apply]
+  edb delete --database NAME [--lineage UUID --apply]
+  edb gc-deleted --storage-id ID --lineage UUID --postgres-database NAME
     --catalog-schema NAME --older-than-seconds N [--apply --batches N]
-  atomic backup --database ID --repository PATH [--maintenance-pause-ms N]
-  atomic list-backups --repository PATH
-  atomic verify-backup --repository PATH --basis N --generation N [--presence-only]
-  atomic restore --repository PATH --basis N --generation N --target-database ID
+  edb backup --database ID --repository PATH [--maintenance-pause-ms N]
+  edb list-backups --repository PATH
+  edb verify-backup --repository PATH --basis N --generation N [--presence-only]
+  edb restore --repository PATH --basis N --generation N --target-database ID
     [--maintenance-pause-ms N]
     --postgres-database NAME --catalog-schema NAME [--apply]
-  atomic inspect --database NAME [--shallow]
-  atomic gc --postgres-database NAME --catalog-schema NAME --older-than-seconds N
+  edb inspect --database NAME [--shallow]
+  edb gc --postgres-database NAME --catalog-schema NAME --older-than-seconds N
     [--apply] [--batches N]
-  atomic fulltext-rebuild --database ID
+  edb fulltext-rebuild --database ID
     [--discard-manifest SHA256 --apply --batches N]
 
 Restore and GC preview by default; --apply authorizes their writes. Restore's
-ATOMIC_POSTGRES_URL is the DESTINATION, not the backup's source. All targets must
+EDB_POSTGRES_URL is the DESTINATION, not the backup's source. All targets must
 already have the current storage installed. Exact basis/generation are required;
 zero is valid. GC is
 catalog-wide, not scoped to one logical database; explicit retention is required.
@@ -156,7 +156,7 @@ impl Arguments {
                     return Err(usage("duplicate option"));
                 }
             } else {
-                return Err(usage("unknown or misplaced option; run atomic --help"));
+                return Err(usage("unknown or misplaced option; run edb --help"));
             }
         }
         let required: &[&str] = match command {
@@ -287,7 +287,7 @@ fn usage(message: impl Into<String>) -> SemanticError {
     SemanticError::incorrect("cli/usage", message)
 }
 
-fn catalog_entry(label: &str, entry: &atomic_core::DatabaseCatalogEntry) {
+fn catalog_entry(label: &str, entry: &edb_core::DatabaseCatalogEntry) {
     println!(
         "{label} name={:?} storage_id={:?} lineage={} retired={}",
         entry.name, entry.database_id, entry.lineage_id, entry.retired
@@ -414,7 +414,7 @@ fn run(args: Arguments) -> Result<(), SemanticError> {
         return Ok(());
     }
     let config = postgres_config_from_env()?;
-    let maintenance = atomic_core::MaintenanceControl::new(
+    let maintenance = edb_core::MaintenanceControl::new(
         Duration::from_millis(if args.values.contains_key("--maintenance-pause-ms") {
             args.number("--maintenance-pause-ms")?
         } else {
@@ -425,7 +425,7 @@ fn run(args: Arguments) -> Result<(), SemanticError> {
     match args.command.as_str() {
         "install" => {
             PgBlockStore::install(&config)?;
-            println!("INSTALLED storage_format=atomic/opaque-storage/1 tables=2");
+            println!("INSTALLED storage_format=edb/opaque-storage/1 tables=2");
             std::io::stdout().flush().map_err(|_| process_io())?;
             if let Some(writer) = args.values.get("--writer-role") {
                 PgBlockStore::connect(&config)?
@@ -644,7 +644,7 @@ fn run(args: Arguments) -> Result<(), SemanticError> {
             println!(
                 "GC_POLICY older_than_seconds={} short_retention={} scope=entire-catalog",
                 age.as_secs(),
-                age < atomic_core::RECOMMENDED_GARBAGE_COLLECTION_AGE
+                age < edb_core::RECOMMENDED_GARBAGE_COLLECTION_AGE
             );
             if args.has("--apply") {
                 let mut complete = false;
@@ -653,7 +653,7 @@ fn run(args: Arguments) -> Result<(), SemanticError> {
                     progress("gc", "collect-bounded-batch")?;
                     let report = operator.collect_garbage(age)?;
                     complete = report.phase
-                        == Some(atomic_core::storage::ownership::CollectionPhase::Complete);
+                        == Some(edb_core::storage::ownership::CollectionPhase::Complete);
                     advanced = batch;
                     inventory("GC_APPLIED", batch, &report);
                     std::io::stdout().flush().map_err(|_| process_io())?;
@@ -721,7 +721,7 @@ fn inventory(label: &str, batch: u64, inventory: &GarbageInventory) {
 pub(super) fn consolidate(
     config: &PostgresConnectionConfig,
     database: &str,
-    control: &atomic_core::MaintenanceControl,
+    control: &edb_core::MaintenanceControl,
 ) -> Result<(), SemanticError> {
     let entry = DatabaseCatalog::connect_configured(config)?.resolve(database)?;
     let receipt = PostgresOperator::connect_configured(config)?
@@ -741,7 +741,7 @@ pub(super) fn consolidate(
 fn rebuild(
     config: &PostgresConnectionConfig,
     args: &Arguments,
-    control: &atomic_core::MaintenanceControl,
+    control: &edb_core::MaintenanceControl,
 ) -> Result<(), SemanticError> {
     let database = args.required("--database")?;
     let entry = DatabaseCatalog::connect_configured(config)?.resolve(database)?;

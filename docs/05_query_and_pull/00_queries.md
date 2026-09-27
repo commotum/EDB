@@ -1,9 +1,22 @@
-# Native query sources and reuse
+# Query
+
+This section documents EDB's query facilities: the Datalog query language and
+the hierarchical Pull API.
+
+- [Executing Queries](07_executing_queries.md)
+- [Query Reference](05_query_reference.md)
+- [Pull Reference](06_pull_reference.md)
+
+## Native query sources and reuse
 
 `QueryEngine` evaluates native Rust query data locally. Databases, raw tuples and
 immutable transaction logs can be explicit named arguments to the same query.
 Existing `DatabaseValue::query`, `QuerySource`, relation inputs, rules and nested
 queries continue to work.
+
+The [query reference](05_query_reference.md) explains the complete EDN grammar,
+find specifications, inputs, aggregates, predicates, functions and rules, with
+examples for each form.
 
 ## Numeric operations
 
@@ -50,7 +63,7 @@ Use `QueryDataSource::tuples` for ordinary E/A/V rows, optionally followed by
 transaction and assertion/retraction fields:
 
 ```rust
-use atomic_core::{
+use edb_core::{
     Clause, DataPattern, FindElement, FindSpec, Keyword, Query, QueryControl,
     QueryDataSource, QueryEngine, Term, Value,
 };
@@ -165,7 +178,7 @@ search results.
 ## Prepared queries
 
 ```rust
-use atomic_core::{PreparedQuery, PreparedQueryCache, QueryControl};
+use edb_core::{PreparedQuery, PreparedQueryCache, QueryControl};
 
 // `query`, `sources` and `inputs` are ordinary native query values.
 let prepared = PreparedQuery::new(&query)?;

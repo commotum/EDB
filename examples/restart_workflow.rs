@@ -1,7 +1,7 @@
 //! Crash/restart a dedicated PostgreSQL server holding an existing workload.
 //! This is destructive to server availability, not to database files. It refuses
 //! to run without explicit disposable-server opt-in and matching data_directory.
-use atomic_core::{
+use edb_core::{
     AttributeName, BackgroundIndexingConfig, CapacityLimits, Connection, DatabaseValue, EntityRef,
     ErrorCategory, IndexOrder, IndexPrefix, PostgresConnectionConfig, PostgresIoPolicy,
     PullAttribute, PullPattern, TimePoint, TransactionRequest, TransactionService,
@@ -25,13 +25,12 @@ struct DisposableServer {
 
 impl DisposableServer {
     fn verified(connection: &PostgresConnectionConfig) -> Result<Self> {
-        if std::env::var("ATOMIC_ALLOW_DISPOSABLE_PG_CRASH").as_deref() != Ok("1") {
+        if std::env::var("EDB_ALLOW_DISPOSABLE_PG_CRASH").as_deref() != Ok("1") {
             return Err(
-                "set ATOMIC_ALLOW_DISPOSABLE_PG_CRASH=1 only for a dedicated disposable server"
-                    .into(),
+                "set EDB_ALLOW_DISPOSABLE_PG_CRASH=1 only for a dedicated disposable server".into(),
             );
         }
-        let data = PathBuf::from(std::env::var("ATOMIC_RESTART_POSTGRES_DATA")?).canonicalize()?;
+        let data = PathBuf::from(std::env::var("EDB_RESTART_POSTGRES_DATA")?).canonicalize()?;
         let temporary = std::env::temp_dir().canonicalize()?;
         if data == temporary || !data.starts_with(&temporary) {
             return Err("this example only controls a dedicated data directory below the system temporary directory".into());
@@ -48,10 +47,10 @@ impl DisposableServer {
             }
         }
         Ok(Self {
-            pg_ctl: PathBuf::from(std::env::var("ATOMIC_RESTART_PG_CTL")?).canonicalize()?,
+            pg_ctl: PathBuf::from(std::env::var("EDB_RESTART_PG_CTL")?).canonicalize()?,
             data,
-            log: PathBuf::from(std::env::var("ATOMIC_RESTART_POSTGRES_LOG")?),
-            options: std::env::var("ATOMIC_RESTART_POSTGRES_OPTIONS")?,
+            log: PathBuf::from(std::env::var("EDB_RESTART_POSTGRES_LOG")?),
+            options: std::env::var("EDB_RESTART_POSTGRES_OPTIONS")?,
             stopped: false,
         })
     }
@@ -191,15 +190,15 @@ fn start_writer(
 
 fn main() -> Result<()> {
     let connection =
-        PostgresConnectionConfig::plaintext(std::env::var("ATOMIC_RESTART_POSTGRES_URL")?)
+        PostgresConnectionConfig::plaintext(std::env::var("EDB_RESTART_POSTGRES_URL")?)
             .with_io_policy(PostgresIoPolicy {
                 connect_timeout: Some(Duration::from_secs(2)),
                 statement_timeout: Some(Duration::from_secs(30)),
                 lock_timeout: Some(Duration::from_secs(5)),
                 ..PostgresIoPolicy::default()
             })?;
-    let database = std::env::var("ATOMIC_DATABASE_ID")?;
-    let attribute: u32 = std::env::var("ATOMIC_RESTART_ATTRIBUTE")
+    let database = std::env::var("EDB_DATABASE_ID")?;
+    let attribute: u32 = std::env::var("EDB_RESTART_ATTRIBUTE")
         .unwrap_or_else(|_| "1002".into())
         .parse()?;
     let mut server = DisposableServer::verified(&connection)?;

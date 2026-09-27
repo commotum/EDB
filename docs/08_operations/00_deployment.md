@@ -1,27 +1,41 @@
 # PostgreSQL operations
 
-Atomic's Rust engine owns transaction assessment, immutable indexes, exact
+EDB's Rust engine owns transaction assessment, immutable indexes, exact
 receipts, writer fencing, catalog lifecycle and maintenance. PostgreSQL stores
 opaque content-addressed objects and guarded references in two tables,
-`atomic_objects` and `atomic_refs`; it does not execute application semantics.
+`edb_objects` and `edb_refs`; it does not execute application semantics.
 
 This guide covers operator guarantees and limits. See [administration](01_administration.md)
 for executable commands and explicit preview/apply controls. No
 deployment-independent throughput, recovery time or network-outage bound is
 implied.
 
+For detailed setup and configuration, see [storage services](06_storage_services.md),
+the [transactor reference](07_transactor_reference.md), and
+[deployment](08_deployment_reference.md). See [capacity planning](09_capacity_planning.md)
+for memory, throughput, indexing and reclamation sizing, and
+[high availability](10_high_availability.md) for standby takeover and recovery.
+The [configuration reference](14_configuration_reference.md) lists startup
+settings and defaults; [logging](13_logging.md) covers output and custom sinks.
+
 ## Provisioning and current storage
 
 Provision a PostgreSQL database and empty schema through your normal
 administration. Use an object-owning administrative account to run
-`atomic install`, or `storage::PgBlockStore::install(&config)`. Repeating
+`edb install`, or `storage::PgBlockStore::install(&config)`. Repeating
 installation on a matching current store is idempotent. Installation does not
 create the PostgreSQL database/schema, reset existing data, or upgrade an earlier
 development engine. Unsupported storage formats fail explicitly; choose a fresh
 empty target.
 
+The EDB naming update changes the crate to `edb-core`, the executable to `edb`,
+environment variables to `EDB_*`, and data namespaces to `edb`. Storage tables,
+format markers, and content hash domains also use the new name. Earlier
+development databases, backups, and checkpoints are not compatible; use a fresh
+installation and regenerate data with the current interfaces.
+
 Create distinct dedicated LOGIN roles, then use
-`atomic install --writer-role atomic_writer --peer-role atomic_peer`.
+`edb install --writer-role edb_writer --peer-role edb_peer`.
 Installation and grants are separate committed operations: `INSTALLED` can
 precede a failed grant. Correct the roles and rerun the command. Runtime
 constructors validate the current storage and perform no DDL.
@@ -42,7 +56,7 @@ The Rust administrative APIs enforce this capability; runtime writer and peer
 grants do not satisfy it. This is not a security boundary against a client using
 trusted reference credentials to issue arbitrary raw SQL or reference CAS.
 
-Use `atomic create --database NAME` for idempotent logical database creation.
+Use `edb create --database NAME` for idempotent logical database creation.
 Creation publishes the initial read indexes; ordinary startup does not require
 a consolidation step. Names resolve once to a stable route and lineage when
 opening a handle. Rename changes the public mapping, not durable identity.
@@ -56,7 +70,7 @@ backup verification additionally compare derived information with the log.
 
 ### Explicit index recovery
 
-`atomic consolidate --database NAME` consolidates current indexes and can
+`edb consolidate --database NAME` consolidates current indexes and can
 explicitly reconstruct a damaged or missing **current** read index from the
 canonical log. This exceptional recovery can use time and memory proportional
 to the database. Normal peer/service startup fails clearly on damaged indexes;
@@ -70,7 +84,7 @@ or a change to the independent fulltext builder's limits.
 The operator preserves exact receipts and retained read authorization.
 Reconstructing today's index does not repair or certify every retained historical
 index. Run deep inspection afterward; if retained history is damaged, recover
-from an intact backup. `atomic fulltext-rebuild` replaces the derived search
+from an intact backup. `edb fulltext-rebuild` replaces the derived search
 attachment through guarded publication. It does not edit canonical facts or
 erase already copied reader data. Cold old-value reads remain subject to retention.
 
@@ -97,7 +111,7 @@ the DSN as the transport authority. TCP defaults to verified TLS 1.2 or newer;
 Unix sockets are local, and `sslmode=disable` explicitly selects plaintext.
 The `require_tls` and `plaintext` builders reject conflicting DSN settings.
 Certificate and hostname verification remain mandatory; private trust roots can
-be added explicitly. `ATOMIC_POSTGRES_TRANSPORT` is no longer accepted.
+be added explicitly. `EDB_POSTGRES_TRANSPORT` is no longer accepted.
 
 `TransactionServiceConfig.connection` holds this typed configuration. Services
 and standbys accept that one configuration, shared by their writer, indexer and
@@ -133,7 +147,7 @@ immutable database handles during writer unavailability, while cache misses
 still require available storage. PostgreSQL HA/WAL shipping is a separate
 deployment responsibility, not implemented by the Rust transaction lease.
 
-Opt-in `atomic transactor --telemetry-ms 10000` publishes bounded JSON events to
+Opt-in `edb transactor --telemetry-ms 10000` publishes bounded JSON events to
 stdout from the stock lifecycle loop. See [observability](03_observability.md) for
 metrics, warning configuration, privacy and slow-sink/shutdown limits.
 
@@ -142,9 +156,9 @@ metrics, warning configuration, privacy and slow-sink/shutdown limits.
 `PortableBackup::backup_database` captures one immutable publication. Storage
 retention must cover the copy duration. It does not hold a relational repeatable-read
 snapshot or write source indexes. A private repository is claimed by one lineage;
-content-addressed files are authenticated and atomically published without
+content-addressed files are authenticated and indivisibly published without
 overwriting existing files. The point is published only after its reachable
-objects are durable. Atomic does not encrypt the repository; media encryption
+objects are durable. EDB does not encrypt the repository; media encryption
 and retention remain deployment responsibilities.
 
 Each point links one canonical publication, preserving its existing indexes and
@@ -273,6 +287,9 @@ application exports or already copied process memory.
 
 ## Excision
 
+See the [Excision reference](../09_optional/08_excision.md) for request syntax,
+entity and attribute selection, cutoffs, component traversal and examples.
+
 Excision is rare privacy/retention work, not correction; ordinary retraction
 preserves the history needed to explain past decisions. Submit an ordinary
 `:db/excise` request with optional selected attributes and one strict cutoff,
@@ -284,11 +301,11 @@ an explicit administrative driver for the same rewrite algorithm. It claims a
 normal writer lease and reports Busy when a running service owns that lease;
 let the service finish or stop it before administrative processing. Operator
 methods take the catalog's stable `database_id`, not a mutable database name. Request facts
-are protected audit information. Atomic freezes the complete predicate at its A=15 assertion;
+are protected audit information. EDB freezes the complete predicate at its A=15 assertion;
 later ordinary edits do not rewrite an already queued request.
 
 The Rust worker rewrites an inactive generation into immutable objects, stages
-all eight indexes and fulltext, then atomically activates the completed root.
+all eight indexes and fulltext, then indivisibly activates the completed root.
 A protected work reference retains bounded persisted checkpoints across worker
 or process interruption. Large excisions can cost proportionally to the whole
 database. After successful admission, the service parks fresh transactions for

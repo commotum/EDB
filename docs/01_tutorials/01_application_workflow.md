@@ -1,6 +1,6 @@
 # Run a separate native application
 
-The supported `atomic` executable owns the transactor process. The
+The supported `edb` executable owns the transactor process. The
 `application_workflow` example is an ordinary separate client: it receives a
 logical database and local endpoint or authenticated remote discovery, submits application schema/data through
 public APIs, and never provisions PostgreSQL or starts a writer.
@@ -8,22 +8,22 @@ public APIs, and never provisions PostgreSQL or starts a writer.
 Build both programs:
 
 ```sh
-cargo build --locked --bin atomic --example application_workflow
+cargo build --locked --bin edb --example application_workflow
 ```
 
 Use a dedicated PostgreSQL installation and distinct administrative, writer and
-peer credentials. `ATOMIC_POSTGRES_URL` contains the connection parameters and
+peer credentials. `EDB_POSTGRES_URL` contains the connection parameters and
 owns the transport selection. TCP defaults to verified TLS; `sslmode=disable`
 explicitly selects plaintext. TLS verifies
 certificates and hostnames and optionally accepts one PEM trust root through
-`ATOMIC_POSTGRES_TLS_ROOT`. Plaintext is for an explicitly chosen local/development
+`EDB_POSTGRES_TLS_ROOT`. Plaintext is for an explicitly chosen local/development
 deployment. The example and CLI share `postgres_config_from_env()`.
 
-Optional `ATOMIC_CONNECT_TIMEOUT_MS`, `ATOMIC_STATEMENT_TIMEOUT_MS` and
-`ATOMIC_LOCK_TIMEOUT_MS` select positive per-connection/statement/lock bounds.
+Optional `EDB_CONNECT_TIMEOUT_MS`, `EDB_STATEMENT_TIMEOUT_MS` and
+`EDB_LOCK_TIMEOUT_MS` select positive per-connection/statement/lock bounds.
 Omitting them retains the existing policy. These are not a single end-to-end
 deadline; the example separately uses a 20-second transaction/query wait budget.
-See `atomic --help` and [transport policy](../08_operations/00_deployment.md#transport-and-failure-policy)
+See `edb --help` and [transport policy](../08_operations/00_deployment.md#transport-and-failure-policy)
 for the other existing I/O settings and their scope. Diagnostics omit connection
 strings, subject values and detailed transaction errors.
 
@@ -31,14 +31,14 @@ strings, subject values and detailed transaction errors.
 
 Create dedicated PostgreSQL LOGIN roles through your normal administration,
 then run the following with the object-owning administrative connection in
-`ATOMIC_POSTGRES_URL`. Roles must satisfy the
+`EDB_POSTGRES_URL`. Roles must satisfy the
 [runtime credential requirements](../08_operations/00_deployment.md#provisioning-and-current-storage).
 
 ```sh
-# For this local example, include sslmode=disable in ATOMIC_POSTGRES_URL.
-target/debug/atomic install --writer-role atomic_writer --peer-role atomic_peer
-target/debug/atomic create --database application-demo
-target/debug/atomic status --database application-demo
+# For this local example, include sslmode=disable in EDB_POSTGRES_URL.
+target/debug/edb install --writer-role edb_writer --peer-role edb_peer
+target/debug/edb create --database application-demo
+target/debug/edb status --database application-demo
 ```
 
 Installation and runtime grants are separate committed actions. `INSTALLED`
@@ -56,20 +56,20 @@ not a startup fallback for damaged read indexes.
 Create a private endpoint directory and keep its path for the next terminal:
 
 ```sh
-endpoint_dir=$(mktemp -d /tmp/atomic-application.XXXXXX)
+endpoint_dir=$(mktemp -d /tmp/edb-application.XXXXXX)
 ```
 
-With the writer connection in `ATOMIC_POSTGRES_URL`, run:
+With the writer connection in `EDB_POSTGRES_URL`, run:
 
 ```sh
-target/debug/atomic transactor --database application-demo --index-threshold-bytes 1 --endpoint "$endpoint_dir/transactor.sock"
+target/debug/edb transactor --database application-demo --index-threshold-bytes 1 --endpoint "$endpoint_dir/transactor.sock"
 ```
 
 The one-byte novelty threshold is an explicit small-fixture policy that exercises
 background indexing promptly. Fulltext also merges admitted recent facts before
 indexing; the threshold is not needed to make those facts visible and is not a
 recommended production setting.
-Wait for the `READY` line. In another terminal, set `ATOMIC_POSTGRES_URL` to the
+Wait for the `READY` line. In another terminal, set `EDB_POSTGRES_URL` to the
 peer connection, select the explicit transport policy, set `endpoint_dir` to
 that same private directory, and run:
 
@@ -90,8 +90,8 @@ Remote transaction submission uses verified TLS (at least TLS 1.2) and a shared
 32-byte bearer token. PostgreSQL credentials still authorize each peer's direct
 storage reads; possessing the transaction token does not grant storage access.
 Use your normal certificate provisioning and private secret distribution. The
-server needs `ATOMIC_REMOTE_TLS_CERT` (PEM certificate chain),
-`ATOMIC_REMOTE_TLS_KEY` (PKCS8 PEM private key), and `ATOMIC_REMOTE_TOKEN_FILE`
+server needs `EDB_REMOTE_TLS_CERT` (PEM certificate chain),
+`EDB_REMOTE_TLS_KEY` (PKCS8 PEM private key), and `EDB_REMOTE_TOKEN_FILE`
 (64 hexadecimal digits). Key/token files must be regular, owned by the process
 user and inaccessible to group/other users, typically mode 0600. Secrets are not
 command-line arguments and are omitted from diagnostics.
@@ -99,7 +99,7 @@ command-line arguments and are omitted from diagnostics.
 With writer PostgreSQL credentials and those environment variables configured:
 
 ```sh
-target/debug/atomic transactor --database application-demo --listen 0.0.0.0:7443 --advertise 192.0.2.10:7443 --tls-server-name atomic.example.com --index-threshold-bytes 1
+target/debug/edb transactor --database application-demo --listen 0.0.0.0:7443 --advertise 192.0.2.10:7443 --tls-server-name edb.example.com --index-threshold-bytes 1
 ```
 
 Replace the example address/name with a reachable numeric unicast address and
@@ -118,8 +118,8 @@ use transaction and I/O controls separately. Receipt lookup can resolve an
 already committed request without reassessing it or reviving writer authority.
 
 In the application environment, set peer PostgreSQL credentials and the same
-`ATOMIC_REMOTE_TOKEN_FILE`. System certificate roots are used; optionally set
-`ATOMIC_REMOTE_TLS_ROOT` to a public PEM trust anchor. Hostname verification
+`EDB_REMOTE_TOKEN_FILE`. System certificate roots are used; optionally set
+`EDB_REMOTE_TLS_ROOT` to a public PEM trust anchor. Hostname verification
 cannot be disabled. Then run:
 
 ```sh

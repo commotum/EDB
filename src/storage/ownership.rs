@@ -1,6 +1,6 @@
 //! Incremental engine-owned reachability, not PostgreSQL policy.
 //!
-//! Root transitions atomically record their before/after owners. A collector
+//! Root transitions indivisibly record their before/after owners. A collector
 //! seals an epoch, folds additions before removals, and retires only objects
 //! with no owners. Newly protected puts cannot be swept by a sealed collector.
 //! Immutable child metadata lets ownership reuse shared subgraphs and remove
@@ -17,7 +17,7 @@ use crate::{ErrorCategory, SemanticError};
 use std::collections::{BTreeMap, BTreeSet};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-const EVENT_MAGIC: &[u8; 4] = b"ATOE";
+const EVENT_MAGIC: &[u8; 4] = b"EDBE";
 const EVENT_PREFIX: &str = "ownership/events/";
 pub(crate) const STATE_REF: &str = "ownership/state";
 const CLOCK_REF: &str = "ownership/clock";
@@ -63,7 +63,7 @@ pub struct AuthorizationMaintenance {
     pub complete: bool,
 }
 
-/// An interrupted call resumes from its last atomic checkpoint. The work bound
+/// An interrupted call resumes from its last indivisible checkpoint. The work bound
 /// counts graph/metadata/object steps, not merely DELETE statements. One legal
 /// object may still be as large as the shared 64 MiB encoded-object ceiling.
 pub struct BlockCollector {
@@ -1020,13 +1020,13 @@ pub(crate) fn object_children(
         return Err(fault("Owned object failed authentication"));
     }
     let mut children = BTreeSet::new();
-    if bytes.starts_with(b"ATOB") {
+    if bytes.starts_with(b"EDBO") {
         let block = Block::decode(&id, bytes)?;
         children.extend(block.links.iter().copied());
         if block.kind == super::log::LOG_ENTRY_KIND {
             children.extend(super::log::entry_program_links(store, &block)?);
         }
-    } else if bytes.starts_with(b"ATIX") {
+    } else if bytes.starts_with(b"EDBI") {
         use crate::index::tree::{TreeNode, decode_tree_node};
         match decode_tree_node(&id, bytes)? {
             TreeNode::Root(root) => children.extend(root.directories.iter().map(|c| c.hash)),
@@ -1037,7 +1037,7 @@ pub(crate) fn object_children(
                 }
             }
         }
-    } else if bytes.starts_with(b"ATMC") {
+    } else if bytes.starts_with(b"EDBC") {
         let program = crate::decode_program(bytes)?;
         let mut dependencies = Vec::new();
         crate::program_bindings::collect_fixed_program_dependencies(
@@ -1216,7 +1216,7 @@ struct Event {
 impl Event {
     fn encode(&self) -> Result<Vec<u8>, SemanticError> {
         if self.removed.len() > super::MAX_BATCH || self.added.len() > super::MAX_BATCH {
-            return Err(fault("Ownership event exceeds one atomic root batch"));
+            return Err(fault("Ownership event exceeds one indivisible root batch"));
         }
         let mut bytes = EVENT_MAGIC.to_vec();
         bytes.extend_from_slice(&(self.removed.len() as u16).to_be_bytes());

@@ -209,7 +209,7 @@ impl ExcisionLane {
         let (send, events) = mpsc::sync_channel(1);
         let operation = OperationContext::current_or_process();
         match thread::Builder::new()
-            .name("atomic-block-excision".into())
+            .name("edb-block-excision".into())
             .spawn(move || {
                 let _scope = operation.enter();
                 let mut control = || {

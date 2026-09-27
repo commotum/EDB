@@ -37,12 +37,12 @@ equality is rejected instead of losing an entry.
 Register a native function without inventing a database source:
 
 ```rust
-let mut extensions = atomic_core::QueryExtensions::new();
+let mut extensions = edb_core::QueryExtensions::new();
 extensions.register_pure("app/wrap", |arguments, _control| {
     let [value] = arguments else {
-        return Err(atomic_core::SemanticError::incorrect("app/arity", "expected one argument"));
+        return Err(edb_core::SemanticError::incorrect("app/arity", "expected one argument"));
     };
-    Ok(atomic_core::QueryValue::Tuple(vec![value.clone()]))
+    Ok(edb_core::QueryValue::Tuple(vec![value.clone()]))
 });
 ```
 
@@ -52,7 +52,7 @@ binding determines how it is destructured. EDN can call this registry entry as
 The existing database-aware `register_local` callback ABI is unchanged.
 
 Callbacks receive the query controls and must cooperate with cancellation and
-deadlines during expensive work. Atomic validates returned data and resumes
+deadlines during expensive work. EDB validates returned data and resumes
 budget checks, but cannot forcibly interrupt arbitrary Rust code or recover an
 allocation the callback already made. Keep callbacks deterministic when stable
 database values must produce reproducible application results.
@@ -82,7 +82,7 @@ With this query in `query.edn`:
  :where [$rows ?name nil _ ?state ?details _ 7]]
 ```
 
-Run `atomic query --file query.edn --sources planning.edn`. No `--database` or
+Run `edb query --file query.edn --sources planning.edn`. No `--database` or
 PostgreSQL configuration is needed for data-only queries. Either file may be
 stdin (`-`), but not both. The stock executable provides built-in functions;
 application callbacks require a Rust host that registers them.

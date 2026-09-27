@@ -41,7 +41,7 @@ impl QueryValue {
     /// result keys. This is deliberately a query-result ordering rather than
     /// a stored-value index ordering: container shape participates before
     /// recursively comparing contents, while scalar comparison delegates to
-    /// Datomic's logical value comparator.
+    /// EDB's logical value comparator.
     pub fn canonical_cmp(&self, other: &Self) -> std::cmp::Ordering {
         use std::cmp::Ordering;
         enum Task<'a> {

@@ -1,11 +1,18 @@
 # Pull and entity navigation
 
+The [Entities reference](../02_core_concepts/04_entities.md) explains lazy
+associative navigation, component traversal, caching and entity identity.
+
 Pull returns a selected data shape from one immutable point-in-time value.
 An EDN pattern such as `[:db/id :person/name {:person/friends [:person/name]}]`
 selects attributes and explicitly nests references. `[*]` selects installed
 attributes; explicit selectors can override wildcard selection. Typed callers
 build `PullPattern` and `PullAttribute`; text callers use
-`atomic_core::edn_pull::parse_pull_edn`.
+`edb_core::edn_pull::parse_pull_edn`.
+
+The [Pull reference](06_pull_reference.md) provides the complete pattern grammar
+and examples for selectors, reverse navigation, nesting, recursion, aliases,
+defaults, limits and transforms.
 
 Use `database.pull(&pattern, identifier)` for a plain read or `pull_with_control`
 for explicit controls. `PullAttribute` supports output aliases, defaults, limits,

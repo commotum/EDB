@@ -67,7 +67,7 @@ pub(crate) fn publish(config: &PostgresConnectionConfig, database: &str) {
     let sender = PUBLISHER.get_or_init(|| {
         let (sender, receiver) = mpsc::sync_channel::<Notice>(64);
         std::thread::Builder::new()
-            .name("atomic-notice-publisher".into())
+            .name("edb-notice-publisher".into())
             .spawn(move || {
                 let context = crate::OperationContext::new(crate::OperationKind::PeerObservation);
                 let _scope = context.enter();
@@ -182,7 +182,7 @@ impl NoticeListener {
         let client = PgBlockStore::connect(config)?;
         let channel = client.notification_channel(&format!("databases/{database}"))?;
         // Provider-generated prefix + lowercase hex only, never caller SQL.
-        if !channel.starts_with("atomic_r_")
+        if !channel.starts_with("edb_r_")
             || channel.len() != 57
             || !channel[9..].bytes().all(|b| b.is_ascii_hexdigit())
         {

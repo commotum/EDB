@@ -113,7 +113,7 @@ impl PreparedQueryCache {
             let weight = key
                 .len()
                 .saturating_mul(8)
-                // ATOMIC-NOTE: Preserve the established policy weight when
+                // EDB-NOTE: Preserve the established policy weight when
                 // moving the structural key from Entry to the shared LRU owner.
                 // It is an admission unit, not a measurement of the map's RSS.
                 .saturating_add(std::mem::size_of::<(Vec<u8>, Entry)>());

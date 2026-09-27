@@ -8,7 +8,7 @@ use std::io::{Read, Write};
 pub const MAX_CANONICAL_BLOCK_BYTES: usize = 64 * 1024 * 1024;
 pub const MAX_PHYSICAL_BLOCK_BYTES: usize = MAX_CANONICAL_BLOCK_BYTES;
 pub const BLOCK_CODEC_VERSION: u8 = 1;
-const MAGIC: &[u8; 8] = b"ATOMICBL";
+const MAGIC: &[u8; 8] = b"EDBBLOCK";
 const GZIP: u8 = 1;
 const HEADER_BYTES: usize = 26;
 
@@ -191,4 +191,21 @@ fn decode_gzip(
 
 fn invalid(code: &'static str, message: &'static str) -> SemanticError {
     SemanticError::new(ErrorCategory::Fault, code, message)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn compressed_edb_blocks_round_trip_and_reject_corruption() {
+        let canonical = vec![42; 4096];
+        let hash = sha256(&canonical);
+        let mut encoded = encode_block(&canonical).unwrap();
+        assert!(encoded.starts_with(b"EDBBLOCK"));
+        assert!(encoded.len() < canonical.len());
+        assert_eq!(decode_block(&hash, &encoded).unwrap(), canonical);
+        *encoded.last_mut().unwrap() ^= 1;
+        assert!(decode_block(&hash, &encoded).is_err());
+    }
 }

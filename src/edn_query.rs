@@ -510,7 +510,7 @@ impl<'a> Compiler<'a> {
 
     fn temporary(&mut self) -> Variable {
         loop {
-            let name = format!("?__atomic_edn_{}", self.fresh);
+            let name = format!("?__edb_edn_{}", self.fresh);
             self.fresh += 1;
             if self.used_variables.insert(name.clone()) {
                 return Variable::new(name).unwrap();
@@ -1002,7 +1002,7 @@ impl<'a> Compiler<'a> {
                 "query/:where",
             ));
         }
-        let (function, args) = if matches!(name.as_str(), "q" | "datomic.api/q") {
+        let (function, args) = if matches!(name.as_str(), "q" | "edb.api/q") {
             let (function, args, nested_source) = self.subquery(args, patterns, sources)?;
             source = nested_source;
             (function, args)

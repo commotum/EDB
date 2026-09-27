@@ -1,6 +1,6 @@
 //! A repeatable public-API workflow. Run against a disposable PostgreSQL database:
-//! ATOMIC_POSTGRES_URL='host=... user=... dbname=...' cargo run --example native_workflow
-use atomic_core::{
+//! EDB_POSTGRES_URL='host=... user=... dbname=...' cargo run --example native_workflow
+use edb_core::{
     Attribute, AttributeName, CallableRef, CapacityLimits, Cardinality, Clause, Connection,
     DataPattern, EntityRef, FindElement, FindSpec, IndexComponents, IndexOrder, IndexPullOptions,
     IndexTransaction, Instruction, Keyword, PostgresConnectionConfig, Program, ProgramCall,
@@ -18,7 +18,7 @@ const NAME: u32 = 1_000;
 const REGISTRATION: u32 = 1_001;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let postgres = std::env::var("ATOMIC_POSTGRES_URL")?;
+    let postgres = std::env::var("EDB_POSTGRES_URL")?;
     let database_id = format!(
         "workflow-{}-{}",
         std::process::id(),
@@ -26,8 +26,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     );
     // Provisioning is explicit. All subsequent application work uses Connection.
     let storage = PostgresConnectionConfig::plaintext(&postgres);
-    atomic_core::storage::PgBlockStore::install(&storage)?;
-    atomic_core::storage::BlockDatabase::create(&storage, &database_id, Schema::new())?;
+    edb_core::storage::PgBlockStore::install(&storage)?;
+    edb_core::storage::BlockDatabase::create(&storage, &database_id, Schema::new())?;
     let rename_program = Program {
         kind: ProgramKind::Transaction,
         arity: 2,
@@ -38,7 +38,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             Instruction::Return,
         ],
     };
-    let mut operator = atomic_core::PostgresOperator::connect_configured(&storage)?;
+    let mut operator = edb_core::PostgresOperator::connect_configured(&storage)?;
     let config = TransactionServiceConfig {
         connection: storage.clone(),
         database_id: database_id.clone(),
@@ -100,7 +100,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 },
                 TxOp::Add {
                     entity: EntityRef::Temp("person".into()),
-                    attribute: atomic_core::DB_IDENT as u32,
+                    attribute: edb_core::DB_IDENT as u32,
                     value: Value::Keyword(Keyword::new("person", "ada")).into(),
                 },
             ],
@@ -118,7 +118,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             Term::Variable(variable),
         )))],
     );
-    let names = |database: &atomic_core::DatabaseValue| {
+    let names = |database: &edb_core::DatabaseValue| {
         database
             .query(&query, &[], &QueryControl::default())
             .map(|outcome| outcome.result)
@@ -188,7 +188,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     transformed_name.transform = Some(PullTransform::new("workflow/captured-name", move |value| {
         observed_transforms.fetch_add(1, Ordering::Relaxed);
         let QueryValue::Scalar(Value::String(name)) = value else {
-            return Err(atomic_core::SemanticError::incorrect(
+            return Err(edb_core::SemanticError::incorrect(
                 "workflow/name-type",
                 "expected a person name",
             ));

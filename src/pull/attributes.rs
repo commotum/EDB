@@ -112,7 +112,7 @@ pub(super) fn prepare_attribute(
         values,
         multiple,
         value_type: schema.value_type,
-        // ATOMIC-NOTE: recovered default-spec expands components only in the
+        // EDB-NOTE: recovered default-spec expands components only in the
         // forward direction. Reverse component references are singular but
         // still id-only unless the caller supplies a nested selector.
         component: schema.component && !reverse,
@@ -223,7 +223,7 @@ pub(super) fn direction_parts(
         PullDirection::Reverse(name) => (name.clone(), true),
         PullDirection::SchemaResolved(ident) => {
             let name = AttributeName::Ident(ident.clone());
-            // ATOMIC-NOTE: normalization retains spelling until this exact
+            // EDB-NOTE: normalization retains spelling until this exact
             // database can apply recovered reverse-lookup? schema precedence.
             match ident.name.strip_prefix('_') {
                 Some(forward) if resolve_pull_attribute(database, &name)?.is_none() => {

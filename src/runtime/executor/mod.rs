@@ -131,7 +131,7 @@ impl AsyncExecutor {
         for index in 0..config.workers {
             let worker = shared.clone();
             std::thread::Builder::new()
-                .name(format!("atomic-async-{index}"))
+                .name(format!("edb-async-{index}"))
                 .spawn(move || worker_loop(worker))
                 .map_err(|error| {
                     SemanticError::new(

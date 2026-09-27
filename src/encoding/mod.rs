@@ -22,7 +22,7 @@ pub(crate) use submission::{
 
 pub type Digest = [u8; 32];
 
-const MAGIC: &[u8; 4] = b"ATMC";
+const MAGIC: &[u8; 4] = b"EDBC";
 // Genesis and schema are ordinary immutable information. Log serialization's
 // stored-first ordering is distinct from index traversal's T/op-first ordering;
 // index and database-root versions reject incompatible comparator generations.
@@ -442,7 +442,7 @@ fn validate_index_datom_contents(datoms: &[Datom]) -> Result<(), SemanticError> 
     Ok(())
 }
 
-/// Comparator used by current ATMC genesis and transaction values. The native tree comparator intentionally
+/// Comparator used by current EDBC genesis and transaction values. The native tree comparator intentionally
 /// differs: it places descending T/op before the stored representation tie.
 fn format_v3_datom_cmp(left: &Datom, right: &Datom, order: IndexOrder) -> std::cmp::Ordering {
     let ordering = match order {

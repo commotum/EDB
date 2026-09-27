@@ -71,6 +71,9 @@ EDB is implemented in Rust, with PostgreSQL providing durable storage. It is in
 first-release development; format changes may require fresh databases.
 
 - [Guide](docs/00_start_here/00_introduction.md)
+- [Setup](docs/00_start_here/01_setup.md) and [peer library](docs/00_start_here/02_peer_library.md)
+- [Documentation reference](docs/README.md)
+- [In-memory tutorial](docs/01_tutorials/02_in_memory.md) and [durable peer tutorial](docs/01_tutorials/03_peer_tutorial.md)
 - [EDN tutorial](docs/01_tutorials/00_edn_workflow.md)
 - [Rust application tutorial](docs/01_tutorials/01_application_workflow.md)
 - [Deployment](docs/08_operations/00_deployment.md) and [administration](docs/08_operations/01_administration.md)

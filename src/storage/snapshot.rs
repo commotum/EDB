@@ -175,7 +175,7 @@ struct BlockNodeSource {
 #[derive(Clone)]
 enum SourceBackend {
     Live(Arc<LiveSource>),
-    // ATOMIC-NOTE: the backup owner authenticates repository files; this owner
+    // EDB-NOTE: the backup owner authenticates repository files; this owner
     // still interprets the same immutable database structures. The dependency
     // is offline-provider composition, not a second query engine or a route to
     // live publication authority (see `live` below).
@@ -202,7 +202,7 @@ impl BlockNodeSource {
         source
     }
     fn cache_namespace(&self, identity: [u8; 16], generation: u64) -> Digest {
-        let mut key = b"atomic/opaque-cache/1\0".to_vec();
+        let mut key = b"edb/opaque-cache/1\0".to_vec();
         key.extend_from_slice(&self.ssd_namespace);
         key.extend_from_slice(&identity);
         key.extend_from_slice(&generation.to_be_bytes());

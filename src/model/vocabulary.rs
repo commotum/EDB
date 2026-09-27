@@ -1,9 +1,8 @@
 //! Native system vocabulary and canonical genesis information.
 //!
-//! The numeric IDs mirror Datomic Pro 1.0.7705 where they are fixed or can be
-//! recovered deterministically from the bootstrap transactions.  The native
-//! kernel replaces JVM function objects with immutable native program hashes
-//! while schema, including native fulltext policy, is represented by ordinary datoms, not by this
+//! Numeric IDs define the fixed bootstrap vocabulary. The native kernel
+//! represents functions with immutable native program hashes, while schema,
+//! including native fulltext policy, is represented by ordinary datoms, not by this
 //! module's Rust descriptors.  The descriptors are only a compact way to
 //! construct and verify those canonical datoms.
 
@@ -24,8 +23,7 @@ pub const DB_PART_USER: u64 = 4;
 pub const DB_IDENT: u64 = 10;
 pub const DB_INSTALL_PARTITION: u64 = 11;
 pub const DB_INSTALL_ATTRIBUTE: u64 = 13;
-/// Excision request target. Recovered fixed id from Datomic Pro 1.0.7705
-/// `datomic.db/BOOT-IDS` and `bootstrap-data-upgrades`.
+/// Excision request target in the fixed bootstrap vocabulary.
 pub const DB_EXCISE: u64 = 15;
 pub const DB_EXCISE_ATTRS: u64 = 16;
 pub const DB_EXCISE_BEFORE_T: u64 = 17;

@@ -763,7 +763,7 @@ pub(crate) fn same_source(left: &DatabaseRoot, right: &DatabaseRoot) -> bool {
         && left.receipts == right.receipts
 }
 fn sanitized_digest(generation: u64, basis: u64) -> Digest {
-    let mut b = b"atomic/excised-outcome/1\0".to_vec();
+    let mut b = b"edb/excised-outcome/1\0".to_vec();
     u64_into(&mut b, generation);
     u64_into(&mut b, basis);
     sha256(&b)

@@ -100,7 +100,7 @@ pub struct TransactionExecutionOptions {
 }
 
 pub fn native_deployment_ident() -> Keyword {
-    Keyword::new("atomic.native", "deployment")
+    Keyword::new("edb.native", "deployment")
 }
 
 /// Install this ordinary schema attribute once, using an available schema ID.

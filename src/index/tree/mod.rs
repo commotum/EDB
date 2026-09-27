@@ -1,9 +1,7 @@
 //! Canonical immutable index-tree values.
 //!
 //! This is intentionally a concrete three-level shape, not a general B-tree
-//! or storage abstraction.  Datomic's documented shallow, wide trees and the
-//! recovered 1.0.7705 `RootNode -> DirNode -> TransposedData` path are the
-//! blueprint: roots and directories contain sparse lower-bound keys plus
+//! or storage abstraction. Roots and directories contain sparse lower-bound keys plus
 //! immutable child hashes, while leaves keep datoms in parallel columns.
 //! PostgreSQL persistence/publication is a separate boundary.
 pub(crate) mod cache;
@@ -20,7 +18,7 @@ use std::cmp::Ordering;
 use std::collections::{BTreeMap, BTreeSet, HashSet};
 use std::mem::size_of;
 
-const TREE_MAGIC: &[u8; 4] = b"ATIX";
+const TREE_MAGIC: &[u8; 4] = b"EDBI";
 /// Version 4 moves the stored-value representation tie-break after recovered
 /// logical V, descending T, and operation ordering. Version 3 roots are
 /// intentionally rejected: this project does not promise compatibility with
@@ -338,13 +336,13 @@ impl TreeNodeSet {
 
 /// Comparator key retained by a root or directory entry.
 ///
-/// Recovered `datomic.index/sparse-datom` uses ordinary datum-shaped keys,
-/// but may put nil in the value slot after an earlier E/A component has
+/// Sparse keys use ordinary datum-shaped fields,
+/// but may omit the value slot after an earlier E/A component has
 /// already decided the comparison. Rust datoms deliberately cannot contain
 /// nil, so the parent-only representation makes that distinction explicit.
 /// Some variable values also retain an order-preserving prefix representation.
-/// 1.0.7705 specializes String/vector; native byte and named-value prefixes
-/// preserve their respective lexical order. URI components do not sort by raw
+/// String, vector, byte, and named-value prefixes preserve their respective
+/// lexical order. URI components do not sort by raw
 /// text, so URI separators retain the exact Value, including inside tuples.
 #[derive(Clone, Debug)]
 pub enum RoutingValue {
@@ -1252,9 +1250,8 @@ fn compare_routing_tuple_to_value(
 }
 
 /// Recover the shortest useful value separating two adjacent child spans.
-/// This is the Rust translation of 1.0.7705 `strdiff`, `vecdiff`, and
-/// `mindiff`, extended to equivalent order-preserving prefixes for the
-/// native value set. UTF-16 storage deliberately permits a Java separator to
+/// Uses order-preserving prefixes for the native value set.
+/// UTF-16 storage deliberately permits a separator to
 /// end between a surrogate pair without making it a logical Rust String.
 fn minimum_difference(prior: &Value, current: &Value) -> RoutingValue {
     let candidate = match (prior, current) {

@@ -34,7 +34,7 @@ substitutes current-index facts for the log. No next event is delivered until
 the previous event is acknowledged; caller-retained events are caller memory.
 
 ```rust,no_run
-use atomic_core::{ChangeConsumer, ChangeConsumerConfig, postgres_config_from_env};
+use edb_core::{ChangeConsumer, ChangeConsumerConfig, postgres_config_from_env};
 use std::time::Duration;
 # fn main() -> Result<(), Box<dyn std::error::Error>> {
 let mut changes = ChangeConsumer::connect_configured(
@@ -78,7 +78,7 @@ and lineage replacement also fail explicitly, not by silently skipping ahead.
 
 Checkpoints are Rust-encoded values in the same generic reference store as other
 engine coordination data, not a separate SQL table. Initialize fresh storage with
-`atomic install`; historical catalog upgrades are unsupported. The library scopes
+`edb install`; historical catalog upgrades are unsupported. The library scopes
 each checkpoint by database route, SQL login and consumer name. Different logins
 therefore do not accidentally share progress through the API.
 

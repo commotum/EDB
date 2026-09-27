@@ -199,7 +199,7 @@ impl QueryEngine {
             control.max_work,
             usize::try_from(outcome.stats.work).unwrap_or(usize::MAX),
         )
-        // ATOMIC-NOTE: qseq defers Pull, so consumption continues the original
+        // EDB-NOTE: qseq defers Pull, so consumption continues the original
         // invocation's allocation allowance after relational preparation.
         .with_value_budget(outcome.stats.allocated_value_bytes, control.max_value_bytes);
         budget.check(0)?;

@@ -1,6 +1,6 @@
 //! Native Datalog over explicit immutable database, relation and log values.
 //!
-//! ATOMIC-NOTE: The recovered query/datalog owners separate preparation,
+//! EDB-NOTE: The recovered query/datalog owners separate preparation,
 //! relation execution and find projection. These children preserve that split
 //! while retaining Rust's bounded joins and shared invocation controls.
 
@@ -79,6 +79,6 @@ use std::fmt;
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::sync::{
     Arc,
-    atomic::{AtomicBool, Ordering as AtomicOrdering},
+    atomic::{AtomicBool, Ordering as MemoryOrdering},
 };
 use std::time::{Duration, Instant};

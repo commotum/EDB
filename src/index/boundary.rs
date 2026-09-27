@@ -5,7 +5,7 @@ use std::cmp::Ordering;
 
 /// A transaction component supplied to a raw index boundary.
 ///
-/// Datomic accepts both a logical basis `t` and the corresponding reified
+/// EDB accepts both a logical basis `t` and the corresponding reified
 /// transaction entity. Keeping those forms distinct prevents an arbitrary
 /// entity id from being silently treated as a transaction while still
 /// preserving the recovered `eid->eidx` normalization.
@@ -61,7 +61,7 @@ impl<First, Second, Third, Fourth> IndexComponents<First, Second, Third, Fourth>
     }
 }
 
-/// A typed virtual position in one of Datomic's four raw index orders.
+/// A typed virtual position in one of EDB's four raw index orders.
 ///
 /// E/A/V/T component order is encoded in each variant. E and A are already
 /// resolved numeric ids and V is already normalized for the attribute. The
@@ -398,7 +398,7 @@ impl NormalizedIndexBoundary {
     }
 }
 
-/// A typed prefix for one of Datomic's four index orders.
+/// A typed prefix for one of EDB's four index orders.
 ///
 /// The shape prevents callers from accidentally supplying components in the
 /// wrong order. Optional components must be contiguous from the left.

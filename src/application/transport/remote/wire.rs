@@ -72,7 +72,7 @@ pub(super) fn tls_error(_: native_tls::Error) -> SemanticError {
         "TLS identity or trust configuration is invalid",
     )
 }
-pub(super) const ENDPOINT_MAGIC: &[u8; 5] = b"ATRE\x01";
+pub(super) const ENDPOINT_MAGIC: &[u8; 5] = b"EDBR\x01";
 pub(super) const MAX_ENDPOINT_NAME: usize = 64 * 1024;
 pub(super) const MAX_ENDPOINT_BYTES: usize = 5 + 4 + 8 + 32 + 5 * (4 + MAX_ENDPOINT_NAME);
 

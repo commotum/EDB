@@ -341,7 +341,7 @@ pub(super) fn evaluate_clauses_in_phase(
     inherited_source: Option<&str>,
     state: &mut State<'_>,
 ) -> EvaluationResult<Vec<Row>> {
-    // ATOMIC-NOTE: recovered sched-in-order defers unavailable clauses in
+    // EDB-NOTE: recovered sched-in-order defers unavailable clauses in
     // source order. Native execution retains its established bound-score choice
     // (later clauses win ties); diagnostics expose the actual schedule.
     let mut remaining: Vec<_> = clauses.iter().collect();

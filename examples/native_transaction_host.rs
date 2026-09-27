@@ -1,6 +1,6 @@
 //! A compiled application transactor, not a dynamic code loader.
 //! Provision the database and :person/name first; see docs/07_peer_api/02_native_computation.md.
-use atomic_core::*;
+use edb_core::*;
 use std::io::Write;
 use std::time::Duration;
 

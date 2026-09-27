@@ -99,7 +99,7 @@ impl TransactionStandby {
         let worker_status = Arc::clone(&status);
         let (sender, receiver) = mpsc::sync_channel(1);
         let worker = thread::Builder::new()
-            .name(format!("atomic-standby-{}", config.holder_id))
+            .name(format!("edb-standby-{}", config.holder_id))
             .spawn(move || {
                 loop {
                     {

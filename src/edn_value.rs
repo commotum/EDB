@@ -1,4 +1,4 @@
-//! Explicit conversion between EDN data and Atomic's narrower value domains.
+//! Explicit conversion between EDN data and EDB's narrower value domains.
 //!
 //! Parsing EDN does not imply that a value can be stored as a datom. In
 //! particular nil, characters, maps and sets are not stored scalar types.
@@ -130,43 +130,43 @@ fn from_edn(value: &EdnValue, budget: &mut Budget, depth: usize) -> Result<Value
                 (None, "inst") => Value::Instant(instant_millis(
                     text.ok_or_else(|| invalid("#inst requires a string"))?,
                 )?),
-                (Some("atomic"), "instant-millis") => match payload.as_ref() {
+                (Some("edb"), "instant-millis") => match payload.as_ref() {
                     EdnValue::Long(v) => Value::Instant(*v),
                     _ => {
                         return Err(invalid(
-                            "#atomic/instant-millis requires a signed 64-bit integer",
+                            "#edb/instant-millis requires a signed 64-bit integer",
                         ));
                     }
                 },
-                (Some("atomic"), "ref") => {
+                (Some("edb"), "ref") => {
                     let reference = match payload.as_ref() {
                         EdnValue::Long(v) => u64::try_from(*v).ok(),
                         EdnValue::BigInt(v) => num_traits::ToPrimitive::to_u64(v),
                         _ => None,
                     }
                     .ok_or_else(|| {
-                        invalid("#atomic/ref requires a nonnegative supported entity ID")
+                        invalid("#edb/ref requires a nonnegative supported entity ID")
                     })?;
                     if reference > crate::MAX_EID {
                         return Err(invalid("reference exceeds the supported entity ID range"));
                     }
                     Value::Ref(reference)
                 }
-                (Some("atomic"), "uri") => {
-                    let uri = text.ok_or_else(|| invalid("#atomic/uri requires a string"))?;
+                (Some("edb"), "uri") => {
+                    let uri = text.ok_or_else(|| invalid("#edb/uri requires a string"))?;
                     if !crate::model::uri::validate(uri) {
-                        return Err(invalid("#atomic/uri has invalid syntax or escaping"));
+                        return Err(invalid("#edb/uri has invalid syntax or escaping"));
                     }
                     Value::Uri(uri.to_owned())
                 }
-                (Some("atomic"), "bytes") => {
+                (Some("edb"), "bytes") => {
                     Value::Bytes(decode_hex(text.ok_or_else(|| {
-                        invalid("#atomic/bytes requires a hexadecimal string")
+                        invalid("#edb/bytes requires a hexadecimal string")
                     })?)?)
                 }
-                (Some("atomic"), "function") => {
+                (Some("edb"), "function") => {
                     let bytes = decode_hex(text.ok_or_else(|| {
-                        invalid("#atomic/function requires a hexadecimal content hash")
+                        invalid("#edb/function requires a hexadecimal content hash")
                     })?)?;
                     Value::Function(
                         bytes
@@ -174,11 +174,11 @@ fn from_edn(value: &EdnValue, budget: &mut Budget, depth: usize) -> Result<Value
                             .map_err(|_| invalid("function content hash must contain 32 bytes"))?,
                     )
                 }
-                (Some("atomic"), "float") => {
+                (Some("edb"), "float") => {
                     let (v, nonzero) = match payload.as_ref() {
                         EdnValue::String(v) => (
                             v.parse::<f32>()
-                                .map_err(|_| invalid("invalid #atomic/float value"))?,
+                                .map_err(|_| invalid("invalid #edb/float value"))?,
                             v.split(['e', 'E']).next().is_some_and(|mantissa| {
                                 mantissa.bytes().any(|b| matches!(b, b'1'..=b'9'))
                             }),
@@ -186,19 +186,19 @@ fn from_edn(value: &EdnValue, budget: &mut Budget, depth: usize) -> Result<Value
                         EdnValue::Double(v) => (*v as f32, *v != 0.0),
                         _ => {
                             return Err(invalid(
-                                "#atomic/float requires a floating-point literal or string",
+                                "#edb/float requires a floating-point literal or string",
                             ));
                         }
                     };
                     if !v.is_finite() {
-                        return Err(invalid("nonfinite float requires #atomic/float-bits"));
+                        return Err(invalid("nonfinite float requires #edb/float-bits"));
                     }
                     if v == 0.0 && nonzero {
-                        return Err(invalid("nonzero #atomic/float underflows the stored range"));
+                        return Err(invalid("nonzero #edb/float underflows the stored range"));
                     }
                     Value::Float(v)
                 }
-                (Some("atomic"), "float-bits") => {
+                (Some("edb"), "float-bits") => {
                     let bytes: [u8; 4] = decode_hex(
                         text.ok_or_else(|| invalid("float bits require a hexadecimal string"))?,
                     )?
@@ -206,7 +206,7 @@ fn from_edn(value: &EdnValue, budget: &mut Budget, depth: usize) -> Result<Value
                     .map_err(|_| invalid("float bits require four bytes"))?;
                     Value::Float(f32::from_bits(u32::from_be_bytes(bytes)))
                 }
-                (Some("atomic"), "double-bits") => {
+                (Some("edb"), "double-bits") => {
                     let bytes: [u8; 8] = decode_hex(
                         text.ok_or_else(|| invalid("double bits require a hexadecimal string"))?,
                     )?
@@ -216,7 +216,7 @@ fn from_edn(value: &EdnValue, budget: &mut Budget, depth: usize) -> Result<Value
                 }
                 _ => {
                     return Err(invalid(
-                        "tag is not a registered Atomic stored-value representation",
+                        "tag is not a registered EDB stored-value representation",
                     ));
                 }
             }
@@ -230,7 +230,7 @@ fn from_edn(value: &EdnValue, budget: &mut Budget, depth: usize) -> Result<Value
 }
 
 /// Convert a stored value into readable EDN, preserving its native type. Ref,
-/// Float, Bytes, URI, Function and out-of-RFC3339-range instants use atomic/*
+/// Float, Bytes, URI, Function and out-of-RFC3339-range instants use edb/*
 /// tags. Nonfinite binary floats retain their exact bits, including NaN payloads.
 pub fn value_to_edn(value: &Value) -> Result<EdnValue, SemanticError> {
     to_edn(value, &mut Budget::new(), 0)
@@ -292,10 +292,10 @@ fn report_to_edn(
         ids.push((EdnValue::String(id.clone()), integer(*entity)));
     }
     Ok(EdnValue::Map(vec![
-        (edn_keyword("atomic", "db-before-t"), integer(before)),
-        (edn_keyword("atomic", "db-after-t"), integer(after)),
-        (edn_keyword("atomic", "tx-data"), EdnValue::Vector(data)),
-        (edn_keyword("atomic", "tempids"), EdnValue::Map(ids)),
+        (edn_keyword("edb", "db-before-t"), integer(before)),
+        (edn_keyword("edb", "db-after-t"), integer(after)),
+        (edn_keyword("edb", "tx-data"), EdnValue::Vector(data)),
+        (edn_keyword("edb", "tempids"), EdnValue::Map(ids)),
     ]))
 }
 
@@ -313,9 +313,9 @@ fn to_edn(value: &Value, budget: &mut Budget, depth: usize) -> Result<EdnValue, 
             EdnValue::BigDec(v.clone())
         }
         Value::Double(v) if v.is_finite() => EdnValue::Double(*v),
-        Value::Double(v) => tag_text("atomic/double-bits", hex(&v.to_bits().to_be_bytes())),
-        Value::Float(v) if v.is_finite() => tag_text("atomic/float", v.to_string()),
-        Value::Float(v) => tag_text("atomic/float-bits", hex(&v.to_bits().to_be_bytes())),
+        Value::Double(v) => tag_text("edb/double-bits", hex(&v.to_bits().to_be_bytes())),
+        Value::Float(v) if v.is_finite() => tag_text("edb/float", v.to_string()),
+        Value::Float(v) => tag_text("edb/float-bits", hex(&v.to_bits().to_be_bytes())),
         Value::String(v) => {
             budget.bytes(v.len())?;
             EdnValue::String(v.clone())
@@ -329,7 +329,7 @@ fn to_edn(value: &Value, budget: &mut Budget, depth: usize) -> Result<EdnValue, 
             EdnValue::Symbol(v.clone())
         }
         Value::Ref(v) => tag(
-            "atomic/ref",
+            "edb/ref",
             if let Ok(v) = i64::try_from(*v) {
                 EdnValue::Long(v)
             } else {
@@ -338,7 +338,7 @@ fn to_edn(value: &Value, budget: &mut Budget, depth: usize) -> Result<EdnValue, 
         ),
         Value::Instant(v) => match crate::edn::instant::format_millis(*v) {
             Some(v) => tag_text("inst", v),
-            None => tag("atomic/instant-millis", EdnValue::Long(*v)),
+            None => tag("edb/instant-millis", EdnValue::Long(*v)),
         },
         Value::Uuid(v) => {
             let bytes = hex(&v.to_be_bytes());
@@ -356,13 +356,13 @@ fn to_edn(value: &Value, budget: &mut Budget, depth: usize) -> Result<EdnValue, 
         }
         Value::Uri(v) => {
             budget.bytes(v.len())?;
-            tag_text("atomic/uri", v.clone())
+            tag_text("edb/uri", v.clone())
         }
         Value::Bytes(v) => {
             budget.bytes(v.len().checked_mul(2).ok_or_else(limit)?)?;
-            tag_text("atomic/bytes", hex(v))
+            tag_text("edb/bytes", hex(v))
         }
-        Value::Function(v) => tag_text("atomic/function", hex(v)),
+        Value::Function(v) => tag_text("edb/function", hex(v)),
         Value::Tuple(v) => {
             let mut values = Vec::new();
             for value in v {
@@ -474,7 +474,7 @@ fn stored_tag(name: &Symbol) -> bool {
         (name.namespace.as_deref(), name.name.as_str()),
         (None, "uuid" | "inst")
             | (
-                Some("atomic"),
+                Some("edb"),
                 "instant-millis"
                     | "ref"
                     | "uri"

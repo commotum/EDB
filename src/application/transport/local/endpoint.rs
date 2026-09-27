@@ -94,11 +94,11 @@ impl EndpointOwner {
         let mut lock_name = name.to_owned();
         lock_name.push(".lock");
         let lock_path = directory.join(lock_name);
-        // Publish an initialized, already-locked file atomically. Publishing an
+        // Publish an initialized, already-locked file indivisibly. Publishing an
         // empty file before taking its lock lets a simultaneous first start
         // mistake the initialization window for a broken ownership record.
         let mut candidate = tempfile::Builder::new()
-            .prefix(".atomic-endpoint-lock-")
+            .prefix(".edb-endpoint-lock-")
             .tempfile_in(&directory)
             .map_err(unavailable)?;
         candidate
@@ -162,7 +162,7 @@ impl EndpointOwner {
             .strip_prefix(ENDPOINT_LOCK_HEADER)
             .filter(|record| record.len() <= 100)
             .ok_or_else(|| {
-                unsafe_endpoint("endpoint lock is not a recognized Atomic ownership record")
+                unsafe_endpoint("endpoint lock is not a recognized EDB ownership record")
             })?;
         let previous = if record.is_empty() {
             None
@@ -198,7 +198,7 @@ impl EndpointOwner {
                     || Some(identity) != previous
                 {
                     return Err(unsafe_endpoint(
-                        "existing endpoint is not the recorded Atomic socket",
+                        "existing endpoint is not the recorded EDB socket",
                     ));
                 }
                 let socket =

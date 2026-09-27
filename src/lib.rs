@@ -1,4 +1,4 @@
-//! Native Rust/PostgreSQL Datomic-inspired database.
+//! EDB: an extensible database implemented in Rust with PostgreSQL storage.
 //!
 //! The kernel applies declarative transaction information to immutable
 //! database values. PostgreSQL stores the serialized durable log and indexes;

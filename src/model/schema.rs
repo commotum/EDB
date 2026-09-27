@@ -894,8 +894,8 @@ impl Schema {
                 continue;
             };
 
-            // Discontinuation removes the reverse constituent links in
-            // 1.0.7705. Former constituents may subsequently change
+            // Discontinuation removes the reverse constituent links.
+            // Former constituents may subsequently change
             // cardinality, while the immutable tuple definition remains as
             // historical schema information.
             if attribute.tuple_discontinued {
@@ -1481,8 +1481,8 @@ fn matches_value_type(value_type: ValueType, value: &Value) -> bool {
     )
 }
 
-/// Exact native counterpart of 1.0.7705's `datomic.db/tuple-value-types`.
-/// Float, bytes, function, and tuple are ordinary Datomic value types but are
+/// Supported scalar types for tuple slots.
+/// Float, bytes, function, and tuple are ordinary EDB value types but are
 /// not legal tuple slot types.
 fn is_tuple_scalar_type(value_type: ValueType) -> bool {
     matches!(
@@ -1541,8 +1541,7 @@ fn validate_tuple_slot(value_type: ValueType, value: &Value) -> Result<(), Seman
     }
 }
 
-// Datomic's TupleElem uses BigInteger.bitLength; the documented scalar limit
-// uses that same type's bit length. It excludes the sign bit: negative powers
+// The tuple scalar limit uses signed integer bit length. It excludes the sign bit: negative powers
 // of two need one fewer bit than their absolute magnitude. num_bigint::bits
 // alone counts magnitude. Detect the power without allocating a complement.
 fn bigint_bit_length(value: &num_bigint::BigInt) -> u64 {

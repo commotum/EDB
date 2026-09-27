@@ -336,7 +336,7 @@ impl Adapter<'_> {
                     // symbol is callable. Reading it never loads/evaluates code.
                     CallableRef::Local(symbol.clone())
                 } else if let EdnValue::Tagged(tag, _) = head {
-                    if tag.qualified_name() == "atomic/function" {
+                    if tag.qualified_name() == "edb/function" {
                         let Value::Function(hash) = crate::edn_value::edn_to_value(head)? else {
                             unreachable!()
                         };
@@ -393,7 +393,7 @@ impl Adapter<'_> {
         Ok(match value {
             EdnValue::Long(id) if *id >= 0 => EntityRef::Id(*id as u64),
             EdnValue::Keyword(ident) => EntityRef::Ident(ident.clone()),
-            EdnValue::String(tempid) if tempid == "datomic.tx" => EntityRef::Tx,
+            EdnValue::String(tempid) if tempid == "edb.tx" => EntityRef::Tx,
             EdnValue::String(tempid) if !tempid.is_empty() && !tempid.starts_with(':') => {
                 EntityRef::Temp(tempid.clone())
             }
@@ -415,7 +415,7 @@ impl Adapter<'_> {
                     },
                 }
             }
-            EdnValue::Tagged(tag, _) if tag.qualified_name() == "atomic/ref" => {
+            EdnValue::Tagged(tag, _) if tag.qualified_name() == "edb/ref" => {
                 let Value::Ref(id) = crate::edn_value::edn_to_value(value)? else {
                     unreachable!()
                 };
@@ -619,7 +619,7 @@ impl Adapter<'_> {
                     })
                     .collect::<Result<_, SemanticError>>()?,
             )?,
-            EdnValue::Tagged(tag, _) if tag.qualified_name() == "atomic/ref" => {
+            EdnValue::Tagged(tag, _) if tag.qualified_name() == "edb/ref" => {
                 RuntimeValue::Entity(self.entity(value)?)
             }
             _ => RuntimeValue::Scalar(crate::edn_value::edn_to_value(value)?),

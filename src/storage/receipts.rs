@@ -28,7 +28,7 @@ const RECEIPT_HEADER: usize = 64;
 /// can find exact outcomes by log position without scanning caller request keys.
 pub(crate) fn basis_receipt_key(identity: &[u8; 16], basis: u64) -> Digest {
     let mut hash = Sha256::new();
-    hash.update(b"atomic/receipt-by-basis/1\0");
+    hash.update(b"edb/receipt-by-basis/1\0");
     hash.update(identity);
     hash.update(basis.to_be_bytes());
     hash.finalize().into()
@@ -44,7 +44,7 @@ pub fn scoped_request_key(identity: &[u8; 16], key: &str) -> Result<Digest, Sema
         ));
     }
     let mut hash = Sha256::new();
-    hash.update(b"atomic/request-key/1\0");
+    hash.update(b"edb/request-key/1\0");
     hash.update(identity);
     hash.update((key.len() as u64).to_be_bytes());
     hash.update(key.as_bytes());

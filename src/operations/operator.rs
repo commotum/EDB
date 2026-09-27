@@ -158,9 +158,8 @@ impl PostgresOperator {
     }
 
     /// Process ordinary A=15 (`:db/excise`) facts through a background,
-    /// copy-on-write log generation. A backup remains strongly recommended,
-    /// matching Datomic's operational guidance, but it is not an authorization
-    /// token and is therefore absent from this semantic API.
+    /// copy-on-write log generation. A backup remains strongly recommended, but
+    /// it is not an authorization token and is absent from this semantic API.
     /// `database_id` is the stable ID returned by the catalog, not a mutable name.
     pub fn process_excision_requests(
         &mut self,

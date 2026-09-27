@@ -10,9 +10,9 @@ use std::path::{Component, Path, PathBuf};
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::{Duration, Instant, SystemTime};
 
-const LOCK_NAME: &str = ".atomic-ssd-cache-v1.lock";
-const STAGE_NAME: &str = ".atomic-ssd-cache-v1.stage";
-const ENTRY_MAGIC: &[u8] = b"ATOMIC-SSD-BLOCK\x01";
+const LOCK_NAME: &str = ".edb-ssd-cache-v1.lock";
+const STAGE_NAME: &str = ".edb-ssd-cache-v1.stage";
+const ENTRY_MAGIC: &[u8] = b"EDB-SSD-BLOCK\x01";
 const ENTRY_HEADER: usize = ENTRY_MAGIC.len() + 72;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -510,7 +510,7 @@ impl Directory {
         let _initialization_guard = DiskLock::acquire_initialization(&initialization)?;
         let lock_path = path.join(LOCK_NAME);
         let record = format!(
-            "ATOMIC-SSD-CACHE 1\nentries {}\nbytes {}\n",
+            "EDB-SSD-CACHE 1\nentries {}\nbytes {}\n",
             limits.max_entries, limits.max_bytes
         );
         let open_existing = || {
@@ -530,7 +530,7 @@ impl Directory {
                     return Err(unsafe_cache("unclaimed SSD cache directory must be empty"));
                 }
                 let mut candidate = tempfile::Builder::new()
-                    .prefix(".atomic-ssd-init-")
+                    .prefix(".edb-ssd-init-")
                     .tempfile_in(&path)
                     .map_err(io_error)?;
                 candidate.write_all(record.as_bytes()).map_err(io_error)?;

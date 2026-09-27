@@ -1,6 +1,6 @@
 # Logical database lifecycle
 
-A public name is a way to find a database, not the database's identity. Atomic keeps
+A public name is a way to find a database, not the database's identity. EDB keeps
 the storage ID and lineage stable while its public name changes. Facts, transaction
 receipts, database values and canonical manifest bytes are not rewritten by rename.
 Reusing an old name creates a different database with a new storage ID and lineage.
@@ -13,20 +13,20 @@ provider is not a feature-specific SQL authorization engine. The usual explicit
 PostgreSQL/TLS configuration applies; listing and resolution do not mutate names.
 
 ```sh
-atomic create --database customers
-atomic create --database customers  # EXISTS, not an error or a schema change
-atomic list-databases --limit 100
-atomic list-databases --after customers --limit 100
-atomic rename --database customers --new-name people
+edb create --database customers
+edb create --database customers  # EXISTS, not an error or a schema change
+edb list-databases --limit 100
+edb list-databases --after customers --limit 100
+edb rename --database customers --new-name people
 ```
 
 Rename previews its source identity. Apply with the exact lineage from that output:
 
 ```sh
-atomic rename --database customers --new-name people --lineage UUID-FROM-PREVIEW --apply
+edb rename --database customers --new-name people --lineage UUID-FROM-PREVIEW --apply
 ```
 
-The lineage is checked atomically with the name change. A changed/reused source name
+The lineage is checked indivisibly with the name change. A changed/reused source name
 cannot silently target a different database. An occupied destination is an error;
 there are no implicit historical aliases. Existing handles and the active writer
 keep their captured identity. New applications connect using `people`; attempting
@@ -49,9 +49,9 @@ snapshot reference while the identity is active.
 ## Retire, then reclaim
 
 ```sh
-atomic delete --database people
-atomic delete --database people --lineage UUID-FROM-PREVIEW --apply
-atomic list-databases --retired
+edb delete --database people
+edb delete --database people --lineage UUID-FROM-PREVIEW --apply
+edb list-databases --retired
 ```
 
 Delete removes the active name and fences its writer. New connections and exact
@@ -70,9 +70,9 @@ additional target check. Choose a retention interval appropriate to your recover
 policy; zero is suitable for a disposable test fixture, not a default recommendation.
 
 ```sh
-atomic gc-deleted --storage-id ID --lineage UUID --postgres-database atomic \
+edb gc-deleted --storage-id ID --lineage UUID --postgres-database edb \
   --catalog-schema public --older-than-seconds 2592000
-atomic gc-deleted --storage-id ID --lineage UUID --postgres-database atomic \
+edb gc-deleted --storage-id ID --lineage UUID --postgres-database edb \
   --catalog-schema public --older-than-seconds 2592000 --apply --batches 10
 ```
 

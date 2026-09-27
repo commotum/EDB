@@ -1,5 +1,8 @@
 # Query a backup directly
 
+See [Backup and Restore](11_backup_and_restore.md) for creating, listing,
+verifying and restoring backup points.
+
 `BackupConnection::open(path)` opens the latest published point without a
 transactor, PostgreSQL connection, restore or replay from genesis. `open_point(path,
 &point)` selects an exact `BackupPoint` from `PortableBackup::list_backup_points`.
@@ -18,9 +21,9 @@ authority or database pin, and cannot create an online `SnapshotReference`.
 The stock executable accepts the same EDN commands without PostgreSQL credentials:
 
 ```sh
-atomic query --repository /private/backups/customers --file query.edn
-atomic pull --repository /private/backups/customers --file pattern.edn --entity 12345
-atomic with --repository /private/backups/customers --file transaction.edn
+edb query --repository /private/backups/customers --file query.edn
+edb pull --repository /private/backups/customers --file pattern.edn --entity 12345
+edb with --repository /private/backups/customers --file transaction.edn
 ```
 
 Use `--backup-basis N --backup-generation N` together to select a listed point.
@@ -38,7 +41,7 @@ admission limits. Pending AVET or fulltext work has the same readiness behavior
 as the captured live value. Index the live database before capture when a backup
 needs those indexes ready. Log seeks use the shared authenticated page/skip links.
 
-A fresh database can be backed up immediately after `atomic create`, including
+A fresh database can be backed up immediately after `edb create`, including
 an empty basis. Required canonical, receipt-base and program objects must be
 available; missing provenance is an error, not permission to drop exact retries.
 

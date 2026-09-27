@@ -479,7 +479,7 @@ where
     let current_eavt = root(false, IndexOrder::Eavt)?;
 
     // Recovered `ident-setting-datoms` reads assertions from AEVT and folds
-    // them in transaction order. Atomic's history tree contains the complete
+    // them in transaction order. EDB's history tree contains the complete
     // retained stream, and :db/ident is an immutable built-in without
     // :db/noHistory, so aliases and later name repurposing survive bases.
     let ident_prefix = IndexPrefix::Aevt {

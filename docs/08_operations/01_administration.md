@@ -1,12 +1,12 @@
 # Administrative CLI
 
-`atomic` exposes the existing native operators as commands. Use a separately
+`edb` exposes the existing native operators as commands. Use a separately
 controlled administrative account and an explicitly chosen PostgreSQL catalog.
 Commands do not install PostgreSQL, create PostgreSQL databases, migrate on
 startup, or silently repair a damaged database. Provision the storage service and
-credentials separately; then use the commands below for the Atomic catalog.
+credentials separately; then use the commands below for the EDB catalog.
 
-Build with `cargo build --bin atomic`. Set `ATOMIC_POSTGRES_URL`, using
+Build with `cargo build --bin edb`. Set `EDB_POSTGRES_URL`, using
 `sslmode=disable` only for an explicit plaintext connection, as described in
 [application.md](../01_tutorials/01_application_workflow.md). Verified TLS/root certificates and the same
 connection/statement/lock settings apply to administrative connections. Offline
@@ -16,10 +16,10 @@ connection strings into logs or shell command arguments.
 ## Provisioning and inspection
 
 ```sh
-atomic install --writer-role atomic_writer --peer-role atomic_peer
-atomic create --database application
-atomic status --database application
-atomic inspect --database application
+edb install --writer-role edb_writer --peer-role edb_peer
+edb create --database application
+edb status --database application
+edb inspect --database application
 ```
 
 The two distinct runtime roles must already exist and satisfy restricted-role
@@ -54,14 +54,14 @@ name-based action; they never erase the entire PostgreSQL catalog.
 ## Back up and verify
 
 ```sh
-atomic backup --database application --repository /private/backups/application
-atomic list-backups --repository /private/backups/application
-atomic verify-backup --repository /private/backups/application --basis 42 --generation 0
+edb backup --database application --repository /private/backups/application
+edb list-backups --repository /private/backups/application
+edb verify-backup --repository /private/backups/application --basis 42 --generation 0
 ```
 
 Use a private repository owned by the process user. Backup checks paths and
 permissions, claims the repository for one lineage, and publishes a point only
-after its immutable object closure is durable. Individual files are atomically
+after its immutable object closure is durable. Individual files are indivisibly
 published without overwriting existing content; there is no repository-wide
 SQL transaction or generation ledger. Do not mix lineages in one repository.
 Repeating capture authenticates and reuses unchanged objects. The reported
@@ -99,7 +99,7 @@ proportional to retained history and indexes; it is not an ordinary read.
 
 ## Restore into a separately selected destination
 
-For this command, `ATOMIC_POSTGRES_URL` is the **destination connection**. The
+For this command, `EDB_POSTGRES_URL` is the **destination connection**. The
 repository is the source; the live source need not be reachable. Explicitly
 install the current opaque-object namespace first. Stop the target writer before
 applying a restore; target, lease and catalog guards reject a concurrent change.
@@ -108,19 +108,19 @@ remain an operator-controlled immutable source throughout verification/copy.
 
 ```sh
 # First select the destination credentials/transport in your environment.
-atomic install
-atomic restore --repository /private/backups/application --basis 42 --generation 0 \
-  --target-database recovered --postgres-database atomic_recovery --catalog-schema public
+edb install
+edb restore --repository /private/backups/application --basis 42 --generation 0 \
+  --target-database recovered --postgres-database edb_recovery --catalog-schema public
 
 # The same exact selection, with explicit activation authority:
-atomic restore --repository /private/backups/application --basis 42 --generation 0 \
-  --target-database recovered --postgres-database atomic_recovery --catalog-schema public --apply
-atomic inspect --database recovered
+edb restore --repository /private/backups/application --basis 42 --generation 0 \
+  --target-database recovered --postgres-database edb_recovery --catalog-schema public --apply
+edb inspect --database recovered
 ```
 
 `--postgres-database` names PostgreSQL's database, `--catalog-schema` names the
-namespace containing the installed `atomic_objects` and `atomic_refs` tables, and
-`--target-database` names the logical Atomic database. The first two names must
+namespace containing the installed `edb_objects` and `edb_refs` tables, and
+`--target-database` names the logical EDB database. The first two names must
 match the configured destination; this protects against a wrong connection or
 an earlier empty schema in `search_path`. No SQL identifiers are interpolated
 from these flags.
@@ -145,7 +145,7 @@ Retry the same repository/basis/generation/destination; do not manually publish
 staged heads or assume process failure rolled back earlier commits. The library
 resumes persisted postorder object-copy steps. Only child-complete objects become
 strongly owned by the checkpoint; source objects not yet copied are weak pending
-identities. Publication and restore completion are one guarded atomic change.
+identities. Publication and restore completion are one guarded indivisible change.
 An exact completed retry returns its recorded activated root without replaying
 history, rolling back a newer target head or rerunning hooks. The library returns
 `RestoreResult { point, target, activated_root }`; open a peer to read the result.
@@ -155,8 +155,8 @@ and exact transaction retry workflow.
 ## Explicit derived-index maintenance
 
 ```sh
-atomic consolidate --database application
-atomic fulltext-rebuild --database application
+edb consolidate --database application
+edb fulltext-rebuild --database application
 ```
 
 `consolidate` advances a captured transaction prefix using the same index/search
@@ -178,7 +178,7 @@ For a diagnosed corrupt search projection, select the exact current index
 descriptor and authorize replacing its search attachment:
 
 ```sh
-atomic fulltext-rebuild --database application \
+edb fulltext-rebuild --database application \
   --discard-manifest EXACT_64_HEX_INDEX_DESCRIPTOR --apply --batches 1
 ```
 
@@ -201,12 +201,12 @@ repeated publication conflicts return an error without weakening these guards.
 ## Catalog-wide garbage collection
 
 ```sh
-atomic gc --postgres-database atomic_storage --catalog-schema public --older-than-seconds 2592000
-atomic gc --postgres-database atomic_storage --catalog-schema public --older-than-seconds 2592000 \
+edb gc --postgres-database edb_storage --catalog-schema public --older-than-seconds 2592000
+edb gc --postgres-database edb_storage --catalog-schema public --older-than-seconds 2592000 \
   --apply --batches 3
 ```
 
-GC operates on the entire shared Atomic catalog, **not one logical database**.
+GC operates on the entire shared EDB catalog, **not one logical database**.
 The explicit physical target names are verified before collection. Preview is
 the default and changes no ownership or payloads. Apply recomputes/checks its
 own transactional candidates; a separate preview is not a frozen deletion list

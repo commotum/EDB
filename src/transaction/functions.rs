@@ -87,7 +87,7 @@ impl TxFunctions {
     }
 
     /// Register a predicate whose exact returned value is semantically
-    /// observable. Datomic accepts only literal true and retains any other
+    /// observable. EDB accepts only literal true and retains any other
     /// result in the rejection data; persisted programs use this boundary.
     pub(crate) fn register_attribute_value_predicate<F>(
         &mut self,

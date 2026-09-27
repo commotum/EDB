@@ -1,6 +1,6 @@
 # EDN data frontend
 
-Atomic accepts EDN data without Clojure or a JVM. Its reader produces native data;
+EDB accepts EDN data without Clojure or a JVM. Its reader produces native data;
 transaction, query and Pull adapters pass that data to the shared semantic
 engine. EDN is a text authoring/interchange layer over the native typed APIs.
 
@@ -10,33 +10,33 @@ restore is needed; file/stdin input and EDN results are unchanged.
 
 ## Try the executable
 
-Build `cargo build --release --bin atomic`. Configure PostgreSQL and explicit
+Build `cargo build --release --bin edb`. Configure PostgreSQL and explicit
 transport as described in [the application guide](01_application_workflow.md). Use
 administrative credentials for installation/creation, a writer role for the
 transactor, and a peer role for application reads/submission. The data commands
 never install storage, create a database, or start an embedded writer implicitly.
 
 ```sh
-target/release/atomic install --writer-role atomic_writer --peer-role atomic_peer
-target/release/atomic create --database edn-demo
+target/release/edb install --writer-role edb_writer --peer-role edb_peer
+target/release/edb create --database edn-demo
 ```
 
 Start the ordinary transactor in a separate terminal. Its endpoint directory
 must already be private and owned by you:
 
 ```sh
-mkdir -m 700 /tmp/atomic-edn-demo
-target/release/atomic transactor --database edn-demo --endpoint /tmp/atomic-edn-demo/writer.sock
+mkdir -m 700 /tmp/edb-edn-demo
+target/release/edb transactor --database edn-demo --endpoint /tmp/edb-edn-demo/writer.sock
 ```
 
 The supplied [schema](../../examples/edn/schema.edn) and
 [people](../../examples/edn/people.edn) are complete transaction inputs:
 
 ```sh
-target/release/atomic transact --database edn-demo --endpoint /tmp/atomic-edn-demo/writer.sock --request-key install-person-schema --file examples/edn/schema.edn
-target/release/atomic transact --database edn-demo --endpoint /tmp/atomic-edn-demo/writer.sock --request-key create-alice --file examples/edn/people.edn
-target/release/atomic query --database edn-demo --file examples/edn/names-query.edn
-target/release/atomic pull --database edn-demo --file examples/edn/person-pull.edn --entity '[:person/email "alice@example.com"]'
+target/release/edb transact --database edn-demo --endpoint /tmp/edb-edn-demo/writer.sock --request-key install-person-schema --file examples/edn/schema.edn
+target/release/edb transact --database edn-demo --endpoint /tmp/edb-edn-demo/writer.sock --request-key create-alice --file examples/edn/people.edn
+target/release/edb query --database edn-demo --file examples/edn/names-query.edn
+target/release/edb pull --database edn-demo --file examples/edn/person-pull.edn --entity '[:person/email "alice@example.com"]'
 ```
 
 All four commands produce EDN on stdout. `--file -` reads stdin instead. Query
@@ -46,8 +46,8 @@ stdin. `query` supports `--as-of`, `--since`, and `--history`; `pull` supports
 point-in-time `--as-of`/`--since` views. Reads execute in this process and do not
 require the transactor to be running.
 
-`atomic with --database edn-demo --file PATH` previews a transaction locally. It
-returns speculative transaction data/tempids with `:atomic/committed false`; it
+`edb with --database edn-demo --file PATH` previews a transaction locally. It
+returns speculative transaction data/tempids with `:edb/committed false`; it
 does not reserve identities, write facts, or create a durable receipt. Supply
 `--tx-instant MILLIS` for a reproducible explicit preview time. To query the
 speculative database value itself, use the library report's `db_after`.
@@ -88,7 +88,7 @@ attribute. An anonymous reverse nested map needs a unique attribute: a reverse
 component reference does not make the nested entity the outer entity's component.
 Reverse nested maps are supported as native authoring data.
 
-Atomic admits either `:db.unique/identity` or `:db.unique/value` for this anonymous
+EDB admits either `:db.unique/identity` or `:db.unique/value` for this anonymous
 map guard. Only identity uniqueness supplies upsert semantics; value uniqueness
 does not merge a new entity with an existing one and still rejects conflicts.
 
@@ -102,9 +102,9 @@ cardinality-one reference, use the lookup reference directly. Scalar
 cardinality-one attributes do not silently unwrap singleton lists/vectors.
 
 Supported built-in transaction forms and native program invocations use the
-existing implementation. The reserved string `"datomic.tx"` identifies the
+existing implementation. The reserved string `"edb.tx"` identifies the
 transaction entity. JVM classpath functions and Clojure function definitions are
-not evaluated. A `#atomic/function` hash identifies already stored native program
+not evaluated. A `#edb/function` hash identifies already stored native program
 content; reading the tag does not deploy or invoke it.
 
 Qualified versioned symbol calls can invoke an explicitly deployed
@@ -125,18 +125,18 @@ Retained receipt lookup happens before current schema, idents or program binding
 are resolved. Reusing a key with different intent produces a conflict, not a
 second transaction.
 
-Successful commit output includes `:atomic/committed`, `:atomic/basis-t`,
-`:atomic/replayed`, transaction hash, exact before/after basis, datoms and tempids.
+Successful commit output includes `:edb/committed`, `:edb/basis-t`,
+`:edb/replayed`, transaction hash, exact before/after basis, datoms and tempids.
 If opening/formatting a full report fails after confirmed commit, a minimal
-confirmed receipt is returned with `:atomic/report-error`. Output/I/O failure is
+confirmed receipt is returned with `:edb/report-error`. Output/I/O failure is
 not proof of rollback. Retain the key; do not invent a new one to recover a reply.
 
 ## Native library
 
 ```rust
-use atomic_core::{Database, TransactionRequest};
-use atomic_core::edn::{read_edn, write_edn};
-use atomic_core::edn_query::{EdnQueryArgument, parse_query_edn};
+use edb_core::{Database, TransactionRequest};
+use edb_core::edn::{read_edn, write_edn};
+use edb_core::edn_query::{EdnQueryArgument, parse_query_edn};
 
 let data = read_edn(r#"[{:person/name "Alice"}]"#)?;
 let text = write_edn(&data)?;
@@ -148,9 +148,9 @@ let installed = empty.with_edn(include_str!("../examples/edn/schema.edn"), 10)?;
 let preview = installed.db_after.with_edn(&text, 20)?;
 let query = parse_query_edn("[:find ?name :where [?e :person/name ?name]]")?;
 let bound = query.bind(&[EdnQueryArgument::Source(
-    atomic_core::QuerySourceValue::Database(preview.db_after.database_value()),
+    edb_core::QuerySourceValue::Database(preview.db_after.database_value()),
 )])?;
-let result = bound.execute(&atomic_core::QueryControl::default(), None)?;
+let result = bound.execute(&edb_core::QueryControl::default(), None)?;
 let text_result = write_edn(&bound.result_to_edn(&result.result)?)?;
 ```
 
@@ -215,16 +215,16 @@ Native types without an unambiguous standard representation use these data tags:
 
 | Tag | Payload |
 | --- | --- |
-| `#atomic/ref` | Nonnegative supported entity ID |
-| `#atomic/float` | Finite Float text, or an explicitly converted Double literal |
-| `#atomic/float-bits`, `#atomic/double-bits` | Hexadecimal IEEE bits; preserve nonfinite values/NaN payloads |
-| `#atomic/bytes` | Hexadecimal bytes |
-| `#atomic/uri` | Syntax-checked URI string; original spelling retained |
-| `#atomic/function` | 32-byte native program hash as hexadecimal |
-| `#atomic/instant-millis` | Signed milliseconds, including years outside RFC3339's four-digit range |
+| `#edb/ref` | Nonnegative supported entity ID |
+| `#edb/float` | Finite Float text, or an explicitly converted Double literal |
+| `#edb/float-bits`, `#edb/double-bits` | Hexadecimal IEEE bits; preserve nonfinite values/NaN payloads |
+| `#edb/bytes` | Hexadecimal bytes |
+| `#edb/uri` | Syntax-checked URI string; original spelling retained |
+| `#edb/function` | 32-byte native program hash as hexadecimal |
+| `#edb/instant-millis` | Signed milliseconds, including years outside RFC3339's four-digit range |
 
 These are namespaced data extensions, not JVM objects or executable constructors.
-The reader preserves unfamiliar Datomic-specific tags too, but an adapter rejects
+The reader preserves unfamiliar tags too, but an adapter rejects
 tags without a native meaning instead of treating them as valid facts. The
 documented string-tempid form needs no `#db/id` reader extension.
 

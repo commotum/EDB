@@ -52,7 +52,7 @@ pub(super) fn start(
             let _ = writer.release();
             if error.category == ErrorCategory::Fault {
                 error.message.push_str(
-                    "; inspect the database before retrying. If only its derived current index is damaged, use atomic consolidate to rebuild it from the authenticated log; canonical or retained-receipt damage requires separate recovery",
+                    "; inspect the database before retrying. If only its derived current index is damaged, use edb consolidate to rebuild it from the authenticated log; canonical or retained-receipt damage requires separate recovery",
                 );
             }
             return Err(error);
@@ -118,7 +118,7 @@ pub(super) fn start(
     let fulltext_limits = options.fulltext_build_limits;
     let index_fulltext_limits = fulltext_limits.clone();
     let index_worker = match thread::Builder::new()
-        .name(format!("atomic-index-{}", config.holder_id))
+        .name(format!("edb-index-{}", config.holder_id))
         .spawn(move || {
             index_lane::prepare_worker(
                 index_connection,
@@ -141,7 +141,7 @@ pub(super) fn start(
     let worker_owner = Arc::clone(&owner);
     let worker_shared = Arc::clone(&shared);
     let worker = match thread::Builder::new()
-        .name(format!("atomic-transactor-{}", config.holder_id))
+        .name(format!("edb-transactor-{}", config.holder_id))
         .spawn(move || {
             let writer = worker_owner
                 .lock()

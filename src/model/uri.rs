@@ -1,7 +1,6 @@
 //! URI value semantics, independent of transport, transaction or codec policy.
 //!
-//! Recovered `datomic.common/compare-ex` delegates URI values to `java.net.URI`.
-//! Its component equality is the contract here, not URL normalization. Parsing
+//! URI values follow `java.net.URI` component equality, not URL normalization. Parsing
 //! borrows the original spelling; no DNS, percent decoding, path cleanup, default
 //! ports or host rewriting occurs. Callers keep original bytes for exact receipts.
 //!

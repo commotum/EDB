@@ -1,6 +1,6 @@
 //! Immutable, authenticated recent-transaction tier.
 //!
-//! Datomic peers combine durable shallow trees with an in-memory index rebuilt
+//! EDB peers combine durable shallow trees with an in-memory index rebuilt
 //! from the authoritative log. This module owns that bounded semantic value;
 //! it neither persists data nor evicts an uncovered transaction. A soft limit
 //! requests consolidation, while a separate hard limit applies write
@@ -37,7 +37,7 @@ pub struct RecentLimits {
 impl Default for RecentLimits {
     fn default() -> Self {
         Self {
-            // Datomic sizes the memory index in bytes at the transactor. A
+            // EDB sizes the memory index in bytes at the transactor. A
             // peer must accept that authoritative window; an unrelated local
             // datom-count default would reject valid tails based on value
             // shape rather than configured novelty capacity.
@@ -70,7 +70,7 @@ impl RecentLimits {
 /// Endpoint schema used for AVET/VAET membership and, only during an explicit
 /// consolidation, the current `:db/noHistory` flag.
 ///
-/// The recent/log tier never projects history away. Datomic documents
+/// The recent/log tier never projects history away. EDB documents
 /// noHistory as permission for future indexing jobs to forget matching pairs,
 /// with no precise removal guarantee and no immediate effect on historical
 /// values. Keeping that policy at consolidation avoids inventing stronger
@@ -289,7 +289,7 @@ impl Drop for LogChunk {
     fn drop(&mut self) {
         let mut previous = self.previous.take();
         while let Some(chunk) = previous {
-            // Consume our ownership atomically. If another snapshot owns this
+            // Consume our ownership indivisibly. If another snapshot owns this
             // predecessor, it is responsible for its eventual release. Unlike
             // try_unwrap(...).ok(), racing last owners cannot both fail and then
             // recursively drop the chain through an unclaimed Err(Arc).
@@ -853,11 +853,11 @@ impl RecentTier {
 
     /// Model the recovered indexing-time `filter-nohist-pairs` operation.
     ///
-    /// Datomic applies `filter-nohist-pairs` to future indexing jobs only.
+    /// EDB applies `filter-nohist-pairs` to future indexing jobs only.
     ///
     /// Any adjacent retraction/assertion pair in the affected merged segment
     /// is eligible while the endpoint attribute is currently noHistory. This
-    /// deliberately has no transaction-boundary test: Datomic applies
+    /// deliberately has no transaction-boundary test: EDB applies
     /// `filter-nohist-pairs` after merging old and new data for each segment,
     /// so a pair may straddle the persistent/recent boundary and an older pair
     /// may be forgotten incidentally when its segment is rebuilt. This remains
@@ -1235,7 +1235,7 @@ impl RecentCursor {
 
                 // Reversed history visits one logical group oldest-first.
                 // Recovered `distinct-last-by [e a v]` therefore retains its
-                // newest event. Atomic deliberately retains one newest event
+                // newest event. EDB deliberately retains one newest event
                 // per strict stored V representation: documented rseek is the
                 // reverse complement of forward access, and the native kernel
                 // treats scale-distinct BigDecimals as distinct stored facts.

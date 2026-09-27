@@ -258,7 +258,7 @@ pub(super) fn select_datoms<'a>(
             ));
         }
     }
-    // ATOMIC-NOTE: recovered DbRel rejects wholly unbound database scans.
+    // EDB-NOTE: recovered DbRel rejects wholly unbound database scans.
     // Native callers may request them under the same cooperative work/row/value
     // controls; force_scan selects this EAVT path for planner diagnostics.
     Ok((

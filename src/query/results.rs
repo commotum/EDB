@@ -365,7 +365,7 @@ pub(super) fn aggregate(
         }
         Aggregate::Distinct => {
             sort_aggregate_values(&mut values, true, budget)?;
-            // ATOMIC-NOTE: aggregation/distinct is (set coll), including when
+            // EDB-NOTE: aggregation/distinct is (set coll), including when
             // nested q returns it as a scalar. Keep the set's observable shape.
             Ok(QueryValue::Set(
                 values

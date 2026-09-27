@@ -82,7 +82,7 @@ pub enum Value {
     /// Content hash of an immutable native database-function program.
     ///
     /// This deliberately names native program content rather than retaining
-    /// Datomic's JVM function object or serialized Clojure/Java code.
+    /// a JVM function object or serialized Clojure/Java code.
     Function([u8; 32]),
     Instant(i64),
     Keyword(Keyword),
@@ -179,9 +179,9 @@ impl Value {
         }
     }
 
-    /// Datomic-style comparison used by indexes and identity checks.
+    /// Logical value comparison used by indexes and identity checks.
     ///
-    /// It follows recovered `datomic.common/compare`: numeric variants compare
+    /// Numeric variants compare
     /// across types, byte arrays are length-first then signed-byte lexical, and
     /// tuples compare lexicographically with nil below every value. We use an
     /// explicit type rank for the supported non-numeric types instead of JVM
@@ -237,7 +237,7 @@ impl Value {
 
     /// Ordering for recovered stored-fact equality boundaries.
     ///
-    /// Datomic's logical comparator intentionally considers numerically equal
+    /// EDB's logical comparator intentionally considers numerically equal
     /// values equal across representations. Its stored equality adds the
     /// BigDecimal scale distinction only for top-level BigDecimals; tuples
     /// retain logical recursive comparison.

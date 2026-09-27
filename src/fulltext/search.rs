@@ -264,7 +264,7 @@ impl DatabaseValue {
         };
         budget.charge(1, candidate.value.retained_heap_bytes() as usize)?;
         let mut cursor = self.prefix_cursor(&prefix)?;
-        // ATOMIC-NOTE: exact-view validation corresponds to source windowed
+        // EDB-NOTE: exact-view validation corresponds to source windowed
         // lookup, but native shared budgets also cover candidates rejected by
         // time/history filters inside a single cursor advancement.
         while let Some(fact) = cursor.next_with_control(&mut |candidate| {

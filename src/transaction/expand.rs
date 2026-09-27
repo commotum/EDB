@@ -467,7 +467,7 @@ impl Normalizer<'_> {
     fn has_unique_attribute(&self, map: &EntityMap) -> Result<bool, SemanticError> {
         // Retain the documented component-or-unique authoring rule. The
         // recovered source's has-unique-id? is narrower (identity only), while
-        // Atomic also admits unique-value keys. Their collision policy stays
+        // EDB also admits unique-value keys. Their collision policy stays
         // in the assessor: a fresh unique-value tempid never becomes an upsert.
         for (attribute, value) in &map.attributes {
             if matches!(value, MapValue::Many(_) | MapValue::Nested(_)) {

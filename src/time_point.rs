@@ -1,4 +1,4 @@
-/// A documented Datomic time-point form.
+/// A documented EDB time-point form.
 ///
 /// `T` is the logical transaction coordinate, `Tx` is its reified transaction
 /// entity, and `Instant` is Unix epoch milliseconds.  Instants are deliberately

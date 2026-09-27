@@ -310,7 +310,7 @@ impl DatabaseValue {
     }
 
     /// Resolve an ident from the immutable basis' derived ident cache.
-    /// Datomic's temporal predicates window index data, not this dictionary.
+    /// EDB's temporal predicates window index data, not this dictionary.
     pub fn entid(&self, ident: &Keyword) -> Option<u64> {
         match &self.basis {
             ReadBasis::Eager(database) => database.entid(ident),

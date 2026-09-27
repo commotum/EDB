@@ -3,7 +3,7 @@ use crate::{
     HintLimits, IndexPrefix, ReadHint, SemanticError, SnapshotReference, TransactionHints, Value,
 };
 pub(super) const MAX_WIRE_BYTES: usize = 4 * 1024 * 1024 + 256 * 1024 + 64 * 1024;
-const MAGIC: &[u8; 8] = b"ATHINT\0\x01";
+const MAGIC: &[u8; 8] = b"EDBHNT\0\x01";
 pub(super) fn encode(hints: &TransactionHints) -> Result<Vec<u8>, SemanticError> {
     let mut bytes = MAGIC.to_vec();
     put(&mut bytes, &hints.origin().encode()?)?;

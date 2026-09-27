@@ -20,7 +20,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "atomic-core"
+name = "edb-core"
 version = "0.1.0"
 dependencies = [
  "bigdecimal",

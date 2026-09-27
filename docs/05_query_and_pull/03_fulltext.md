@@ -21,6 +21,8 @@ The flag is false by default, is queryable as `:db/fulltext` schema data, and
 cannot be toggled after installation. Both single- and multi-valued string
 attributes are supported. New databases contain the vocabulary in their canonical genesis. Installing an
 attribute is an ordinary transaction; opening a database does not rewrite schema.
+See [the schema reference](../03_schema/02_schema_reference.md#dbfulltext)
+and [changing schema](../03_schema/03_changing_schema.md).
 
 ```rust
 let report = database.fulltext(1000, "\"blue river\" OR mountain*",
@@ -37,12 +39,22 @@ keyword or numeric reference and a search string; relation binding produces
 to enforce status, ownership or other selection rules. See the working syntax
 in [queries.md](00_queries.md#fulltext-and-structured-facts).
 
+Each hit describes an assertion, not just an entity. The value is the original
+string, including its capitalization and punctuation. Several strings asserted
+for a many-valued attribute on the same entity in one transaction remain distinct
+hits. Retracting and later reasserting the same string produces distinct
+assertion transactions in a retained history view. The query form can select an
+explicit database source; both candidate validation and the returned transaction
+refer to that source's view.
+
 ## Analyzer and expression rules
 
 The versioned native analyzer lowercases Unicode alphanumeric words, strips
 English possessive `'s`, and removes straight/curly apostrophes. Accents remain;
 there is no stemming or arbitrary substring matching. Thus `JANE'S` matches
 `Jane`, `café` does not become `cafe`, and `cat` does not match `category`.
+Lowercasing is Unicode lowercase, not full Unicode case folding. Other
+punctuation separates words: `blue-river` contributes `blue` and `river`.
 
 The documented English stop words are omitted:
 
@@ -55,6 +67,11 @@ Queries support terms, quoted phrases, parentheses, uppercase `AND`/`OR`/`NOT`,
 and a trailing `*` on a nonempty word prefix. Adjacent terms default to OR;
 AND binds more tightly than OR. Phrases retain stop-word position gaps, so
 `"red blue"` does not match `red and blue`. A stop-word-only search is empty.
+Phrase matching compares the relative positions of the remaining words; it does
+not compare omitted stop words. For example, `"red and blue"` can match
+`red or blue`, since both place `blue` two positions after `red`. An unquoted
+`blue-river` search uses the same default OR as `blue river`; use `"blue river"`
+when the words must be adjacent.
 
 Every OR branch must have a positive anchor: `river AND NOT mountain` is valid;
 `NOT mountain` and `river OR NOT mountain` are rejected rather than scanning a
@@ -111,6 +128,11 @@ facts still debit the operation's work allowance. `limit` is
 explicit top-k truncation (`stats.truncated`); work/byte/parser budgets fail with
 an error instead of silently returning partial results. Limit zero returns no
 hits and reports truncation when matches exist.
+Visible hits are deduplicated by entity, original value and assertion transaction
+before ranking and truncation. Hidden candidates therefore do not consume the
+result limit. The limit bounds returned hits, not candidate discovery or
+validation work. Cooperative cancellation cannot interrupt an application filter
+callback that never returns.
 
 Queries debit search work and allocated bytes from their enclosing query or
 stored-program budget, including attempted work on failure. A query row limit
@@ -121,6 +143,8 @@ value, even though the same search included its unindexed assertions.
 `FulltextStats::read_bytes` counts authenticated search objects loaded through
 the backing source (PostgreSQL or repository; zero for eager fixtures and decoded
 page-cache hits). `admitted_bytes` is the separate cumulative logical allowance.
+Visits to decoded search pages debit that allowance even when the pages are
+already cached; a warm cache does not remove operation budgets.
 Search-page bytes exclude other metadata, protocol overhead and structured
 candidate-validation reads. Use the operation's SQL/cache diagnostics for the
 broader I/O picture.
@@ -224,12 +248,15 @@ spelling supplies that expected digest, not permission to delete pages under
 readers. Reopen/synchronize to observe the replacement; existing held values
 continue using their old immutable graph.
 
-Objects are retained through ordinary Rust graph ownership. Current publications,
+Search objects share canonical indexes' authenticated graph ownership. Current publications,
 exact receipts, authorized retained indexes and protected work all
 participate in the same GC protocol. Dropping an old root does not delete pages
 reachable through a successor or another owner. GC advances bounded persisted
 work and honors retention; no feature-specific SQL page frontier, sidecar import
 or physical discard procedure is involved. Search repair is not secure erasure.
+Holding a database value or search cursor does not by itself promise indefinite
+retention of every backing object. Active readers may keep decoded pages alive
+after cache eviction; later cold reads still depend on storage retention.
 
 Excision builds search from the rewritten successor before activating its new
 generation. New current/history views exclude excised facts, while already-held

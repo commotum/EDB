@@ -3,7 +3,7 @@
 //! Updates and cursor stacks are bounded by balanced tree height, not by the
 //! number of speculative ancestors. Keys/values should be cheap shared handles.
 //!
-//! Retains Datomic's persistent-collection principle: updates copy a search path,
+//! Persistent updates copy a search path,
 //! not all entries. Unlike the insertion-only recent BTSet, speculative current
 //! indexes also remove entries; a balanced ordered map supports both operations.
 //! This is not a port of the bundled priority-map, whose second ordering serves

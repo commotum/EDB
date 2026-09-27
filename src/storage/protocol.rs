@@ -5,7 +5,7 @@
 //! reference tombstones prevent delete/recreate ABA; absence is not a tombstone.
 //!
 //! The Rust collector announces an epoch through an opaque reference. Root
-//! mutations atomically append before/after ownership changes under that guard.
+//! mutations indivisibly append before/after ownership changes under that guard.
 //! Sealing fixes the change set for incremental reachability accounting.
 //! Protected puts refresh even reused objects; guarded deletion checks
 //! the collector's authority and an older protection epoch. Durable roots,
@@ -17,7 +17,7 @@ use super::{MAX_BATCH, MAX_REF_BYTES, Reference, validate_key, validate_limit};
 use crate::SemanticError;
 use std::collections::BTreeSet;
 
-/// Expected state of one opaque reference, checked atomically with all changes.
+/// Expected state of one opaque reference, checked indivisibly with all changes.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct RefCondition {
     pub key: String,
@@ -35,7 +35,7 @@ pub struct RefChange {
     pub value: Option<Vec<u8>>,
 }
 
-/// An atomic batch either applies every change or changes nothing.
+/// An indivisible batch either applies every change or changes nothing.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum BatchOutcome {
     /// Changed references, with their resulting revisions, in change order.

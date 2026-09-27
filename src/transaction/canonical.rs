@@ -7,7 +7,7 @@ use std::cmp::Ordering;
 
 /// Total structural order for primitive transaction forms.
 ///
-/// Datomic's recovered implementation compares typed transaction values; it
+/// Transaction ordering compares typed values; it
 /// does not make formatted diagnostic text part of transaction semantics. The
 /// kernel additionally canonicalizes its declarative input so tempid and
 /// anonymous-map allocation cannot depend on caller collection order. This

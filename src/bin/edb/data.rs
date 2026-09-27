@@ -1,9 +1,9 @@
 //! Text data commands use the ordinary peer and fenced transactor interfaces.
-use atomic_core::edn::{EdnValue, read_edn, write_edn};
-use atomic_core::edn_pull::{entity_identifier_from_edn, parse_pull_edn};
-use atomic_core::edn_query::{EdnQueryArgument, EdnQueryInput, parse_query_edn};
-use atomic_core::edn_value::{edn_keyword, query_value_to_edn, transaction_report_to_edn};
-use atomic_core::{
+use edb_core::edn::{EdnValue, read_edn, write_edn};
+use edb_core::edn_pull::{entity_identifier_from_edn, parse_pull_edn};
+use edb_core::edn_query::{EdnQueryArgument, EdnQueryInput, parse_query_edn};
+use edb_core::edn_value::{edn_keyword, query_value_to_edn, transaction_report_to_edn};
+use edb_core::{
     BackupConnection, Connection, DatabaseValue, Datom, ErrorCategory, PullControl, QueryControl,
     QuerySourceValue, SemanticError, TransactionRequest, postgres_config_from_env,
     remote_client_config_from_env,
@@ -15,15 +15,15 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 const MAX_INPUT_BYTES: usize = 16 * 1024 * 1024;
 pub const HELP: &str = "
 EDN data commands (file path '-' reads stdin; results are EDN on stdout):
-  atomic transact --database ID --file PATH --request-key KEY
+  edb transact --database ID --file PATH --request-key KEY
     (--endpoint PATH | --remote) [--basis N] [--tx-instant MILLIS] [--timeout-ms N]
-  atomic with (--database ID | --repository PATH) --file PATH [--tx-instant MILLIS]
+  edb with (--database ID | --repository PATH) --file PATH [--tx-instant MILLIS]
     [--default-partition KEYWORD]
-  atomic query [--database ID | --repository PATH] --file PATH [--inputs PATH] [--sources PATH]
+  edb query [--database ID | --repository PATH] --file PATH [--inputs PATH] [--sources PATH]
     [--as-of N] [--since N] [--history] [--timeout-ms N] [--max-work N]
     [--max-results N] [--max-join-bytes N] [--max-value-bytes N]
     [--query-stats] [--io-context :app/operation]
-  atomic pull (--database ID | --repository PATH) --file PATH --entity EDN
+  edb pull (--database ID | --repository PATH) --file PATH --entity EDN
     [--as-of N] [--since N] [--max-depth N] [--max-entities N]
     [--io-context :app/operation]
 
@@ -42,7 +42,7 @@ to the latest point; select an exact point with BOTH --backup-basis N and
 :generation N :log true}; omit :log for a database value.
 Data-only queries need no --database or PostgreSQL connection configuration.
 The same PostgreSQL/TLS credential configuration applies. --remote uses verified
-TLS writer discovery and ATOMIC_REMOTE_TOKEN_FILE, not plaintext TCP.
+TLS writer discovery and EDB_REMOTE_TOKEN_FILE, not plaintext TCP.
 Input files are limited to16MiB each. Output conversion/printing is bounded;
 query defaults to a30s evaluation timeout. See docs/01_tutorials/00_edn_workflow.md for format/type limits.
 ";
@@ -146,7 +146,7 @@ fn parse(command: &str, raw: &[String]) -> Result<Arguments, SemanticError> {
                 return Err(usage("duplicate option"));
             }
         } else {
-            return Err(usage("unknown or misplaced option; run atomic --help"));
+            return Err(usage("unknown or misplaced option; run edb --help"));
         }
     }
     if command == "transact" {
@@ -221,7 +221,7 @@ impl Arguments {
         self.values
             .get(flag)
             .map(String::as_str)
-            .ok_or_else(|| usage("required data command option is missing; run atomic --help"))
+            .ok_or_else(|| usage("required data command option is missing; run edb --help"))
     }
     fn number(&self, flag: &str, default: u64) -> Result<u64, SemanticError> {
         self.values
@@ -290,7 +290,7 @@ impl ReadConnection {
             Self::Backup(connection) => connection.db(),
         }
     }
-    fn log(&self) -> atomic_core::LogValue {
+    fn log(&self) -> edb_core::LogValue {
         match self {
             Self::Live(connection) => connection.log(),
             Self::Backup(connection) => connection.log(),
@@ -307,7 +307,7 @@ fn open_backup(
         (None, None) => BackupConnection::open(repository),
         (Some(basis), Some(generation)) => {
             let point =
-                atomic_core::PortableBackup::list_backup_points(std::path::Path::new(repository))?
+                edb_core::PortableBackup::list_backup_points(std::path::Path::new(repository))?
                     .into_iter()
                     .find(|point| point.basis_t == basis && point.log_generation == generation)
                     .ok_or_else(|| usage("requested backup point does not exist in repository"))?;
@@ -347,9 +347,7 @@ fn run(args: Arguments) -> Result<(), SemanticError> {
         return run_query(&args, &text);
     }
     let diagnostic = diagnostic_context(&args)?;
-    let _scope = diagnostic
-        .as_ref()
-        .map(atomic_core::OperationContext::enter);
+    let _scope = diagnostic.as_ref().map(edb_core::OperationContext::enter);
     let connection = open_primary(&args)?;
     match args.command.as_str() {
         "transact" => {
@@ -458,9 +456,7 @@ fn run(args: Arguments) -> Result<(), SemanticError> {
 
 fn run_query(args: &Arguments, text: &str) -> Result<(), SemanticError> {
     let diagnostic = diagnostic_context(args)?;
-    let _scope = diagnostic
-        .as_ref()
-        .map(atomic_core::OperationContext::enter);
+    let _scope = diagnostic.as_ref().map(edb_core::OperationContext::enter);
     let query = parse_query_edn(text)?;
     let inputs = args
         .values
@@ -541,7 +537,7 @@ fn run_query(args: &Arguments, text: &str) -> Result<(), SemanticError> {
         diagnostics: args
             .switches
             .contains("--query-stats")
-            .then(atomic_core::QueryDiagnosticOptions::default),
+            .then(edb_core::QueryDiagnosticOptions::default),
         timeout: Some(Duration::from_millis(args.number("--timeout-ms", 30_000)?)),
         max_work: args.size("--max-work", usize::MAX)?,
         max_result_rows: args.size("--max-results", usize::MAX)?,
@@ -556,13 +552,13 @@ fn run_query(args: &Arguments, text: &str) -> Result<(), SemanticError> {
             (key("ret"), value),
             (
                 key("query-stats"),
-                atomic_core::query_diagnostics_to_edn(stats),
+                edb_core::query_diagnostics_to_edn(stats),
             ),
         ]);
         if let (Some(context), EdnValue::Map(fields)) = (&diagnostic, &mut value) {
             fields.push((
                 key("io-stats"),
-                atomic_core::io_report_to_edn(&context.report()),
+                edb_core::io_report_to_edn(&context.report()),
             ));
         }
     } else {
@@ -573,32 +569,32 @@ fn run_query(args: &Arguments, text: &str) -> Result<(), SemanticError> {
 
 fn diagnostic_context(
     args: &Arguments,
-) -> Result<Option<atomic_core::OperationContext>, SemanticError> {
+) -> Result<Option<edb_core::OperationContext>, SemanticError> {
     args.values
         .get("--io-context")
         .map(|text| {
             let EdnValue::Keyword(name) = read_edn(text)? else {
                 return Err(usage("--io-context requires a qualified keyword"));
             };
-            atomic_core::OperationContext::named(atomic_core::OperationKind::Application, name)
+            edb_core::OperationContext::named(edb_core::OperationKind::Application, name)
         })
         .transpose()
 }
 
-fn with_io_report(value: EdnValue, context: Option<&atomic_core::OperationContext>) -> EdnValue {
+fn with_io_report(value: EdnValue, context: Option<&edb_core::OperationContext>) -> EdnValue {
     match context {
         None => value,
         Some(context) => EdnValue::Map(vec![
             (key("ret"), value),
             (
                 key("io-stats"),
-                atomic_core::io_report_to_edn(&context.report()),
+                edb_core::io_report_to_edn(&context.report()),
             ),
         ]),
     }
 }
 fn key(name: &str) -> EdnValue {
-    edn_keyword("atomic", name)
+    edn_keyword("edb", name)
 }
 fn integer(value: u64) -> EdnValue {
     i64::try_from(value)
@@ -713,8 +709,7 @@ fn source_value(
             // A name may have been reused while the primary still holds its
             // old identity. Compare resolved identities, never name spelling
             // against a captured storage ID.
-            let selected =
-                atomic_core::DatabaseCatalog::connect_configured(&config)?.resolve(name)?;
+            let selected = edb_core::DatabaseCatalog::connect_configured(&config)?.resolve(name)?;
             if let Some(primary) = primary.filter(|primary| {
                 matches!(primary, ReadConnection::Live(connection)
                     if connection.identity().database_id() == selected.database_id

@@ -2,7 +2,7 @@
 //!
 //! The bundled `clojure.core.cache/LRUCache` composes value lookup with the
 //! persistent `clojure.data.priority-map` to update an item's recency and remove
-//! the least recent item. Atomic's caches already mutate under their owners'
+//! the least recent item. EDB's caches already mutate under their owners'
 //! locks; database values retain immutable payloads, not old cache versions.
 //! A hash index plus linked slots preserves keyed recency without copying trees,
 //! scanning resident keys, accumulating stale queue entries, or advancing a clock.

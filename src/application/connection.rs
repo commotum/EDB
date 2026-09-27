@@ -52,7 +52,7 @@ impl Drop for Advancement {
 
 /// Cloneable, long-lived native connection to one PostgreSQL database.
 ///
-/// Like recovered `datomic.peer.Connection`, the mutable connection is only
+/// The mutable connection is only
 /// an observation/co-ordination point. Every `db` call returns an immutable
 /// value, and advancing this shared connection never changes an older value.
 /// Reads follow the authoritative PostgreSQL log independently of the writer.
@@ -220,7 +220,7 @@ impl Connection {
         let operation = observation_work.clone();
         let database_id = peer.identity().database_id().to_owned();
         let worker = std::thread::Builder::new()
-            .name("atomic-peer-observer".into())
+            .name("edb-peer-observer".into())
             .spawn(move || {
                 let _scope = operation.enter();
                 let mut listener = None;

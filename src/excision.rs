@@ -10,12 +10,11 @@ use crate::{
 };
 use std::collections::BTreeSet;
 
-/// Exact values of recovered 1.0.7705 `datomic.db/BOOT-IDS`.
+/// System attribute IDs protected from excision.
 ///
-/// `datomic.excise/keeper?` preserves a datom when its entity is in partition
-/// zero or its attribute is one of these ids (`excise.clj:139-147`). This is
-/// intentionally not a numeric range: native ids 54--72 are useful design
-/// evidence but were not members of the recovered keeper set.
+/// A datom is preserved when its entity is in partition zero or its attribute
+/// is one of these IDs. This is intentionally not a numeric range: IDs 54--72
+/// are outside the protected set.
 pub(crate) const RECOVERED_BOOT_IDS: &[u64] = &[
     0, 1, 2, 3, 4, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27,
     35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53,
@@ -147,7 +146,7 @@ impl ExcisionPredicate {
 
     fn canonical_hash(&self) -> Digest {
         let mut bytes = Vec::new();
-        bytes.extend_from_slice(b"atomic/excision-predicate/v1\0");
+        bytes.extend_from_slice(b"edb/excision-predicate/v1\0");
         bytes.extend_from_slice(&self.request.request_entity.to_be_bytes());
         bytes.extend_from_slice(&self.request.request_t.to_be_bytes());
         bytes.extend_from_slice(&self.request.target.to_be_bytes());

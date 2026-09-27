@@ -1,6 +1,6 @@
 //! Peer-local search over immutable source-bound candidates.
 //!
-//! ATOMIC-NOTE: native analysis and authenticated page maintenance fulfill the
+//! EDB-NOTE: native analysis and authenticated page maintenance fulfill the
 //! search/publication roles without importing Lucene's directory or score ABI.
 //! Object I/O and coherent publication remain with storage and the transactor.
 pub(crate) mod analysis;

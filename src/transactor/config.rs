@@ -37,15 +37,15 @@ const DEFAULT_MEMORY_INDEX_MAX_BYTES: u64 = 512 * 1024 * 1024;
 /// The byte measure is a deterministic native approximation: the retained
 /// Rust `Datom`, canonical value bytes, and up to five compact references for
 /// the four raw recent BTSet indexes plus persistent chunk-log/tree overhead.
-/// It deliberately does not pretend to be allocator RSS. The defaults retain
-/// Datomic Pro's documented 32 MiB scheduling point and 512 MiB back-pressure
-/// point while tests and small deployments can use explicit lower values
+/// It deliberately does not pretend to be allocator RSS. Defaults are a
+/// 32 MiB scheduling point and a 512 MiB back-pressure point. Tests and
+/// small deployments can use explicit lower values
 /// without changing `TransactionServiceConfig` literals.
 /// At the maximum, the writer parks ordinary dequeue while continuing lease
 /// renewal and prioritizing indexing. The bounded admission queue may then
 /// return `Busy` when it is genuinely full; committed idempotency retries that
 /// have already reached the worker remain reconcilable without extending the
-/// log. This preserves Datomic's index-first hard-limit behavior without an
+/// log. This preserves EDB's index-first hard-limit behavior without an
 /// unbounded native submission queue.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct BackgroundIndexingConfig {

@@ -44,29 +44,29 @@ fn read_file(path: &str, secret: bool, limit: usize) -> Result<Vec<u8>, Semantic
     Ok(bytes)
 }
 fn token() -> Result<RemoteAuthToken, SemanticError> {
-    let bytes = read_file(&required("ATOMIC_REMOTE_TOKEN_FILE")?, true, 1024)?;
+    let bytes = read_file(&required("EDB_REMOTE_TOKEN_FILE")?, true, 1024)?;
     let text = std::str::from_utf8(&bytes).map_err(|_| error("config/remote-token"))?;
     RemoteAuthToken::from_hex(text.trim()).map_err(|_| error("config/remote-token"))
 }
 
-/// Read owned private `ATOMIC_REMOTE_TOKEN_FILE` (64 hex digits) and
-/// `ATOMIC_REMOTE_TLS_KEY` (PKCS8 PEM), plus public `ATOMIC_REMOTE_TLS_CERT`
+/// Read owned private `EDB_REMOTE_TOKEN_FILE` (64 hex digits) and
+/// `EDB_REMOTE_TLS_KEY` (PKCS8 PEM), plus public `EDB_REMOTE_TLS_CERT`
 /// (PEM chain). No plaintext transaction listener is available.
 pub fn remote_server_credentials_from_env()
 -> Result<(native_tls::Identity, RemoteAuthToken), SemanticError> {
-    let cert = read_file(&required("ATOMIC_REMOTE_TLS_CERT")?, false, MAX_PEM)?;
-    let key = read_file(&required("ATOMIC_REMOTE_TLS_KEY")?, true, MAX_PEM)?;
+    let cert = read_file(&required("EDB_REMOTE_TLS_CERT")?, false, MAX_PEM)?;
+    let key = read_file(&required("EDB_REMOTE_TLS_KEY")?, true, MAX_PEM)?;
     let identity = native_tls::Identity::from_pkcs8(&cert, &key)
         .map_err(|_| error("config/remote-tls-identity"))?;
     Ok((identity, token()?))
 }
 
-/// Read owned private `ATOMIC_REMOTE_TOKEN_FILE`; optionally add the public
-/// PEM trust anchor `ATOMIC_REMOTE_TLS_ROOT` to verified system TLS roots.
+/// Read owned private `EDB_REMOTE_TOKEN_FILE`; optionally add the public
+/// PEM trust anchor `EDB_REMOTE_TLS_ROOT` to verified system TLS roots.
 /// Server-name validation is mandatory and uses authenticated discovery data.
 pub fn remote_client_config_from_env() -> Result<RemoteClientConfig, SemanticError> {
     let mut config = RemoteClientConfig::new(token()?)?;
-    match std::env::var("ATOMIC_REMOTE_TLS_ROOT") {
+    match std::env::var("EDB_REMOTE_TLS_ROOT") {
         Ok(path) if !path.is_empty() => {
             let root = read_file(&path, false, MAX_PEM)?;
             config = config

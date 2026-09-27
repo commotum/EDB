@@ -25,7 +25,7 @@ pub(super) fn solve_rule_invocations(
     rules: &[Rule],
     state: &mut State<'_>,
 ) -> EvaluationResult<()> {
-    // ATOMIC-NOTE: Recovered `eval-query` keys its input work by source and adorned
+    // EDB-NOTE: Recovered `eval-query` keys its input work by source and adorned
     // predicate, accumulates answers in `ans`, and the outer `qsqr` loop
     // repeats until answer cardinalities stop changing. This memo uses the
     // concrete bound values as well as the adornment: it is more selective,

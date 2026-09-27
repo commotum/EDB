@@ -90,7 +90,7 @@ pub struct ChangeConsumer {
     stats: ChangeConsumerStats,
 }
 
-const CHECKPOINT_MAGIC: &[u8; 8] = b"ATCC\0\0\0\x01";
+const CHECKPOINT_MAGIC: &[u8; 8] = b"EDBC\0\0\0\x01";
 const CHECKPOINT_BYTES: usize = 8 + 16 + 8 + 8 + 32 + 32;
 const MAX_PUBLICATION_RETRIES: usize = 8;
 
@@ -135,7 +135,7 @@ fn transport(error: &SemanticError) -> bool {
                 .is_some_and(|v| v == "true"))
 }
 fn checkpoint_key(identity: [u8; 16], principal: &str, name: &str) -> String {
-    let mut scope = b"atomic/change-consumer/v1".to_vec();
+    let mut scope = b"edb/change-consumer/v1".to_vec();
     for value in [principal, name] {
         scope.extend_from_slice(&(value.len() as u64).to_be_bytes());
         scope.extend_from_slice(value.as_bytes());
@@ -652,7 +652,7 @@ impl ChangeConsumer {
             accounted_bytes,
         }))
     }
-    /// Acknowledgement and external effects are not atomic. On ambiguous
+    /// Acknowledgement and external effects are not edb. On ambiguous
     /// transport failure reopen to discover the persisted checkpoint.
     pub fn acknowledge(&mut self, checkpoint: &ChangeCheckpoint) -> Result<(), SemanticError> {
         use crate::storage::{BatchOutcome, RefChange, RefCondition};

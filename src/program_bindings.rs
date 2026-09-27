@@ -100,7 +100,7 @@ pub(crate) fn resolve_predicate_binding(
         {
             return Err(SemanticError::incorrect(
                 "native/ambiguous-binding",
-                "a predicate cannot bind both :db/fn and :atomic.native/deployment",
+                "a predicate cannot bind both :db/fn and :edb.native/deployment",
             ));
         }
         return Ok(PredicateBinding::Program(hash));
@@ -441,7 +441,7 @@ pub(crate) fn validate_successor_program_bindings_with_native(
             {
                 return Err(SemanticError::incorrect(
                     "native/ambiguous-binding",
-                    "a function cannot bind both :db/fn and :atomic.native/deployment",
+                    "a function cannot bind both :db/fn and :edb.native/deployment",
                 ));
             }
         }

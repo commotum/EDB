@@ -7,7 +7,7 @@
 use super::ObjectId;
 use crate::{SemanticError, sha256};
 
-const MAGIC: &[u8; 4] = b"ATOB";
+const MAGIC: &[u8; 4] = b"EDBO";
 // URI key semantics are component-based in this first-release engine. Reject
 // earlier database roots rather than mixing indexes/receipts assessed under
 // raw-string URI equality. The opaque PostgreSQL provider format is unchanged.

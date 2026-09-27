@@ -23,7 +23,7 @@ use std::sync::{
 use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant};
 const PROTOCOL: u32 = 1;
-const HELLO: &[u8; 8] = b"ATREMOTE";
+const HELLO: &[u8; 8] = b"EDBREMOT";
 const MAX_FRAME: usize = 64 * 1024 * 1024 + 48;
 const MAX_HELLO: usize = 256 * 1024;
 

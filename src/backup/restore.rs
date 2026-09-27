@@ -534,7 +534,7 @@ impl PortableBackup {
             // Persist only the final stack frontier and final trie paths.
             // Unpublished objects are still epoch protected under the captured
             // work/target guards; only this child-closed map becomes a strong
-            // owner in the atomic checkpoint publication below.
+            // owner in the indivisible checkpoint publication below.
             checkpoint.stack = suffix;
             for mut frame in pending {
                 frame.next = checkpoint.stack;
@@ -608,7 +608,7 @@ impl PortableBackup {
         )?;
         let completions = completed.insert(&mut store, point.point.manifest_hash, receipt)?;
         // The completion hook can race an operator/writer before publication;
-        // all captured guards are still compared by the final atomic batch.
+        // all captured guards are still compared by the final indivisible batch.
         if let Some(probe) = completion_probe.as_mut() {
             probe();
         }

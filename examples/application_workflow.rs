@@ -1,5 +1,5 @@
 //! A separate application for the local or TLS transactor. See docs/01_tutorials/01_application_workflow.md.
-use atomic_core::{
+use edb_core::{
     Attribute, AttributeRef, Binding, Cardinality, Clause, Connection, DataPattern, Database,
     DatabaseValue, Entity, EntityMap, EntityRef, EntityValue, FindElement, FindSpec,
     FulltextOptions, FulltextReport, Function, IndexPrefix, InputSpec, Instruction, Keyword,
@@ -44,7 +44,7 @@ const WAIT: Duration = Duration::from_secs(20);
 
 enum AppEndpoint {
     Local(PathBuf),
-    Remote(atomic_core::RemoteWriter),
+    Remote(edb_core::RemoteWriter),
 }
 trait AppSubmit {
     fn transact_application(
@@ -52,7 +52,7 @@ trait AppSubmit {
         endpoint: &AppEndpoint,
         request: TransactionRequest,
         timeout: Duration,
-    ) -> std::result::Result<atomic_core::CommittedTransaction, SemanticError>;
+    ) -> std::result::Result<edb_core::CommittedTransaction, SemanticError>;
 }
 impl AppSubmit for Connection {
     fn transact_application(
@@ -60,7 +60,7 @@ impl AppSubmit for Connection {
         endpoint: &AppEndpoint,
         request: TransactionRequest,
         timeout: Duration,
-    ) -> std::result::Result<atomic_core::CommittedTransaction, SemanticError> {
+    ) -> std::result::Result<edb_core::CommittedTransaction, SemanticError> {
         match endpoint {
             AppEndpoint::Local(path) => self.transact_socket(path, request, timeout),
             AppEndpoint::Remote(writer) => writer.transact(request, timeout),
@@ -80,9 +80,9 @@ fn calculation(database: &DatabaseValue) -> Result<Summary> {
     let query = Query::new(
         FindSpec::Collection(FindElement::Variable(entity.clone())),
         vec![Clause::Pattern(Box::new(DataPattern::new(
-            atomic_core::Term::Variable(entity),
-            atomic_core::Term::Constant(Value::Ref(u64::from(PROJECT))),
-            atomic_core::Term::Blank,
+            edb_core::Term::Variable(entity),
+            edb_core::Term::Constant(Value::Ref(u64::from(PROJECT))),
+            edb_core::Term::Blank,
         )))],
     );
     let control = QueryControl {
@@ -128,7 +128,7 @@ fn string(entity: &Entity, attribute: u32) -> Result<String> {
 /// Run ordinary application reads on a single-thread async executor. Only pure
 /// result rows cross into the task; native connection/value cleanup stays here.
 fn async_read_workflow(connection: &Connection, captured: &DatabaseValue) -> Result<()> {
-    use atomic_core::{AsyncClient, AsyncConfig, AsyncExecutor, AsyncStreamOptions};
+    use edb_core::{AsyncClient, AsyncConfig, AsyncExecutor, AsyncStreamOptions};
     let started = Instant::now();
     let workers = AsyncExecutor::new(AsyncConfig {
         workers: 2,
@@ -284,7 +284,7 @@ fn read_values_workflow(before: &DatabaseValue, after: &DatabaseValue) -> Result
     let measured = OperationContext::new(OperationKind::Application);
     let _scope = measured.enter();
     let started = Instant::now();
-    let indexed = before.has_avet(&atomic_core::AttributeName::Id(PROJECT))?;
+    let indexed = before.has_avet(&edb_core::AttributeName::Id(PROJECT))?;
     let mut target = DataPattern::new(Term::var("key"), Term::var("target"), Term::Blank);
     target.source = "$targets".into();
     let query = Query::new(
@@ -345,9 +345,9 @@ fn read_values_workflow(before: &DatabaseValue, after: &DatabaseValue) -> Result
 /// Application-owned planning values need neither a stored schema nor a dummy
 /// database. The same query also joins them to a captured durable database value.
 fn general_query_workflow(before: &DatabaseValue, after: &DatabaseValue) -> Result<()> {
-    use atomic_core::edn::read_edn;
-    use atomic_core::edn_query::{EdnQueryArgument, parse_query_edn};
-    use atomic_core::{QueryExtensions, QuerySourceValue};
+    use edb_core::edn::read_edn;
+    use edb_core::edn_query::{EdnQueryArgument, parse_query_edn};
+    use edb_core::{QueryExtensions, QuerySourceValue};
     let measured = OperationContext::new(OperationKind::Application);
     let _scope = measured.enter();
     let started = Instant::now();
@@ -434,9 +434,9 @@ fn general_query_workflow(before: &DatabaseValue, after: &DatabaseValue) -> Resu
 /// Reduce related planning columns together, using one captured value and
 /// ordinary native string helpers for presentation.
 fn application_computation_workflow(before: &DatabaseValue, after: &DatabaseValue) -> Result<()> {
-    use atomic_core::edn::read_edn;
-    use atomic_core::edn_query::{EdnQueryArgument, parse_query_edn};
-    use atomic_core::{AggregateValue, QueryExtensions, QuerySourceValue};
+    use edb_core::edn::read_edn;
+    use edb_core::edn_query::{EdnQueryArgument, parse_query_edn};
+    use edb_core::{AggregateValue, QueryExtensions, QuerySourceValue};
     let measured = OperationContext::new(OperationKind::Application);
     let _scope = measured.enter();
     let started = Instant::now();
@@ -549,11 +549,11 @@ fn planning_workflow(
         &selected_intent
             .iter()
             .cloned()
-            .map(atomic_core::TxForm::Op)
+            .map(edb_core::TxForm::Op)
             .collect::<Vec<_>>(),
         time,
-        atomic_core::SpeculationLimits::default(),
-        atomic_core::HintLimits::default(),
+        edb_core::SpeculationLimits::default(),
+        edb_core::HintLimits::default(),
     )?;
     require(
         calculation(&low.db_after)?.total_hours == 14,
@@ -614,7 +614,7 @@ fn planning_workflow(
     require(
         stale
             .as_ref()
-            .is_err_and(|error| error.category == atomic_core::ErrorCategory::Conflict),
+            .is_err_and(|error| error.category == edb_core::ErrorCategory::Conflict),
         "stale plan was not rejected",
     )?;
     let replanned = intervened.db_after.with(
@@ -674,9 +674,8 @@ fn planning_workflow(
         calculation(&restored.db_after)? == original,
         "planning cleanup current state mismatch",
     )?;
-    let reopened = connection.reopen_snapshot(&atomic_core::SnapshotReference::decode(
-        &reference.encode()?,
-    )?)?;
+    let reopened =
+        connection.reopen_snapshot(&edb_core::SnapshotReference::decode(&reference.encode()?)?)?;
     require(
         reopened.snapshot_key()? == base.snapshot_key()? && calculation(&reopened)? == original,
         "exact plan base reopen mismatch",
@@ -837,7 +836,7 @@ fn partition_workflow(connection: &Connection, endpoint: &AppEndpoint) -> Result
             && retried.db_after.snapshot_key()? == committed.db_after.snapshot_key()?,
         "tenant retry changed identities or exact report",
     )?;
-    let reopened = connection.reopen_snapshot(&atomic_core::SnapshotReference::decode(
+    let reopened = connection.reopen_snapshot(&edb_core::SnapshotReference::decode(
         &committed.db_after.snapshot_reference()?.encode()?,
     )?)?;
     require(
@@ -999,7 +998,7 @@ fn fulltext_workflow(connection: &Connection, endpoint: &AppEndpoint) -> Result<
     };
     let encoded = encode_program(&program)?;
     require(
-        encoded[16..18] == atomic_core::PROGRAM_ABI_VERSION.to_be_bytes(),
+        encoded[16..18] == edb_core::PROGRAM_ABI_VERSION.to_be_bytes(),
         "fulltext program did not use the current program format",
     )?;
     let ProgramOutput::Query(program_rows) = ProgramRuntime.execute_query(
@@ -1084,9 +1083,9 @@ fn run() -> Result<()> {
             "snapshot reference must be a regular file",
         )?;
         file.take(256 * 1024 + 1).read_to_end(&mut bytes)?;
-        let reference = atomic_core::SnapshotReference::decode(&bytes)?;
+        let reference = edb_core::SnapshotReference::decode(&bytes)?;
         let selected =
-            atomic_core::DatabaseCatalog::connect_configured(&config)?.resolve(&database_id)?;
+            edb_core::DatabaseCatalog::connect_configured(&config)?.resolve(&database_id)?;
         require(
             reference.database_id() == selected.database_id
                 && reference.key().lineage_id() == selected.lineage_id,
@@ -1112,7 +1111,7 @@ fn run() -> Result<()> {
         return Err("choose exactly one of --endpoint PATH or --remote".into());
     }
     let remote_client = remote
-        .then(atomic_core::remote_client_config_from_env)
+        .then(edb_core::remote_client_config_from_env)
         .transpose()?;
     let connection = Connection::connect_configured(config.clone(), &database_id, 8)?;
     let endpoint = match (endpoint, remote_client) {

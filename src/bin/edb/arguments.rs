@@ -1,31 +1,31 @@
 //! Strict argument parsing before any database I/O.
-use atomic_core::{SemanticError, TransactionDefaults};
+use edb_core::{SemanticError, TransactionDefaults};
 use std::collections::BTreeMap;
 
-pub(super) const HELP: &str = "Atomic — native Rust/PostgreSQL database
+pub(super) const HELP: &str = "EDB — native Rust/PostgreSQL database
 
 Usage:
-  atomic install [--writer-role ROLE --peer-role ROLE]
-  atomic create --database NAME
-  atomic status --database NAME
-  atomic consolidate --database ID
-  atomic transactor --database ID --endpoint PATH [OPTIONS]
-  atomic transactor --database ID --listen IP:PORT --advertise IP:PORT
+  edb install [--writer-role ROLE --peer-role ROLE]
+  edb create --database NAME
+  edb status --database NAME
+  edb consolidate --database ID
+  edb transactor --database ID --endpoint PATH [OPTIONS]
+  edb transactor --database ID --listen IP:PORT --advertise IP:PORT
     --tls-server-name NAME [OPTIONS]
 
 Required environment for live PostgreSQL commands:
   Offline repository commands and data-only queries do not require PostgreSQL.
-  ATOMIC_POSTGRES_URL          PostgreSQL connection string; never printed
+  EDB_POSTGRES_URL          PostgreSQL connection string; never printed
                               TCP uses verified TLS; sslmode=disable opts out
-Optional: ATOMIC_POSTGRES_TLS_ROOT (PEM); ATOMIC_CONNECT_TIMEOUT_MS,
-  ATOMIC_STATEMENT_TIMEOUT_MS, ATOMIC_LOCK_TIMEOUT_MS, ATOMIC_TCP_USER_TIMEOUT_MS,
-  ATOMIC_KEEPALIVES=true|false, ATOMIC_KEEPALIVES_IDLE_SECONDS,
-  ATOMIC_KEEPALIVES_INTERVAL_SECONDS, ATOMIC_KEEPALIVES_RETRIES.
-  ATOMIC_SSD_CACHE_DIR opts into a private disposable cache; optional positive
-  ATOMIC_SSD_CACHE_ENTRIES and ATOMIC_SSD_CACHE_BYTES bound its shared directory.
-Remote TLS: ATOMIC_REMOTE_TLS_CERT (PEM chain), ATOMIC_REMOTE_TLS_KEY (private
-  PKCS8 PEM), ATOMIC_REMOTE_TOKEN_FILE (private file containing64 hex digits).
-Clients use the same token file and optional ATOMIC_REMOTE_TLS_ROOT PEM trust
+Optional: EDB_POSTGRES_TLS_ROOT (PEM); EDB_CONNECT_TIMEOUT_MS,
+  EDB_STATEMENT_TIMEOUT_MS, EDB_LOCK_TIMEOUT_MS, EDB_TCP_USER_TIMEOUT_MS,
+  EDB_KEEPALIVES=true|false, EDB_KEEPALIVES_IDLE_SECONDS,
+  EDB_KEEPALIVES_INTERVAL_SECONDS, EDB_KEEPALIVES_RETRIES.
+  EDB_SSD_CACHE_DIR opts into a private disposable cache; optional positive
+  EDB_SSD_CACHE_ENTRIES and EDB_SSD_CACHE_BYTES bound its shared directory.
+Remote TLS: EDB_REMOTE_TLS_CERT (PEM chain), EDB_REMOTE_TLS_KEY (private
+  PKCS8 PEM), EDB_REMOTE_TOKEN_FILE (private file containing64 hex digits).
+Clients use the same token file and optional EDB_REMOTE_TLS_ROOT PEM trust
   anchor; certificate/name verification is mandatory. No plaintext TCP mode.
 
 Transactor options (numeric limits are positive integers unless stated otherwise):
@@ -101,12 +101,12 @@ impl Arguments {
                 "--excision-max-bytes",
                 "--excision-log-batch",
             ],
-            _ => return Err(usage("unknown command; run atomic --help")),
+            _ => return Err(usage("unknown command; run edb --help")),
         };
         let mut options = BTreeMap::new();
         while let Some(flag) = args.next() {
             if !allowed.contains(&flag.as_str()) {
-                return Err(usage("unknown or misplaced option; run atomic --help"));
+                return Err(usage("unknown or misplaced option; run edb --help"));
             }
             let value = args
                 .next()
@@ -243,7 +243,7 @@ pub(super) fn transaction_defaults(
     let Some(text) = partition else {
         return Ok(TransactionDefaults::default());
     };
-    let atomic_core::edn::EdnValue::Keyword(name) = atomic_core::edn::read_edn(text)
+    let edb_core::edn::EdnValue::Keyword(name) = edb_core::edn::read_edn(text)
         .map_err(|_| usage("--default-partition requires one EDN keyword"))?
     else {
         return Err(usage("--default-partition requires one EDN keyword"));

@@ -1,7 +1,7 @@
 //! Lazy projection of one AVET or AEVT attribute range.
 //!
-//! Datomic's Index Pull semantics select the third
-//! component after a raw seek/rseek and stops when the attribute changes. It
+//! Index Pull selects the third component after a raw seek/rseek and stops
+//! when the attribute changes. It
 //! does not deduplicate projected entities or restrict traversal to the
 //! supplied second component.
 
@@ -26,8 +26,7 @@ pub struct IndexPullOptions {
     /// Skip datoms in the direction of traversal without pulling them.
     pub offset: usize,
     /// Maximum projected results, or `None` for no limit. This native peer
-    /// API defaults to unlimited; Datomic's separate Client API defaults to
-    /// 1,000 results. `Some(0)` validates the request but visits no datoms.
+    /// API defaults to unlimited. `Some(0)` validates the request but visits no datoms.
     pub limit: Option<usize>,
 }
 
@@ -190,7 +189,7 @@ impl Iterator for IndexPullCursor<'_> {
                     "pull was canceled",
                 ));
             }
-            // ATOMIC-NOTE: a single visible result can hide arbitrarily many
+            // EDB-NOTE: a single visible result can hide arbitrarily many
             // rejected/overlaid datoms. Poll below the view and apply the
             // attribute fence before filters can wander into another range.
             let cancel = &self.control.cancel;

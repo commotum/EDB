@@ -33,7 +33,7 @@ pub(super) struct PullState<'a, 'cancel> {
 
 /// Shared execution budget used when pull is a query result transformation.
 ///
-/// Datomic's query timeout covers pull work too. Keeping this state separate
+/// EDB's query timeout covers pull work too. Keeping this state separate
 /// from the public `PullControl` lets every pull expression in one query share
 /// the already-consumed query work and the original absolute deadline.
 pub(crate) struct QueryPullBudget<'a> {

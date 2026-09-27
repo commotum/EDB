@@ -29,10 +29,10 @@ use sha2::{Digest as _, Sha256};
 use std::cmp::Ordering;
 use std::sync::Arc;
 
-const EMPTY_DOMAIN: &[u8] = b"atomic/semantic-set/v2/empty\0";
-const LEAF_DOMAIN: &[u8] = b"atomic/semantic-set/v2/leaf\0";
-const PRIORITY_DOMAIN: &[u8] = b"atomic/semantic-set/v2/priority\0";
-const NODE_DOMAIN: &[u8] = b"atomic/semantic-set/v2/node\0";
+const EMPTY_DOMAIN: &[u8] = b"edb/semantic-set/v2/empty\0";
+const LEAF_DOMAIN: &[u8] = b"edb/semantic-set/v2/leaf\0";
+const PRIORITY_DOMAIN: &[u8] = b"edb/semantic-set/v2/priority\0";
+const NODE_DOMAIN: &[u8] = b"edb/semantic-set/v2/node\0";
 
 pub(crate) const SEMANTIC_STATE_VERSION: u32 = 2;
 

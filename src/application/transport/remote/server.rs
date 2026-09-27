@@ -50,7 +50,7 @@ impl RemoteTransactionEndpoint {
         let stopped = Arc::clone(&stop);
         let server_client = client.clone();
         let worker = thread::Builder::new()
-            .name("atomic-remote-listener".into())
+            .name("edb-remote-listener".into())
             .spawn(move || {
                 let mut workers: Vec<JoinHandle<()>> = Vec::new();
                 while !stopped.load(Ordering::Acquire) {
@@ -67,7 +67,7 @@ impl RemoteTransactionEndpoint {
                             let token = token.clone();
                             let stats = Arc::clone(&worker_stats);
                             if let Ok(worker) = thread::Builder::new()
-                                .name("atomic-remote-request".into())
+                                .name("edb-remote-request".into())
                                 .spawn(move || {
                                     let active = stats.active.fetch_add(1, Ordering::Relaxed) + 1;
                                     stats.max_active.fetch_max(active, Ordering::Relaxed);

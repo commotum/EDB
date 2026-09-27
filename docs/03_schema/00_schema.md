@@ -29,6 +29,11 @@ Typed Rust uses `Schema`, `Attribute`, `ValueType`, `Cardinality` and `Unique`;
 the [native workflow](../../examples/native_workflow.rs) shows installation and
 ordinary transactions through public APIs.
 
+For the complete syntax, types, defaults and validation rules, use the
+[schema reference](02_schema_reference.md). See [changing schema](03_changing_schema.md)
+for modifying installed attributes and [data modeling](04_data_modeling.md) for
+choosing attributes, identities and relationships.
+
 ## Identity and references
 
 `:db.unique/identity` participates in tempid upsert; `:db.unique/value` rejects
@@ -36,10 +41,13 @@ conflicting identities without merging them. A lookup reference such as
 `[:person/email "alice@example.com"]` resolves against a unique attribute.
 An ident names an entity; renaming an ident is distinct from changing that
 entity's identity. Keep application request identity separate from fact equality.
+See [identity and uniqueness](05_identity_and_uniqueness.md) for entity IDs,
+idents, domain keys, UUIDs and lookup references across transactions and reads.
 
 Cardinality-one replacement retracts the old fact and asserts the new fact.
-Omitting an attribute in a map does not retract it. Cardinality-many input is a
-collection; wrap a many-reference lookup in its outer collection.
+Omitting an attribute in a map does not retract it. A cardinality-many attribute
+accepts a single value or a collection of values; wrap a many-reference lookup
+in its outer collection.
 Nested map admission, explicit child IDs and component behavior are described in
 the [transaction tutorial](../01_tutorials/00_edn_workflow.md#transactions-and-exact-retries).
 
@@ -57,7 +65,9 @@ separate [controlled operation](../08_operations/00_deployment.md#excision).
 it is not an authorization boundary. `:db/fulltext` is an immutable flag on string
 attributes; see [native fulltext](../05_query_and_pull/03_fulltext.md).
 
-Schema changes are validated against transaction db-before. Do not assume every
-flag/type can be toggled after installation. Use [native predicates](../07_peer_api/02_native_computation.md)
+Attribute resolution uses transaction db-before; schema changes also validate
+the proposed schema and resulting facts. Not every flag or type can be changed
+after installation; see the [schema change rules](03_changing_schema.md).
+Use [native predicates](../07_peer_api/02_native_computation.md)
 for explicitly deployed transaction checks, and the [identity/value guide](01_identity_and_values.md)
 for managed composite tuples, URI equality, NaN and numeric/tuple admission limits.

@@ -23,7 +23,7 @@ use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant};
 
 const MAX_FRAME: usize = 64 * 1024 * 1024 + 48;
-const ENDPOINT_LOCK_HEADER: &str = "ATOMIC-LOCAL-ENDPOINT 1\n";
+const ENDPOINT_LOCK_HEADER: &str = "EDB-LOCAL-ENDPOINT 1\n";
 
 mod client;
 mod endpoint;

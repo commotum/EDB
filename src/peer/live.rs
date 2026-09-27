@@ -833,7 +833,7 @@ fn avet_ready_through(
 }
 
 /// Whether the effective membership transition belongs strictly after target.
-/// Both index and unique flags confer AVET. Fold each transaction atomically:
+/// Both index and unique flags confer AVET. Fold each transaction indivisibly:
 /// replacing one unique mode or moving between flags is not a disable/enable.
 /// Only pending attributes are read, using selective schema-entity prefixes.
 fn avet_transition_after(

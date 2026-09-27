@@ -4,7 +4,7 @@ use super::{
     health::{HealthServer, Phase},
     install_signals, io_error, transaction_defaults, usage,
 };
-use atomic_core::{
+use edb_core::{
     BackgroundIndexingConfig, CapacityLimits, ErrorCategory, ExcisionConfig,
     LocalTransactionEndpoint, LocalTransportConfig, PostgresConnectionConfig, SemanticError,
     ServiceOptions, TelemetryConfig, TelemetryPhase, TelemetryPublisher, TelemetrySnapshot,
@@ -31,7 +31,7 @@ pub(super) fn run(
             .options
             .get("--holder")
             .cloned()
-            .unwrap_or_else(|| format!("atomic-{}", std::process::id())),
+            .unwrap_or_else(|| format!("edb-{}", std::process::id())),
         lease_duration: Duration::from_millis(args.number("--lease-ms", 5_000)?),
         renew_interval: Duration::from_millis(args.number("--renew-ms", 1_000)?),
         queue_capacity: args.size("--queue-capacity", 64)?,
@@ -59,8 +59,8 @@ pub(super) fn run(
         .map(|path| LocalTransactionEndpoint::bind_at(Path::new(path)))
         .transpose()?;
     let remote_endpoint = if let Some(listen) = args.options.get("--listen") {
-        let (identity, token) = atomic_core::remote_server_credentials_from_env()?;
-        let endpoint = atomic_core::RemoteTransactionEndpoint::bind(
+        let (identity, token) = edb_core::remote_server_credentials_from_env()?;
+        let endpoint = edb_core::RemoteTransactionEndpoint::bind(
             listen
                 .parse()
                 .map_err(|_| usage("invalid listen address"))?,
@@ -93,7 +93,7 @@ pub(super) fn run(
     })?;
     let emitter = telemetry.emitter();
     let options = ServiceOptions {
-        hint_prefetch: atomic_core::HintPrefetchConcurrency {
+        hint_prefetch: edb_core::HintPrefetchConcurrency {
             max_workers: args.size("--hint-workers", 1)?,
         },
         index_preparation_parallelism: args.size("--index-workers", 1)?,
@@ -204,7 +204,7 @@ pub(super) fn run(
             .map(|endpoint| endpoint.start(service.client(), transport))
             .transpose()?;
         let remote = if let Some((endpoint, token, advertised, name)) = remote_endpoint {
-            let config = atomic_core::RemoteTransportConfig {
+            let config = edb_core::RemoteTransportConfig {
                 max_in_flight: transport.max_in_flight,
                 request_timeout: transport.request_timeout,
                 max_frame_bytes: transport.max_frame_bytes,

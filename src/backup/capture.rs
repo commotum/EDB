@@ -180,7 +180,7 @@ impl PortableBackup {
             let name = name
                 .to_str()
                 .ok_or_else(|| fault("backup/point-name", "Point name is not UTF8"))?;
-            if name.starts_with(".atomic-stage-") {
+            if name.starts_with(".edb-stage-") {
                 continue;
             }
             let (generation, basis) = parse_point_name(name)?;

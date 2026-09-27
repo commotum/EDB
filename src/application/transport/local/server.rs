@@ -19,7 +19,7 @@ impl LocalTransactionServer {
     ) -> Result<Self, SemanticError> {
         config.validate()?;
         let directory = tempfile::Builder::new()
-            .prefix("atomic-writer-")
+            .prefix("edb-writer-")
             .tempdir()
             .map_err(unavailable)?;
         std::fs::set_permissions(directory.path(), std::fs::Permissions::from_mode(0o700))
@@ -58,7 +58,7 @@ impl LocalTransactionServer {
         let stop = Arc::new(AtomicBool::new(false));
         let stopped = Arc::clone(&stop);
         let worker = thread::Builder::new()
-            .name("atomic-local-listener".into())
+            .name("edb-local-listener".into())
             .spawn(move || {
                 let mut workers: Vec<JoinHandle<()>> = Vec::new();
                 while !stopped.load(Ordering::Acquire) {
@@ -89,7 +89,7 @@ impl LocalTransactionServer {
                             }
                             let client = client.clone();
                             if let Ok(worker) = thread::Builder::new()
-                                .name("atomic-local-request".into())
+                                .name("edb-local-request".into())
                                 .spawn(move || {
                                     let _ = serve(stream, client, config);
                                 })

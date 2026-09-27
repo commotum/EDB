@@ -129,10 +129,10 @@ impl State<'_> {
     }
     pub(super) fn check(&mut self, amount: usize) -> Result<(), SemanticError> {
         self.work = self.work.saturating_add(amount);
-        if self.control.cancel.load(AtomicOrdering::Relaxed)
+        if self.control.cancel.load(MemoryOrdering::Relaxed)
             || self
                 .borrowed_cancel
-                .is_some_and(|cancel| cancel.load(AtomicOrdering::Relaxed))
+                .is_some_and(|cancel| cancel.load(MemoryOrdering::Relaxed))
         {
             return Err(SemanticError::new(
                 ErrorCategory::Interrupted,

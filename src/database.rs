@@ -65,8 +65,8 @@ pub(crate) enum ExcisionCutoff {
 
 /// One immutable excision predicate reconstructed from ordinary history.
 ///
-/// Datomic's repair detector identifies requests by the transaction that
-/// asserted A=15 and pulls the entity as-of that transaction. Keeping the same identity prevents
+/// Excision requests are identified by the transaction that asserted A=15.
+/// The request entity is read as-of that transaction. This identity prevents
 /// later edits to the request entity from changing work already requested.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct FrozenExcisionRequest {
@@ -667,14 +667,14 @@ impl Database {
             }
         }
         if current.unique.is_none() && proposed.unique.is_some() {
-            // Recovered Datomic Pro distinguishes logical `:db/index` from
-            // physical AVET availability (`Attribute.hasAVET`).  The eager
+            // Logical `:db/index` is distinct from
+            // physical AVET availability.  The eager
             // representation has no asynchronous physical tier, so an existing
             // logical AVET member is ready.  An unindexed attribute may gain
             // uniqueness only when it has never had a value: in that case
             // there is no historical range to backfill and AVET can become
-            // available synchronously.  `has-values?` in 1.0.7705 makes this
-            // exact test against history AEVT, not merely current facts.
+            // available synchronously. This test checks history, not merely
+            // current facts.
             let has_historical_values = self
                 .history_datoms()
                 .any(|datom| datom.attribute == proposed.id);

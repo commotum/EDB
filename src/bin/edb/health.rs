@@ -1,6 +1,6 @@
 //! A deliberately small, bounded status-only HTTP listener. No database I/O,
 //! credentials, payloads, administration or query gateway live here.
-use atomic_core::{ErrorCategory, SemanticError};
+use edb_core::{ErrorCategory, SemanticError};
 use std::io::{Read, Write};
 use std::net::{SocketAddr, TcpListener, TcpStream};
 use std::sync::{
@@ -45,7 +45,7 @@ impl HealthServer {
             let phase = phase.clone();
             let stopping = stop.clone();
             match thread::Builder::new()
-                .name("atomic-health".into())
+                .name("edb-health".into())
                 .spawn(move || {
                     loop {
                         let received =
@@ -69,7 +69,7 @@ impl HealthServer {
         }
         let stopping = stop.clone();
         let acceptor = match thread::Builder::new()
-            .name("atomic-health-accept".into())
+            .name("edb-health-accept".into())
             .spawn(move || {
                 while !stopping.load(Ordering::Acquire) {
                     match listener.accept() {

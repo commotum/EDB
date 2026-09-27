@@ -1,5 +1,12 @@
 # Composing immutable reads
 
+The [data model](01_data_model.md) introduces entities, attributes, datoms,
+transactions and time. This page describes how to compose reads against a
+captured database value.
+See [Database Filters](03_database_filters.md) for complete time-view and
+predicate examples, and [Programming with Data and EDN](02_programming_with_data_and_edn.md)
+for the notation used throughout the guide.
+
 Capture a `DatabaseValue` once and pass it through application functions. A later
 commit does not change that value. These APIs reuse the existing query, index,
 entity and native-program engines; none implicitly refreshes a connection.

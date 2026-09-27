@@ -6,14 +6,14 @@ mod dispatch;
 mod health;
 mod runtime;
 use arguments::{Arguments, transaction_defaults, usage};
-use atomic_core::{ErrorCategory, SemanticError};
 use dispatch::run;
+use edb_core::{ErrorCategory, SemanticError};
 use std::process::ExitCode;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 static STOP: AtomicBool = AtomicBool::new(false);
 extern "C" fn stop_signal(_: libc::c_int) {
-    // A lock-free atomic store is the only work performed in a signal handler.
+    // A lock-free store is the only work performed in a signal handler.
     STOP.store(true, Ordering::Relaxed);
 }
 
@@ -22,7 +22,7 @@ fn io_error() -> SemanticError {
 }
 
 fn install_signals() -> Result<(), SemanticError> {
-    // POSIX handlers only set a lock-free atomic flag. The main thread owns all
+    // POSIX handlers only set a lock-free flag. The main thread owns all
     // cleanup, and handlers remain installed for the process lifetime.
     unsafe {
         let mut action: libc::sigaction = std::mem::zeroed();
@@ -62,11 +62,11 @@ fn main() -> ExitCode {
             }
             if error.category == ErrorCategory::Fault && error.code == "storage/missing-object" {
                 eprintln!(
-                    "Inspect the database before retrying. If only the derived current index is damaged, rebuild it with atomic consolidate --database ID using authorized credentials. Missing canonical or retained-receipt data requires separate recovery."
+                    "Inspect the database before retrying. If only the derived current index is damaged, rebuild it with edb consolidate --database ID using authorized credentials. Missing canonical or retained-receipt data requires separate recovery."
                 );
             }
             eprintln!(
-                "See atomic --help and docs/01_tutorials/01_application_workflow.md; no rollback is implied by a failed observation."
+                "See edb --help and docs/01_tutorials/01_application_workflow.md; no rollback is implied by a failed observation."
             );
             ExitCode::from(if error.category == ErrorCategory::Incorrect {
                 2

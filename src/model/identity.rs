@@ -3,8 +3,7 @@
 
 use crate::{ErrorCategory, SemanticError};
 
-/// Number of low bits reserved for the entity index in Datomic's recovered
-/// `make-eid` representation.
+/// Number of low bits reserved for the entity index in EDB's entity ID representation.
 pub const EIDX_BITS: u32 = 42;
 pub const PARTITION_BITS: u32 = 20;
 pub const EIDX_MASK: u64 = (1_u64 << EIDX_BITS) - 1;

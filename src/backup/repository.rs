@@ -7,7 +7,7 @@ use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 
 const MAX_FILE: u64 = crate::storage::codec::MAX_PHYSICAL_BLOCK_BYTES as u64;
-const CLAIM_MAGIC: &[u8; 6] = b"ATBC\0\x01";
+const CLAIM_MAGIC: &[u8; 6] = b"EDBB\0\x01";
 
 pub(super) fn fault(code: &'static str, message: impl Into<String>) -> SemanticError {
     SemanticError::new(ErrorCategory::Fault, code, message)
@@ -123,7 +123,7 @@ fn publish_file(path: &Path, bytes: &[u8]) -> Result<bool, SemanticError> {
         .ok_or_else(|| fault("backup/file-path", "Missing repository parent"))?;
     private_directory(parent)?;
     let mut temporary = tempfile::Builder::new()
-        .prefix(".atomic-stage-")
+        .prefix(".edb-stage-")
         .tempfile_in(parent)
         .map_err(io)?;
     temporary.write_all(bytes).map_err(io)?;

@@ -6,7 +6,7 @@ use crate::storage::{
 use crate::{DatabaseValue, Digest, ErrorCategory, PostgresConnectionConfig, SemanticError};
 use std::sync::Arc;
 
-const MAGIC: &[u8; 6] = b"ATSN\0\x03";
+const MAGIC: &[u8; 6] = b"EDBS\0\x03";
 const MAX_REFERENCE_BYTES: usize = 256 * 1024;
 const MAX_NAME_BYTES: usize = 64 * 1024;
 const MAX_VALUE_ROOT_BYTES: usize = 20 + 4 * 32 + 25;

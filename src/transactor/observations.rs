@@ -104,7 +104,7 @@ impl ProjectionObservations {
 ///
 /// `indexing_*` is the frozen prefix being merged and `memory_index_*` is
 /// novelty committed after that job was requested. Their sum is the pressure
-/// used by admission, mirroring recovered `datomic.indexer/IndexerImpl`.
+/// used by admission.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct BackgroundIndexingStats {
     /// Newest fully authenticated physical publication adopted by the
@@ -112,9 +112,8 @@ pub struct BackgroundIndexingStats {
     pub published_revision: u64,
     pub published_basis_t: u64,
     /// Authenticated broad AVET projection jobs still represented by the
-    /// adopted manifest. This is physical cleanup/backfill observability, not
-    /// Datomic's positive-add `t-needing-avet` / `sync-schema` coordinate:
-    /// drops are included here too.
+    /// adopted manifest. This reports physical cleanup/backfill, including
+    /// both additions and drops.
     pub pending_avet_projections: u64,
     /// Greatest append-only physical revision observed, usable or corrupt.
     pub newest_observed_revision: u64,

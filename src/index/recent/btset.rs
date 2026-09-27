@@ -1,6 +1,6 @@
 //! Private persistent memory-index tree used by `recent`.
 //!
-//! The shape deliberately follows Datomic's recovered `datomic.btset`: small
+//! The tree uses small
 //! immutable leaves and branches, a fanout of sixteen, path-copy insertion,
 //! and a lower-bound cursor.  It is specialized to recent datom references;
 //! this is not a storage abstraction.

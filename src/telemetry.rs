@@ -75,7 +75,7 @@ impl TelemetryPhase {
     }
 }
 
-/// Local observations, not an atomic snapshot or a new lease/readiness check.
+/// Local observations, not an indivisible snapshot or a new lease/readiness check.
 /// Capturing this value makes no SQL calls and never walks queued reports.
 #[derive(Clone, Debug)]
 pub struct TelemetrySnapshot {
@@ -224,7 +224,7 @@ impl TelemetryPublisher {
             let inner = emitter.0.clone();
             Some(
                 thread::Builder::new()
-                    .name("atomic-telemetry".into())
+                    .name("edb-telemetry".into())
                     .spawn(move || {
                         while !inner.stop.load(Ordering::Acquire) {
                             let line = match receiver.recv_timeout(Duration::from_millis(25)) {
@@ -370,7 +370,7 @@ impl TelemetryEmitter {
         if !self.is_enabled() {
             return 0;
         }
-        let mut accepted = usize::from(self.encode("atomic.metrics", "info", |json| {
+        let mut accepted = usize::from(self.encode("edb.metrics", "info", |json| {
             snapshot_fields(json, &snapshot)?;
             json.raw(",\"metrics\":{")?;
             snapshot_metrics(json, &snapshot)?;
@@ -391,13 +391,13 @@ impl TelemetryEmitter {
             && (snapshot.phase == TelemetryPhase::Failed
                 || (snapshot.phase == TelemetryPhase::Active && !snapshot.writer_available))
         {
-            warn("atomic.warning.writer_unavailable", None);
+            warn("edb.warning.writer_unavailable", None);
         }
         if config.readiness
             && snapshot.phase == TelemetryPhase::Active
             && !(snapshot.listener_ready && snapshot.writer_available)
         {
-            warn("atomic.warning.not_ready", None);
+            warn("edb.warning.not_ready", None);
         }
         if let Some(service) = &snapshot.service {
             let mut previous = self
@@ -417,29 +417,29 @@ impl TelemetryEmitter {
                     .queued_requests
                     .is_some_and(|limit| service.queued >= limit)
             {
-                warn("atomic.warning.backpressure", None);
+                warn("edb.warning.backpressure", None);
             }
         }
         if let Some(index) = &snapshot.indexing {
             if config.indexing_failure {
                 if let Some(failure) = &index.last_failure {
-                    warn("atomic.warning.indexing_failed", Some(failure.code));
+                    warn("edb.warning.indexing_failed", Some(failure.code));
                 }
                 if let Some(failure) = &index.fulltext.last_failure {
-                    warn("atomic.warning.fulltext_failed", Some(failure.code));
+                    warn("edb.warning.fulltext_failed", Some(failure.code));
                 }
             }
             if config.excision_paused
                 && let Some(failure) = &index.excision_failure
             {
-                warn("atomic.warning.excision_paused", Some(failure.code));
+                warn("edb.warning.excision_paused", Some(failure.code));
             }
         }
         accepted
     }
 
     pub fn publish_operation(&self, report: &SqlIoReport) -> bool {
-        self.encode("atomic.operation", "info", |json| {
+        self.encode("edb.operation", "info", |json| {
             operation_fields(json, report)
         })
     }
@@ -457,7 +457,7 @@ impl TelemetryEmitter {
         identity: &DatabaseIdentity,
         diagnostics: &crate::TransactionDiagnostics,
     ) -> bool {
-        self.encode("atomic.transaction", "info", |json| {
+        self.encode("edb.transaction", "info", |json| {
             identity_fields(json, Some(identity))?;
             json.field_number("basis_t", diagnostics.basis_t)?;
             json.field_bool("replayed", diagnostics.replayed)?;

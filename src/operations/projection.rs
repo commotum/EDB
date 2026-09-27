@@ -56,7 +56,7 @@ fn same_stored_datom(left: &Datom, right: &Datom) -> bool {
 /// fabricated fact, a one-sided omission, or an omission across a retained
 /// fact. Every matched retraction must also have a noHistory=true opportunity
 /// at a transaction boundary on or after it. This proves permission, not the
-/// exact scheduler instant: Datomic documents no precise time at which an
+/// exact scheduler instant: there is no precise time at which an
 /// eligible pair is physically forgotten.
 pub(crate) fn validate_physical_history_projection(
     replayed: &[Datom],

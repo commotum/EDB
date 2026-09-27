@@ -1,12 +1,12 @@
 //! Independent writer + two submitting peers, bounded caches, and real SIGKILL recovery.
-//! ATOMIC_POSTGRES_URL='host=... user=... dbname=...' cargo run --release --example scale_workflow
-//! ATOMIC_SCALE_RECORDS=100000 ATOMIC_SCALE_BATCH=100 selects the measured workload.
+//! EDB_POSTGRES_URL='host=... user=... dbname=...' cargo run --release --example scale_workflow
+//! EDB_SCALE_RECORDS=100000 EDB_SCALE_BATCH=100 selects the measured workload.
 //! Small smoke runs are permitted but explicitly do not establish cache-exceeding scale.
-//! ATOMIC_SCALE_PROBE_TIMEOUT_MS=5 times out each peer's first batch response.
+//! EDB_SCALE_PROBE_TIMEOUT_MS=5 times out each peer's first batch response.
 //! Retries retain the original request: server timeout 30s, reconciliation 15min,
-//! ATOMIC_SCALE_IMPORT_TIMEOUT_SECS (default 7200) bounds the whole import.
+//! EDB_SCALE_IMPORT_TIMEOUT_SECS (default 7200) bounds the whole import.
 //! SQL data is retained; this example never restarts PostgreSQL or invokes global GC.
-use atomic_core::{
+use edb_core::{
     Attribute, AttributeName, BackgroundIndexingConfig, CallableRef, CapacityLimits, Cardinality,
     Clause, CommittedTransaction, Connection, DataPattern, DatabaseValue, EntityRef, ErrorCategory,
     FindElement, FindSpec, IndexPrefix, Instruction, Keyword, LocalTransactionServer,
@@ -38,7 +38,7 @@ const SERVER_TIMEOUT: Duration = Duration::from_secs(30);
 const RECONCILE_TIMEOUT: Duration = Duration::from_secs(15 * 60);
 
 fn import_timeout() -> Result<Duration> {
-    let seconds = std::env::var("ATOMIC_SCALE_IMPORT_TIMEOUT_SECS")
+    let seconds = std::env::var("EDB_SCALE_IMPORT_TIMEOUT_SECS")
         .unwrap_or_else(|_| "7200".into())
         .parse::<u64>()?;
     if !(1..=86400).contains(&seconds) {
@@ -337,7 +337,7 @@ fn writer(postgres: &str, database: &str) -> Result<()> {
     let service = loop {
         match TransactionService::start_with_indexing(
             TransactionServiceConfig {
-                connection: atomic_core::PostgresConnectionConfig::parse(postgres)?,
+                connection: edb_core::PostgresConnectionConfig::parse(postgres)?,
                 database_id: database.to_owned(),
                 holder_id: format!("scale-writer-{}", std::process::id()),
                 lease_duration: Duration::from_secs(5),
@@ -461,7 +461,7 @@ fn peer(
     let peer = connection(postgres, database)?;
     let started = Instant::now();
     let overall_deadline = started + import_timeout()?;
-    let probe_timeout = std::env::var("ATOMIC_SCALE_PROBE_TIMEOUT_MS")
+    let probe_timeout = std::env::var("EDB_SCALE_PROBE_TIMEOUT_MS")
         .ok()
         .map(|value| value.parse::<u64>())
         .transpose()?
@@ -521,7 +521,7 @@ fn peer(
         for datom in &report.tx_data {
             if (KEY..=PAYLOAD).contains(&datom.attribute) {
                 assert!(datom.added);
-                assert_eq!(datom.tx, atomic_core::t_to_tx(report.basis_t)?);
+                assert_eq!(datom.tx, edb_core::t_to_tx(report.basis_t)?);
                 assert!(
                     actual
                         .insert((datom.entity, datom.attribute), &datom.value)
@@ -671,7 +671,7 @@ fn cold_warm(postgres: &str, database: &str, expected: i64, scale: bool) -> Resu
 }
 
 fn main() -> Result<()> {
-    let postgres = std::env::var("ATOMIC_POSTGRES_URL")?;
+    let postgres = std::env::var("EDB_POSTGRES_URL")?;
     let arguments: Vec<_> = std::env::args().skip(1).collect();
     match arguments.first().map(String::as_str) {
         Some("writer") => return writer(&postgres, &arguments[1]),
@@ -688,16 +688,16 @@ fn main() -> Result<()> {
         None => {}
         _ => return Err("usage: scale_workflow (children are launched automatically)".into()),
     }
-    let records = std::env::var("ATOMIC_SCALE_RECORDS")
+    let records = std::env::var("EDB_SCALE_RECORDS")
         .unwrap_or_else(|_| "10000".into())
         .parse::<usize>()?;
-    let batch = std::env::var("ATOMIC_SCALE_BATCH")
+    let batch = std::env::var("EDB_SCALE_BATCH")
         .unwrap_or_else(|_| "100".into())
         .parse::<usize>()?;
     if !(2..=10_000_000).contains(&records) || !(1..=1000).contains(&batch) {
         return Err("records must be 2..=10000000; batch 1..=1000".into());
     }
-    let require_scale = std::env::var("ATOMIC_SCALE_REQUIRE_CACHE_EXCEEDED")
+    let require_scale = std::env::var("EDB_SCALE_REQUIRE_CACHE_EXCEEDED")
         .map_or(records >= 25000, |value| value == "1");
     let database = format!(
         "scale-workflow-{}-{}",
@@ -713,9 +713,9 @@ fn main() -> Result<()> {
         import_timeout.as_secs()
     );
     let storage = PostgresConnectionConfig::plaintext(&postgres);
-    atomic_core::storage::PgBlockStore::install(&storage)?;
-    atomic_core::storage::BlockDatabase::create(&storage, &database, Schema::new())?;
-    let route = atomic_core::DatabaseCatalog::connect_configured(&storage)?
+    edb_core::storage::PgBlockStore::install(&storage)?;
+    edb_core::storage::BlockDatabase::create(&storage, &database, Schema::new())?;
+    let route = edb_core::DatabaseCatalog::connect_configured(&storage)?
         .resolve(&database)?
         .database_id;
     let deployed = Program {
@@ -770,12 +770,12 @@ fn main() -> Result<()> {
                 )),
                 TxOp::Add {
                     entity: EntityRef::Temp("set-balance".into()),
-                    attribute: atomic_core::DB_IDENT as u32,
+                    attribute: edb_core::DB_IDENT as u32,
                     value: Value::Keyword(Keyword::new("account", "set-balance")).into(),
                 },
                 TxOp::Add {
                     entity: EntityRef::Temp("set-balance".into()),
-                    attribute: atomic_core::DB_FN as u32,
+                    attribute: edb_core::DB_FN as u32,
                     value: Value::Function(program).into(),
                 },
             ],

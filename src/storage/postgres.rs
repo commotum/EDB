@@ -11,7 +11,7 @@ use std::time::Instant;
 #[path = "object_batch.rs"]
 mod object_batch;
 
-const FORMAT: &[u8] = b"atomic/opaque-storage/2";
+const FORMAT: &[u8] = b"edb/opaque-storage/2";
 
 /// Actual payload reads on this connection, including re-put authentication.
 /// Physical bytes are transferred payload bytes, not PostgreSQL disk usage;
@@ -146,7 +146,7 @@ impl PgBlockStore {
         let mut tx = self.client.transaction().map_err(read_error)?;
         for role in [writer_role, peer_role] {
             let row = tx.query_opt(
-                "SELECT r.rolsuper OR r.rolcreaterole OR r.rolcreatedb OR r.rolreplication OR r.rolbypassrls OR EXISTS (SELECT 1 FROM pg_catalog.pg_namespace n WHERE n.nspname=$2 AND n.nspowner=r.oid) OR EXISTS (SELECT 1 FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname=$2 AND c.relname IN ('atomic_objects','atomic_refs') AND c.relowner=r.oid) FROM pg_catalog.pg_roles r WHERE r.rolname=$1",
+                "SELECT r.rolsuper OR r.rolcreaterole OR r.rolcreatedb OR r.rolreplication OR r.rolbypassrls OR EXISTS (SELECT 1 FROM pg_catalog.pg_namespace n WHERE n.nspname=$2 AND n.nspowner=r.oid) OR EXISTS (SELECT 1 FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname=$2 AND c.relname IN ('edb_objects','edb_refs') AND c.relowner=r.oid) FROM pg_catalog.pg_roles r WHERE r.rolname=$1",
                 &[&role, &self.namespace],
             ).map_err(read_error)?.ok_or_else(|| SemanticError::new(
                 ErrorCategory::NotFound,
@@ -204,7 +204,7 @@ impl PgBlockStore {
         bytes.extend_from_slice(key.as_bytes());
         let hash = sha256(&bytes);
         Ok(format!(
-            "atomic_r_{}",
+            "edb_r_{}",
             hash[..24]
                 .iter()
                 .map(|b| format!("{b:02x}"))
@@ -238,16 +238,16 @@ impl PgBlockStore {
         ).map_err(read_error)?.into_iter().map(|r| r.get::<_, String>(0)).collect::<Vec<_>>();
         if !names.is_empty() {
             let expected = [
-                "atomic_objects",
-                "atomic_objects_pkey",
-                "atomic_refs",
-                "atomic_refs_pkey",
+                "edb_objects",
+                "edb_objects_pkey",
+                "edb_refs",
+                "edb_refs_pkey",
             ];
             if names.iter().map(String::as_str).eq(expected) {
                 let row = tx
                     .query_opt(
                         &format!(
-                            "SELECT value=$1 FROM {quoted}.atomic_refs WHERE key='system/format'"
+                            "SELECT value=$1 FROM {quoted}.edb_refs WHERE key='system/format'"
                         ),
                         &[&FORMAT],
                     )
@@ -271,7 +271,7 @@ impl PgBlockStore {
             .map_err(read_error)?;
         tx.execute(
             &format!(
-                "INSERT INTO {quoted}.atomic_refs(key,revision,value) VALUES ('system/format',1,$1)"
+                "INSERT INTO {quoted}.edb_refs(key,revision,value) VALUES ('system/format',1,$1)"
             ),
             &[&FORMAT],
         )
@@ -282,8 +282,8 @@ impl PgBlockStore {
     pub fn connect(config: &PostgresConnectionConfig) -> Result<Self, SemanticError> {
         let mut client = config.connect_for("storage/connect")?;
         let namespace = storage_namespace(&mut client)?;
-        let objects = format!("{}.atomic_objects", quote(&namespace));
-        let refs = format!("{}.atomic_refs", quote(&namespace));
+        let objects = format!("{}.edb_objects", quote(&namespace));
+        let refs = format!("{}.edb_refs", quote(&namespace));
         let row = client
             .query_opt(
                 &format!("SELECT value=$1 FROM {refs} WHERE key='system/format'"),
@@ -365,7 +365,7 @@ impl PgBlockStore {
         Ok(id)
     }
 
-    /// Atomically checks opaque reference guards and protects the inserted OR
+    /// Indivisibly checks opaque reference guards and protects the inserted OR
     /// reused object against older collection epochs. Even deduplicated objects
     /// must be touched: finding an old orphan does not protect it from sweeping.
     pub fn put_protected(
@@ -863,7 +863,7 @@ fn quote(identifier: &str) -> String {
     format!("\"{}\"", identifier.replace('"', "\"\""))
 }
 fn lock_id(namespace: &str, key: &str) -> i64 {
-    let digest = sha256(format!("atomic-storage\0{namespace}\0{key}").as_bytes());
+    let digest = sha256(format!("edb-storage\0{namespace}\0{key}").as_bytes());
     i64::from_be_bytes(digest[..8].try_into().unwrap())
 }
 fn validate_payload(payload: &[u8]) -> Result<(), SemanticError> {

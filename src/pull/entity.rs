@@ -52,7 +52,7 @@ impl Drop for Entity {
     }
 }
 
-/// One value reached through Datomic-style associative entity navigation.
+/// One value reached through EDB-style associative entity navigation.
 /// Reference values remain lazy entities pinned to the same immutable
 /// database; cardinality-many and non-component reverse navigation retain
 /// collection shape even when only one value is present.
@@ -304,7 +304,7 @@ fn entity_navigation_value(
             "ref attribute contains a non-ref value",
         ));
     };
-    // ATOMIC-NOTE: recovered rae always wraps incoming entity ids with emap;
+    // EDB-NOTE: recovered rae always wraps incoming entity ids with emap;
     // only forward eav/ref-val presents identified reference values as keywords.
     if !reverse && let Some(ident) = database.ident(entity) {
         Ok(EntityValue::Scalar(Value::Keyword(ident.clone())))

@@ -43,13 +43,13 @@ pub(super) fn inventory(
             id,
             &bytes,
         )?);
-        if bytes.starts_with(b"ATIX") {
+        if bytes.starts_with(b"EDBI") {
             if let TreeNode::Leaf(leaf) = crate::index::tree::decode_tree_node(&id, &bytes)? {
                 for value in &leaf.values {
                     crate::program_bindings::collect_program_hashes(value, &mut programs);
                 }
             }
-        } else if bytes.starts_with(b"ATMC") {
+        } else if bytes.starts_with(b"EDBC") {
             let program = crate::decode_program(&bytes)?;
             let mut dependencies = Vec::new();
             crate::program_bindings::collect_fixed_program_dependencies(

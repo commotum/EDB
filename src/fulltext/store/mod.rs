@@ -9,8 +9,8 @@ use std::io::{Read, Seek, SeekFrom, Write};
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
-const PAGE_MAGIC: &[u8; 4] = b"ATFP";
-const HEADER_MAGIC: &[u8; 4] = b"ATFH";
+const PAGE_MAGIC: &[u8; 4] = b"EDBP";
+const HEADER_MAGIC: &[u8; 4] = b"EDBF";
 const FORMAT: u32 = 1;
 // Unicode lowercase may expand a legal 16MiB string (for example U+0130).
 // Routing-page capacity can still reject pathological combinations explicitly.

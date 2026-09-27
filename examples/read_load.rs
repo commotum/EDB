@@ -1,6 +1,6 @@
 //! Bounded independent-process read campaign; see the observability guide.
-use atomic_core::sql_io::SqlClient;
-use atomic_core::{
+use edb_core::sql_io::SqlClient;
+use edb_core::{
     Attribute, BackgroundIndexingConfig, CapacityLimits, Cardinality, Clause, Connection,
     DataPattern, DatabaseValue, EntityRef, FindElement, FindSpec, Keyword, OperationContext,
     OperationKind, PostgresConnectionConfig, PostgresOperator, Query, QueryControl, QueryResult,
@@ -24,11 +24,11 @@ const MAX_SAMPLES: usize = 200_000;
 const WAIT: Duration = Duration::from_secs(180);
 
 fn cache_bytes() -> Result<usize> {
-    let bytes = std::env::var("ATOMIC_READ_CACHE_BYTES")
+    let bytes = std::env::var("EDB_READ_CACHE_BYTES")
         .map(|value| value.parse())
         .unwrap_or(Ok(DEFAULT_CACHE_BYTES))?;
     if !(64 * 1024..=16 * 1024 * 1024).contains(&bytes) {
-        return Err("ATOMIC_READ_CACHE_BYTES must be 65536..16777216".into());
+        return Err("EDB_READ_CACHE_BYTES must be 65536..16777216".into());
     }
     Ok(bytes)
 }
@@ -373,7 +373,7 @@ fn writer(database: &str, records: usize, payload: usize) -> Result<()> {
     }
     // Make the seed a durable indexed base before opening cold peers: recent
     // novelty must not accidentally substitute for the cache-exceeding scan.
-    let route = atomic_core::DatabaseCatalog::connect_configured(&config)?
+    let route = edb_core::DatabaseCatalog::connect_configured(&config)?
         .resolve(database)?
         .database_id;
     PostgresOperator::connect_configured(&config)?.consolidate_database(&route)?;
@@ -453,7 +453,7 @@ impl Process {
     ) -> Result<Self> {
         let mut child = Command::new(std::env::current_exe()?)
             .args([role, database, &records.to_string(), &payload.to_string()])
-            .env("ATOMIC_POSTGRES_URL", url)
+            .env("EDB_POSTGRES_URL", url)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::inherit())
@@ -611,7 +611,7 @@ fn scoped_config(url: &str, base: &PostgresConnectionConfig) -> Result<PostgresC
     } else {
         PostgresConnectionConfig::plaintext(url)
     };
-    if let Ok(path) = std::env::var("ATOMIC_POSTGRES_TLS_ROOT") {
+    if let Ok(path) = std::env::var("EDB_POSTGRES_TLS_ROOT") {
         config = config.with_root_certificate_pem(std::fs::read(path)?)?;
     }
     Ok(config.with_io_policy(base.io_policy().clone())?)
@@ -659,7 +659,7 @@ fn campaign(records: usize, millis: u64, payload: usize) -> Result<()> {
     if config.ssd_cache_config().is_some() {
         return Err("this RAM-cache campaign requires SSD cache configuration to be unset".into());
     }
-    let url = std::env::var("ATOMIC_POSTGRES_URL")?;
+    let url = std::env::var("EDB_POSTGRES_URL")?;
     let unique = format!(
         "read_load_{}_{}",
         std::process::id(),
@@ -683,8 +683,8 @@ fn campaign(records: usize, millis: u64, payload: usize) -> Result<()> {
         &format!("-csearch_path={unique},pg_catalog"),
     );
     let scoped_config = scoped_config(&scoped, &config)?;
-    atomic_core::storage::PgBlockStore::install(&scoped_config)?;
-    atomic_core::storage::PgBlockStore::connect(&scoped_config)?
+    edb_core::storage::PgBlockStore::install(&scoped_config)?;
+    edb_core::storage::PgBlockStore::connect(&scoped_config)?
         .grant_runtime_privileges(&writer_role, &peer_role)?;
     let mut schema = Schema::new();
     for attribute in [
@@ -710,7 +710,7 @@ fn campaign(records: usize, millis: u64, payload: usize) -> Result<()> {
     ] {
         schema.install(attribute)?;
     }
-    atomic_core::storage::BlockDatabase::create(&scoped_config, "read-load", schema)?;
+    edb_core::storage::BlockDatabase::create(&scoped_config, "read-load", schema)?;
     let role_url = |role: &str| parameter(&parameter(&scoped, "user", role), "password", &password);
     emit(format!(
         "CONFIG records={records} payload_per_record={payload} scan_payload_lower_bound={} peer_cache_entries={CACHE_ENTRIES} peer_cache_bytes={cache_bytes} writer_cache_bytes={} duration_ms={millis} sample_cap={MAX_SAMPLES} release={} schema={unique} transport={} ssd=false postgres_os_cache=uncontrolled_warm",

@@ -1,6 +1,6 @@
 //! Hierarchical projection and lazy entity navigation over captured values.
 //!
-//! ATOMIC-NOTE: recovered pull selectors, attribute access and graph traversal
+//! EDB-NOTE: recovered pull selectors, attribute access and graph traversal
 //! have distinct owners here. Entity navigation shares attribute resolution,
 //! not projection caches; database lineage identity remains a database primitive.
 

@@ -204,8 +204,8 @@ impl PostgresConnectionConfig {
 
     /// Add a PEM-encoded trust root used in addition to platform roots.
     ///
-    /// This accepts one certificate per call so callers can construct the
-    /// same explicit trust set they would place in a Datomic/JVM trust store.
+    /// This accepts one certificate per call so callers can construct an
+    /// explicit trust set.
     pub fn with_root_certificate_pem(
         mut self,
         certificate_pem: impl AsRef<[u8]>,
@@ -252,7 +252,7 @@ impl PostgresConnectionConfig {
     pub(crate) fn ssd_access_namespace(&self, lineage: &str) -> crate::Digest {
         use sha2::{Digest, Sha256};
         let mut digest = Sha256::new();
-        digest.update(b"atomic/ssd-access/canonical-node-v1/physical-envelope-v1\0");
+        digest.update(b"edb/ssd-access/canonical-node-v1/physical-envelope-v1\0");
         let mut field = |bytes: &[u8]| {
             digest.update((bytes.len() as u64).to_be_bytes());
             digest.update(bytes);

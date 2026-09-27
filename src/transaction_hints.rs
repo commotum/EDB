@@ -538,7 +538,7 @@ pub(crate) fn overlap<T>(
                     stats.peak_active_workers = stats.peak_active_workers.max(stats.active_workers);
                 });
                 let spawned = std::thread::Builder::new()
-                    .name("atomic-hint-prefetch".into())
+                    .name("edb-hint-prefetch".into())
                     .spawn(move || {
                         let phase = operation.phase(OperationKind::HintPrefetch);
                         let begin = Instant::now();

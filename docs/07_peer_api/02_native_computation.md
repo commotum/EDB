@@ -103,7 +103,7 @@ To use aliases, install `native_deployment_attribute(id)`, then transact:
 
 ```edn
 [{:db/ident :checks/valid-person
-  :atomic.native/deployment demo.people/valid-person}]
+  :edb.native/deployment demo.people/valid-person}]
 ```
 
 Reference `checks/valid-person` from `:db.attr/preds` or `:db.entity/preds` as
@@ -125,14 +125,14 @@ Unicode/string operations. Provision a database and `:person/name` first using
 the [standard setup](../01_tutorials/01_application_workflow.md). Build and start the host in a terminal:
 
 ```sh
-cargo build --bin atomic --example native_transaction_host
+cargo build --bin edb --example native_transaction_host
 target/debug/examples/native_transaction_host people
 ```
 
-The host uses the same explicit PostgreSQL environment configuration as `atomic`,
+The host uses the same explicit PostgreSQL environment configuration as `edb`,
 prints `READY endpoint=...`, and stops on newline/EOF. Its optional second argument
 is a stable socket path in an owned mode-0700 directory. In another terminal,
-submit this file through `atomic transact --database people --endpoint SOCKET
+submit this file through `edb transact --database people --endpoint SOCKET
 --request-key person-1 --file person.edn`:
 
 ```edn

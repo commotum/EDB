@@ -8,10 +8,9 @@ use crate::{
 
 use std::collections::BTreeSet;
 
-/// The raw value key used while resolving unique identities. Datomic permits
-/// uniqueness on refs, and `ProcessExpander/get-ids` compares unresolved ref tempids
-/// before replacing them (`db.clj:6712-6797, 7366-7455`). Reference tempids
-/// therefore remain symbolic here: two entity tempids asserting the same
+/// The raw value key used while resolving unique identities. EDB permits
+/// uniqueness on refs. Reference tempids are compared before replacement
+/// and remain symbolic here: two entity tempids asserting the same
 /// ref-valued identity must unify even when the referenced entity is new.
 #[derive(Clone, Debug)]
 pub(crate) enum UpsertIdentityValue {

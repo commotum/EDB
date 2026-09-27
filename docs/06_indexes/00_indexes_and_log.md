@@ -1,15 +1,41 @@
 # Ordered indexes and the transaction log
 
-Most application reads should use Datalog or Pull. Raw index cursors are useful
-when order, range traversal or integration needs an explicit datom stream.
-Indexes contain datoms, not just pointers requiring an entity fetch for each row.
+Any system that accumulates data and offers the ability to ask questions about
+that data will need an efficient way to retrieve specific information. In
+databases, that takes the form of indexes. Indexes afford the database access to
+the underlying data in a format that is optimized for read-time access. A
+covering index is one that contains actual data values, not just pointers to
+where those values can be found.
 
-| Order | Leading access | Coverage |
+EDB maintains four covering indexes that contain ordered sets of datoms. Each
+of these indexes is named based on the sort order used. E, A, and V are sorted
+in ascending order, while T is sorted in descending order:
+
+| Index | Sort order | Contains |
 | --- | --- | --- |
-| EAVT | Entity, attribute | All applicable facts |
-| AEVT | Attribute, entity | All applicable facts |
-| AVET | Attribute, value | Indexed and unique attributes whose projection is ready |
-| VAET | Referenced entity, attribute | Reference-valued facts |
+| EAVT | entity / attribute / value / tx | all datoms in the selected view |
+| AEVT | attribute / entity / value / tx | all datoms in the selected view |
+| AVET | attribute / value / entity / tx | `:db/unique` or `:db/index` attributes whose projection is ready |
+| VAET | value / attribute / entity / tx | `:db.type/ref` attributes |
+
+EDB indexes are used behind the scenes in
+[Query](../05_query_and_pull/00_queries.md), the
+[Entity API](../05_query_and_pull/02_pull_and_entities.md), and
+[Pull](../05_query_and_pull/06_pull_reference.md). For access patterns that
+aren't well suited for query, EDB also provides [index APIs](04_index_apis.md)
+that offer the ability to retrieve data directly from indexes. Most application
+reads should use Datalog or Pull; raw index cursors are useful when order, range
+traversal or integration needs an explicit datom stream.
+
+This section documents what EDB's indexes are, how they are maintained, and how
+to access them:
+
+- [Index model](01_index_model.md): each ordering, its uses and its implementation.
+- [Background indexing](02_background_indexing.md): maintaining covering trees
+  and observing AVET readiness.
+- [Index Pull](03_index_pull.md): projecting entities in index order.
+- [Index APIs](04_index_apis.md): exact prefixes, seeks and value ranges.
+- [Reverse seek](05_rseek_datoms.md): traversing backward from an index boundary.
 
 Current and history views use their respective covering trees plus the captured
 recent information. History exposes assertions and retractions; current views
@@ -31,6 +57,14 @@ partial stored tuples; see [tuple boundaries](../02_core_concepts/00_database_va
 Validate AVET readiness with `has_avet`; schema intent and completed physical
 backfill are different observations.
 
+Attribute-qualified AVET boundaries and seeks reject unindexed or pending
+attributes with `index/attribute-not-in-avet` or `index/avet-not-ready`.
+The lower-level prefix API differs: an eager in-memory prefix for a known
+unindexed attribute returns no matches, while a durable prefix rejects
+unindexed or pending attributes with `peer/avet-attribute-not-indexed` or
+`peer/avet-not-ready`. Unrestricted AVET scans omit unavailable attributes.
+See [readiness and database views](04_index_apis.md#readiness-and-database-views).
+
 Consume fallible cursors and handle errors. Construction does not imply the
 future traversal is I/O-free, and an error ends that cursor. Cache misses can
 load an entire admitted node; cache accounting is neither RSS nor a total read
@@ -48,6 +82,7 @@ Options select direction, offset and an optional result limit; the native defaul
 is unlimited. Limit zero validates without visiting datoms. Use
 `index_pull_with_control` for cooperative cancellation across traversal and Pull.
 Raw history is not a point-in-time entity projection. See
+[index Pull](03_index_pull.md) and
 [Pull](../05_query_and_pull/02_pull_and_entities.md).
 
 ## The log is not an indexed history view

@@ -160,7 +160,7 @@ fn unresolved_pull(
                 .unwrap_or_else(|| keyword_key(db_id()));
             put(&mut result, key, QueryValue::Nil);
         } else {
-            // ATOMIC-NOTE: recovered pull* still calls each attribute's valfn
+            // EDB-NOTE: recovered pull* still calls each attribute's valfn
             // with nil after failed entity resolution. No wildcard scan or
             // fabricated entity is needed to apply xform, then default.
             let PreparedAttribute::Complete(key, value) =
@@ -458,7 +458,7 @@ fn pull_entity(
                 tasks.push(PullTask::Entity(entity, child_context));
             }
             PullTask::FinishMap { start, mut entries } => {
-                // ATOMIC-NOTE: the native typed API retains an empty Map where
+                // EDB-NOTE: the native typed API retains an empty Map where
                 // recovered nilify-empty returns nil; nested selection handles
                 // emptiness explicitly without changing this established shape.
                 for item in output.drain(start..) {

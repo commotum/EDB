@@ -131,7 +131,7 @@ impl<'a> DatabaseValueWindowCursor<'a> {
 
     /// Reverse history visits one logical E/A/V group oldest-first. Match
     /// recovered `rseek-datoms`: temporal/custom predicates run first, then
-    /// the last visible event determines current membership. Atomic retains
+    /// the last visible event determines current membership. EDB retains
     /// one winner per strict stored V representation, consistent with the
     /// native kernel's representation-distinct top-level BigDecimals.
     pub(super) fn next_reverse_current(
@@ -193,7 +193,7 @@ impl<'a> DatabaseValueWindowCursor<'a> {
             .binary_search_by(|value| value.stored_cmp(&datom.value));
         if datom.added {
             // Recovered `filter-retractions` yields every assertion until a
-            // later visible retraction. Atomic deliberately keeps top-level
+            // later visible retraction. EDB deliberately keeps top-level
             // strict-scale BigDecimal facts representation-distinct, so the
             // one-group skip set is keyed by stored equality; tuple members
             // retain their established recursive logical equality.
@@ -294,8 +294,8 @@ impl DatabaseValue {
     /// Resolve a documented time point to the boundary used by `as-of` and
     /// `since`.
     ///
-    /// T and Tx are exact.  Instant resolution mirrors recovered 1.0.7705
-    /// `as-of-t`: one AVET lower-bound seek finds the first transaction at or
+    /// T and Tx are exact. For instants, one AVET lower-bound seek finds
+    /// the first transaction at or
     /// after the millisecond.  An exact duplicate-millisecond match therefore
     /// selects the earliest matching transaction; `since` remains exclusive
     /// of that resolved T and can expose later transactions from the same

@@ -1,7 +1,7 @@
 //! Process-facing command composition; engine/admin semantics remain in the library.
 use super::arguments::HELP;
 use super::{Arguments, admin, data, io_error, runtime};
-use atomic_core::{
+use edb_core::{
     DatabaseCatalog, PostgresOperator, Schema, SemanticError, postgres_config_from_env,
 };
 use std::io::Write;
@@ -13,7 +13,7 @@ pub(super) fn run(args: Arguments) -> Result<(), SemanticError> {
             return Ok(());
         }
         "--version" => {
-            println!("atomic {}", env!("CARGO_PKG_VERSION"));
+            println!("edb {}", env!("CARGO_PKG_VERSION"));
             return Ok(());
         }
         _ => {}
@@ -21,11 +21,11 @@ pub(super) fn run(args: Arguments) -> Result<(), SemanticError> {
     let connection = postgres_config_from_env()?;
     match args.command.as_str() {
         "install" => {
-            atomic_core::storage::PgBlockStore::install(&connection)?;
-            println!("INSTALLED storage_format=atomic/opaque-storage/1 tables=2");
+            edb_core::storage::PgBlockStore::install(&connection)?;
+            println!("INSTALLED storage_format=edb/opaque-storage/1 tables=2");
             std::io::stdout().flush().map_err(|_| io_error())?;
             if let Some(writer) = args.options.get("--writer-role") {
-                atomic_core::storage::PgBlockStore::connect(&connection)?
+                edb_core::storage::PgBlockStore::connect(&connection)?
                     .grant_runtime_privileges(writer, args.required("--peer-role")?)?;
                 println!("GRANTED runtime_roles=true additive=true object_delete=operator_only");
             }
@@ -58,7 +58,7 @@ pub(super) fn run(args: Arguments) -> Result<(), SemanticError> {
             admin::consolidate(
                 &connection,
                 args.required("--database")?,
-                &atomic_core::MaintenanceControl::default(),
+                &edb_core::MaintenanceControl::default(),
             )?;
         }
         "transactor" => runtime::run(&args, connection)?,

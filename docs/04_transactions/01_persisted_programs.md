@@ -12,7 +12,7 @@ For example, this query program returns entity/value rows above a threshold;
 the attribute itself is a program argument, not a fixed schema assumption:
 
 ```rust
-use atomic_core::*;
+use edb_core::*;
 
 fn selector() -> Result<Program, SemanticError> {
     let mut query = Query::new(

@@ -1,6 +1,6 @@
 //! Three independent application processes: a writer endpoint and two peers.
-//! ATOMIC_POSTGRES_URL='host=... user=... dbname=...' cargo run --example process_workflow
-use atomic_core::{
+//! EDB_POSTGRES_URL='host=... user=... dbname=...' cargo run --example process_workflow
+use edb_core::{
     Attribute, AttributeName, AttributeRef, Cardinality, Connection, EntityMap, EntityRef, Keyword,
     LocalTransactionServer, LocalTransportConfig, MapValue, PostgresConnectionConfig,
     PullAttribute, PullPattern, Schema, TransactionRequest, TransactionService,
@@ -35,7 +35,7 @@ const NAME: u32 = 1_000;
 const WAIT: Duration = Duration::from_secs(20);
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let postgres = std::env::var("ATOMIC_POSTGRES_URL")?;
+    let postgres = std::env::var("EDB_POSTGRES_URL")?;
     let arguments: Vec<_> = std::env::args().skip(1).collect();
     match arguments.first().map(String::as_str) {
         Some("writer") => {
@@ -101,8 +101,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         SystemTime::now().duration_since(UNIX_EPOCH)?.as_nanos()
     );
     let storage = PostgresConnectionConfig::plaintext(&postgres);
-    atomic_core::storage::PgBlockStore::install(&storage)?;
-    atomic_core::storage::BlockDatabase::create(&storage, &database, Schema::new())?;
+    edb_core::storage::PgBlockStore::install(&storage)?;
+    edb_core::storage::BlockDatabase::create(&storage, &database, Schema::new())?;
     let binary = std::env::current_exe()?;
     let mut writer = WriterProcess(
         Command::new(&binary)
@@ -160,9 +160,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let name = report.db_after.values(report.tempids["person"], NAME)?[0].clone();
         assert_eq!(
             current.pull(&pattern, report.tempids["person"])?,
-            atomic_core::QueryValue::Map(vec![(
-                atomic_core::QueryValue::Scalar(Value::Keyword(Keyword::new("person", "name"))),
-                atomic_core::QueryValue::Scalar(name)
+            edb_core::QueryValue::Map(vec![(
+                edb_core::QueryValue::Scalar(Value::Keyword(Keyword::new("person", "name"))),
+                edb_core::QueryValue::Scalar(name)
             ),])
         );
         assert!(old.values(report.tempids["person"], NAME)?.is_empty());

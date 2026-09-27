@@ -1,6 +1,20 @@
 # Transactions, reports and exact retries
 
-A transaction is logical information to apply atomically, not a script of
+This section documents EDB transactions. Start with the
+[transaction model](05_transaction_model.md), which explains the semantics of
+EDB transactions. After that, you can move to specific detail topics as needed:
+
+- [Transaction model](05_transaction_model.md): semantics of EDB transactions
+- [Transaction data](04_transaction_data.md): the transaction data format
+- [Processing transactions](06_processing_transactions.md): what happens when
+  you call `Connection::transact`
+- [Transaction functions](07_transaction_functions.md): extending EDB
+  transactions with your code
+- [ACID](08_acid.md): how EDB transactions deliver the ACID properties
+- [Synchronization](09_synchronization.md): coordinating access to a particular
+  point in time from multiple processes
+
+A transaction is logical information to apply indivisibly, not a script of
 imperative updates. Typed `TxOp`/`TxForm` and EDN entity maps or primitive forms
 use the same assessment rules. The writer evaluates fresh intent against one
 immutable db-before, validates it, then publishes a new ordered transaction.
@@ -27,7 +41,7 @@ the same request digest.
 
 A confirmed `CommittedTransaction` can have `report: Err` if opening its local
 read values fails. The commit is still confirmed. EDN output can similarly carry
-`:atomic/report-error`; output failure does not prove rollback. Never generate a
+`:edb/report-error`; output failure does not prove rollback. Never generate a
 new key just to recover a reply. Excision deliberately replaces old receipts with
 occupied-key tombstones; see [its retry policy](../08_operations/00_deployment.md#excision).
 

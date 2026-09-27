@@ -51,12 +51,11 @@ pub(crate) struct AssessmentReadWork {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) struct AssessmentLimits {
-    /// Native writer admission controls, not Datomic transaction semantics.
+    /// Writer admission controls.
     ///
-    /// Datomic documents db-before reads as part of invariant enforcement and
-    /// therefore a lower bound on transaction latency (`transaction_hints`),
-    /// but 1.0.7705 has no equivalent per-transaction semantic cutoff.  The
-    /// PostgreSQL writer configures these limits explicitly so one transaction
+    /// Reads against db-before enforce invariants and set a lower bound on
+    /// transaction latency. The PostgreSQL writer configures these limits
+    /// explicitly so one transaction
     /// cannot monopolize its finite resources.  Streaming validators must
     /// still charge every db-before datom they consume; they must not turn the
     /// limit into a reason to retain the complete range in memory.
@@ -288,10 +287,8 @@ impl<'a> Reader<'a> {
     }
 
     fn prefix(&mut self, prefix: &IndexPrefix) -> Result<Vec<Datom>, SemanticError> {
-        // Recovered ProcessExpander eagerly prefetches identity, composite,
-        // redundancy, and uniqueness ranges (`datomic/db.clj`, get-ids and
-        // transact-data preparation around 7051-7354). The native assessor's
-        // synchronous equivalent is deliberately narrower: memoize an exact
+        // Identity, composite, redundancy, and uniqueness checks can reuse
+        // previously read ranges. Memoize an exact
         // structural IndexPrefix for the complete transaction attempt,
         // avoiding repeated PostgreSQL/tree work without inventing an
         // asynchronous hint system.
@@ -1128,9 +1125,8 @@ fn validate_schema_transition(
 ///
 /// The base prefix remains lazy; only references to this transaction's delta
 /// are sorted and retained.  Exact stored E/A/V identity decides whether an
-/// assertion is redundant or a retraction removes a base fact.  This is the
-/// native equivalent of reducing the immutable db-after index in recovered
-/// `card-one-violator` and `unique-violator` (`datomic/db.clj:3212-3243`).
+/// assertion is redundant or a retraction removes a base fact. This supplies
+/// the successor attribute values for cardinality and uniqueness checks.
 fn visit_successor_attribute(
     reader: &mut Reader<'_>,
     logical: &[LogicalDatom],
@@ -1538,10 +1534,8 @@ fn resolve_tempids(
     Ok((result, next))
 }
 
-/// Group equivalent identity assertions in index-key order. Recovered
-/// `get-ids` uses attribute/value keyed identity lookups before replacing
-/// tempids (`transactor/src-clj/datomic/db.clj`, baseline 6640/7361).
-/// This sorted native adaptation preserves keyed grouping and deterministic
+/// Group equivalent identity assertions in index-key order before replacing
+/// tempids. Sorting preserves keyed grouping and deterministic
 /// lowest-index representatives without the former all-pairs walk. Key-sort
 /// comparisons alone do not bound the union-find's parent traversal.
 fn union_identity_assertions(
@@ -2581,10 +2575,8 @@ fn validate_same_transaction(
     schema: &Schema,
     datoms: &[LogicalDatom],
 ) -> Result<(), SemanticError> {
-    // 1.0.7705 uses transaction-local EAV, EA/op and AV keyed maps here
-    // (`create-op-validator`, `create-card-one-validator`, and
-    // `create-unique-value-validator`). Three deterministic sorted key views
-    // are the closest Rust equivalent without requiring Value to implement a
+    // Three deterministic sorted key views (EAV, EA/op, and AV) validate
+    // transaction-local conflicts without requiring Value to implement a
     // single equality relation at both stored and logical-index boundaries.
     let mut descriptor = Vec::with_capacity(datoms.len());
     let mut first_schema_error = None;

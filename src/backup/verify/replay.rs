@@ -10,7 +10,7 @@ pub(super) fn canonical_log<R: ObjectReader>(
     database: &mut Database,
     mut check_basis: impl FnMut(&mut R, &Database) -> Result<(), SemanticError>,
 ) -> Result<(), SemanticError> {
-    // ATOMIC-NOTE: keep the reader-independent traversal while checking retained
+    // EDB-NOTE: keep the reader-independent traversal while checking retained
     // values between transactions. Reseeking the tail for every basis discards
     // the log owner's authenticated forward anchors. Sparse receipt/prefix
     // authority checks remain point reads; this is not a whole-verifier bound.

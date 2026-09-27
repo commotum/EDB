@@ -52,14 +52,14 @@ struct Lease {
 }
 impl Lease {
     fn encode(&self) -> Vec<u8> {
-        let mut bytes = b"ATWL\x01".to_vec();
+        let mut bytes = b"EDBW\x01".to_vec();
         bytes.extend_from_slice(&self.epoch.to_be_bytes());
         bytes.extend_from_slice(&self.token);
         bytes.extend_from_slice(&self.expires_ms.to_be_bytes());
         bytes
     }
     fn decode(bytes: &[u8]) -> Result<Self, SemanticError> {
-        if bytes.len() != 37 || &bytes[..5] != b"ATWL\x01" {
+        if bytes.len() != 37 || &bytes[..5] != b"EDBW\x01" {
             return Err(fault(
                 "storage/writer-lease",
                 "Malformed current writer lease",
@@ -1033,7 +1033,7 @@ fn condition(key: &str, reference: Option<&Reference>) -> RefCondition {
 }
 
 /// Engine-owned authority for a remote route. The provider only sees revisions;
-/// endpoint publication must compare these guards in its own atomic ref update.
+/// endpoint publication must compare these guards in its own indivisible ref update.
 pub(crate) fn writer_endpoint_guards(
     store: &mut PgBlockStore,
     identity: &crate::DatabaseIdentity,

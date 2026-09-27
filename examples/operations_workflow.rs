@@ -1,12 +1,12 @@
 //! Measured portable operations for an existing, stopped application database.
-//! Required: ATOMIC_POSTGRES_URL, ATOMIC_DATABASE_ID, ATOMIC_RESTORE_POSTGRES_URL.
-//! Optional: ATOMIC_BACKUP_DIRECTORY (otherwise a retained private temp dir).
-//! ATOMIC_OPS_RESUME_MANIFEST resumes after a previously completed copy/repeat,
+//! Required: EDB_POSTGRES_URL, EDB_DATABASE_ID, EDB_RESTORE_POSTGRES_URL.
+//! Optional: EDB_BACKUP_DIRECTORY (otherwise a retained private temp dir).
+//! EDB_OPS_RESUME_MANIFEST resumes after a previously completed copy/repeat,
 //! requiring its exact printed manifest hash and explicit backup directory.
 //! The restore catalog/schema must be independent. Each phase gets a fresh
 //! process, so Linux VmHWM describes that operation, not an earlier allocator.
 //! Backups are retained; this example never deletes an existing repository.
-use atomic_core::{
+use edb_core::{
     Attribute, CallableRef, CapacityLimits, Cardinality, Clause, DataPattern, DatabaseValue,
     EntityRef, FindElement, FindSpec, IndexOrder, Keyword, Peer, PortableBackup,
     PostgresConnectionConfig, PostgresOperator, ProgramCall, Query, QueryControl, QueryResult,
@@ -26,11 +26,10 @@ type Fields = BTreeMap<String, String>;
 const PREFIX: &str = "OP_RESULT ";
 
 fn main() -> Result<()> {
-    if let Ok(phase) = std::env::var("ATOMIC_OPS_PHASE") {
+    if let Ok(phase) = std::env::var("EDB_OPS_PHASE") {
         let baseline = memory();
         let cpu_before = process_cpu_micros();
-        let context =
-            atomic_core::OperationContext::new(atomic_core::OperationKind::Administration);
+        let context = edb_core::OperationContext::new(edb_core::OperationKind::Administration);
         let _scope = context.enter();
         let start = Instant::now();
         let result = run_phase(&phase);
@@ -50,23 +49,23 @@ fn main() -> Result<()> {
         }
         return Ok(());
     }
-    let source = std::env::var("ATOMIC_POSTGRES_URL")?;
-    let target = std::env::var("ATOMIC_RESTORE_POSTGRES_URL")?;
-    let database = std::env::var("ATOMIC_DATABASE_ID")?;
-    let resume_manifest = std::env::var("ATOMIC_OPS_RESUME_MANIFEST").ok();
-    if resume_manifest.is_some() && std::env::var_os("ATOMIC_BACKUP_DIRECTORY").is_none() {
-        return Err("resuming requires the retained ATOMIC_BACKUP_DIRECTORY".into());
+    let source = std::env::var("EDB_POSTGRES_URL")?;
+    let target = std::env::var("EDB_RESTORE_POSTGRES_URL")?;
+    let database = std::env::var("EDB_DATABASE_ID")?;
+    let resume_manifest = std::env::var("EDB_OPS_RESUME_MANIFEST").ok();
+    if resume_manifest.is_some() && std::env::var_os("EDB_BACKUP_DIRECTORY").is_none() {
+        return Err("resuming requires the retained EDB_BACKUP_DIRECTORY".into());
     }
     if catalog_identity(&source)? == catalog_identity(&target)? {
         return Err("restore must use a separate PostgreSQL catalog or schema".into());
     }
 
-    let directory = std::env::var_os("ATOMIC_BACKUP_DIRECTORY")
+    let directory = std::env::var_os("EDB_BACKUP_DIRECTORY")
         .map(PathBuf::from)
         .map(Ok)
         .unwrap_or_else(|| {
             let directory = tempfile::Builder::new()
-                .prefix("atomic-operations-")
+                .prefix("edb-operations-")
                 .tempdir()?;
             #[cfg(unix)]
             {
@@ -133,7 +132,7 @@ fn check_resume_point(
         .get("basis")
         .ok_or("source basis missing")?
         .parse()?;
-    let entry = atomic_core::DatabaseCatalog::connect(source)?.resolve(database)?;
+    let entry = edb_core::DatabaseCatalog::connect(source)?.resolve(database)?;
     let report = PostgresOperator::connect(source)?.inspect_database(&entry.database_id, false)?;
     let lineage = entry.lineage_id;
     let generation = report.metrics.generation;
@@ -163,11 +162,11 @@ fn child(phase: &str, directory: &Path, expected: &Fields) -> Result<Fields> {
     println!("operations_phase_start={phase}");
     let mut command = Command::new(std::env::current_exe()?);
     command
-        .env("ATOMIC_OPS_PHASE", phase)
-        .env("ATOMIC_BACKUP_DIRECTORY", directory)
+        .env("EDB_OPS_PHASE", phase)
+        .env("EDB_BACKUP_DIRECTORY", directory)
         .stderr(Stdio::inherit());
     for (key, value) in expected {
-        command.env(format!("ATOMIC_OPS_EXPECT_{}", key.to_uppercase()), value);
+        command.env(format!("EDB_OPS_EXPECT_{}", key.to_uppercase()), value);
     }
     let output = command.output()?;
     let output_text = String::from_utf8(output.stdout)?;
@@ -183,12 +182,11 @@ fn child(phase: &str, directory: &Path, expected: &Fields) -> Result<Fields> {
 }
 
 fn run_phase(phase: &str) -> Result<Fields> {
-    let source = std::env::var("ATOMIC_POSTGRES_URL")?;
-    let target = std::env::var("ATOMIC_RESTORE_POSTGRES_URL")?;
-    let database = std::env::var("ATOMIC_DATABASE_ID")?;
-    let directory = PathBuf::from(
-        std::env::var_os("ATOMIC_BACKUP_DIRECTORY").ok_or("backup directory missing")?,
-    );
+    let source = std::env::var("EDB_POSTGRES_URL")?;
+    let target = std::env::var("EDB_RESTORE_POSTGRES_URL")?;
+    let database = std::env::var("EDB_DATABASE_ID")?;
+    let directory =
+        PathBuf::from(std::env::var_os("EDB_BACKUP_DIRECTORY").ok_or("backup directory missing")?);
     let mut fields = Fields::new();
     match phase {
         "fixture-seed" => {
@@ -231,7 +229,7 @@ fn run_phase(phase: &str) -> Result<Fields> {
             fields.insert("basis".into(), verified.database.basis_t().to_string());
         }
         "restore" => {
-            atomic_core::storage::PgBlockStore::install(&PostgresConnectionConfig::plaintext(
+            edb_core::storage::PgBlockStore::install(&PostgresConnectionConfig::plaintext(
                 &target,
             ))?;
 
@@ -247,7 +245,7 @@ fn run_phase(phase: &str) -> Result<Fields> {
         }
         "retry" => retry_scale_request(&target, &database, &mut fields)?,
         "deep-inspect" => {
-            let entry = atomic_core::DatabaseCatalog::connect(&target)?.resolve(&database)?;
+            let entry = edb_core::DatabaseCatalog::connect(&target)?.resolve(&database)?;
             let report =
                 PostgresOperator::connect(&target)?.inspect_database(&entry.database_id, true)?;
             if !report.healthy() {
@@ -266,15 +264,15 @@ fn run_phase(phase: &str) -> Result<Fields> {
 /// Use an empty disposable schema. Rows carry two attributes, 256-byte strings,
 /// and a retained publication after each eight 128-entity transactions.
 fn seed_maintenance_fixture(connection: &str, database: &str) -> Result<()> {
-    let records = std::env::var("ATOMIC_OPS_PROFILE_RECORDS")?.parse::<usize>()?;
+    let records = std::env::var("EDB_OPS_PROFILE_RECORDS")?.parse::<usize>()?;
     if records == 0 || records > 100_000 || records % 128 != 0 {
         return Err(
             "maintenance profile records must be a positive multiple of128, at most100000".into(),
         );
     }
     let config = PostgresConnectionConfig::plaintext(connection);
-    atomic_core::storage::PgBlockStore::install(&config)?;
-    let mut schema = atomic_core::Schema::new();
+    edb_core::storage::PgBlockStore::install(&config)?;
+    let mut schema = edb_core::Schema::new();
     let mut key = Attribute::new(
         1000,
         Keyword::new("maintenance", "key"),
@@ -289,11 +287,11 @@ fn seed_maintenance_fixture(connection: &str, database: &str) -> Result<()> {
         ValueType::String,
         Cardinality::One,
     ))?;
-    atomic_core::storage::BlockDatabase::create(&config, database, schema)?;
+    edb_core::storage::BlockDatabase::create(&config, database, schema)?;
     let mut basis = Peer::connect(connection, database, 8)?.basis_t();
     for publication in (0..records).step_by(1024) {
         let service = TransactionService::start(TransactionServiceConfig {
-            connection: atomic_core::PostgresConnectionConfig::parse(connection)?,
+            connection: edb_core::PostgresConnectionConfig::parse(connection)?,
             database_id: database.to_owned(),
             holder_id: format!("maintenance-profile-{}", std::process::id()),
             lease_duration: Duration::from_secs(5),
@@ -328,7 +326,7 @@ fn seed_maintenance_fixture(connection: &str, database: &str) -> Result<()> {
             }
         }
         service.shutdown();
-        let entry = atomic_core::DatabaseCatalog::connect(connection)?.resolve(database)?;
+        let entry = edb_core::DatabaseCatalog::connect(connection)?.resolve(database)?;
         PostgresOperator::connect(connection)?.consolidate_database(&entry.database_id)?;
         println!(
             "maintenance_seed records={} basis_t={basis}",
@@ -444,7 +442,7 @@ fn fingerprint(database: &DatabaseValue) -> Result<String> {
 
 fn retry_scale_request(connection: &str, database: &str, fields: &mut Fields) -> Result<()> {
     let writer = TransactionService::start(TransactionServiceConfig {
-        connection: atomic_core::PostgresConnectionConfig::parse(connection)?,
+        connection: edb_core::PostgresConnectionConfig::parse(connection)?,
         database_id: database.into(),
         holder_id: format!("operations-retry-{}", std::process::id()),
         lease_duration: Duration::from_secs(10),
@@ -496,7 +494,7 @@ fn retry_scale_request(connection: &str, database: &str, fields: &mut Fields) ->
 
 fn expected(key: &str) -> Result<String> {
     Ok(std::env::var(format!(
-        "ATOMIC_OPS_EXPECT_{}",
+        "EDB_OPS_EXPECT_{}",
         key.to_uppercase()
     ))?)
 }

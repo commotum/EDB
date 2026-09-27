@@ -44,7 +44,7 @@ pub(crate) fn prepare_index_group<T: Send>(
             let peak = &peak;
             let context = crate::OperationContext::current_or_process();
             let worker = std::thread::Builder::new()
-                .name("atomic-index-prepare".into())
+                .name("edb-index-prepare".into())
                 .spawn_scoped(scope, move || {
                     let _scope = context.enter();
                     let count = active.fetch_add(1, Ordering::AcqRel) + 1;

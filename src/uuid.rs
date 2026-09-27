@@ -1,5 +1,5 @@
 //! Time-local UUID values, not transaction clocks or allocation reservations.
-//! Squuid follows recovered datomic/common.clj; UUIDv7 uses RFC9562 section5.7.
+//! Squuid combines Unix seconds with random bits; UUIDv7 uses RFC9562 section5.7.
 use crate::{ErrorCategory, SemanticError};
 use rand::TryRng;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -65,8 +65,8 @@ fn squuid_parts(seconds: u32, random: u128) -> u128 {
     versioned((u128::from(seconds) << 96) | (random & ((1 << 96) - 1)), 4)
 }
 
-/// Read the leading32bits as Unix seconds, expressed in milliseconds. Like the
-/// Datomic helper, this cannot establish that an arbitrary UUID was a squuid.
+/// Read the leading 32 bits as Unix seconds, expressed in milliseconds.
+/// This cannot establish that an arbitrary UUID was a squuid.
 pub fn squuid_time_millis(uuid: u128) -> u64 {
     ((uuid >> 96) as u64) * 1000
 }

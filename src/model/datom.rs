@@ -1,4 +1,4 @@
-//! Atomic facts and covering-index orders shared by memory and durable trees.
+//! EDB facts and covering-index orders shared by memory and durable trees.
 
 use crate::Value;
 use std::cmp::Ordering;

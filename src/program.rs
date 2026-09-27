@@ -5,7 +5,7 @@ use crate::{
 use std::cmp::Ordering;
 use std::collections::BTreeSet;
 use std::panic::{AssertUnwindSafe, catch_unwind};
-use std::sync::atomic::{AtomicBool, Ordering as AtomicOrdering};
+use std::sync::atomic::{AtomicBool, Ordering as MemoryOrdering};
 use std::time::Instant;
 
 #[path = "program_query.rs"]
@@ -244,7 +244,7 @@ fn query_term_rank(term: &QueryTerm) -> u8 {
     }
 }
 
-/// Restricted Datomic data-pattern clause `[e a v]`.
+/// Restricted EDB data-pattern clause `[e a v]`.
 ///
 /// [`QueryTemplate::new`] lowers these authoring forms to the shared query AST.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -477,7 +477,7 @@ pub enum Instruction {
         message: String,
     },
     /// Consume `[condition, anomaly-map]`. Literal true continues; literal
-    /// false raises the Datomic-shaped incorrect/conflict anomaly described by
+    /// false raises the incorrect/conflict anomaly described by
     /// the map. No truthiness coercion is permitted.
     RequireAnomaly,
     /// Emit an add with a scalar, entity reference, or 2–8-slot runtime
@@ -2524,11 +2524,11 @@ fn cancel_anomaly(value: RuntimeValue) -> Result<SemanticError, SemanticError> {
     typed_entries.retain(|(key, _)| {
         !matches!(
             key,
-            Value::Keyword(keyword) if keyword.qualified_name() == "datomic/cancelled"
+            Value::Keyword(keyword) if keyword.qualified_name() == "edb/cancelled"
         )
     });
     typed_entries.push((
-        Value::Keyword(Keyword::new("datomic", "cancelled")),
+        Value::Keyword(Keyword::new("edb", "cancelled")),
         RuntimeValue::Scalar(Value::Bool(true)),
     ));
     let typed_anomaly = RuntimeValue::map(typed_entries)?;
@@ -2593,7 +2593,7 @@ fn cancel_anomaly(value: RuntimeValue) -> Result<SemanticError, SemanticError> {
         error = error.detail(key, value);
     }
     Ok(error
-        .detail("datomic/cancelled", "true")
+        .detail("edb/cancelled", "true")
         .with_anomaly(typed_anomaly))
 }
 
@@ -3069,7 +3069,7 @@ fn runtime_value_bytes(value: &RuntimeValue, depth: usize) -> Result<usize, Sema
 }
 
 /// Return a deterministic upper bound for the bytes occupied by a value in
-/// Atomic's canonical encoding. Big integers include one possible sign byte,
+/// EDB's canonical encoding. Big integers include one possible sign byte,
 /// so this is deliberately conservative without allocating a second integer
 /// byte buffer merely to meter it.
 fn encoded_value_bytes(value: &Value, depth: usize) -> Result<usize, SemanticError> {
@@ -3305,7 +3305,7 @@ fn charge(fuel: &mut u64, amount: u64) -> Result<(), SemanticError> {
 }
 
 fn check_cancel(cancelled: Option<&AtomicBool>) -> Result<(), SemanticError> {
-    if cancelled.is_some_and(|flag| flag.load(AtomicOrdering::Relaxed)) {
+    if cancelled.is_some_and(|flag| flag.load(MemoryOrdering::Relaxed)) {
         Err(SemanticError::new(
             ErrorCategory::Interrupted,
             "program/cancelled",

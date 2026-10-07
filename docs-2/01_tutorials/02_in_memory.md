@@ -92,11 +92,16 @@ built-in attributes. Every attribute definition has three required attributes:
 Supply also the optional `:db/doc` attribute, which stores a docstring of the
 attribute you can query later.
 
+Each map explicitly supplies `:db/source`, which identifies the source of its
+assertions. This tutorial uses the built-in source entity `:db.source/system`.
+The key is transaction syntax, not a stored attribute.
+
 Attribute definitions are defined as maps of data. Our first attribute,
 "title", would be defined as:
 
 ```edn
-{:db/ident :movie/title
+{:db/source :db.source/system
+ :db/ident :movie/title
  :db/valueType :db.type/string
  :db/cardinality :db.cardinality/one
  :db/doc "The title of the movie"}
@@ -109,7 +114,8 @@ values when defining attributes. Learn more in the
 Similarly, "genre" would be:
 
 ```edn
-{:db/ident :movie/genre
+{:db/source :db.source/system
+ :db/ident :movie/genre
  :db/valueType :db.type/string
  :db/cardinality :db.cardinality/one
  :db/doc "The genre of the movie"}
@@ -119,7 +125,8 @@ Since "year" will be stored as a number, we'll have to change the `:db/valueType
 for it:
 
 ```edn
-{:db/ident :movie/release-year
+{:db/source :db.source/system
+ :db/ident :movie/release-year
  :db/valueType :db.type/long
  :db/cardinality :db.cardinality/one
  :db/doc "The year the movie was released in theaters"}
@@ -127,20 +134,26 @@ for it:
 
 You could choose to send each of these attributes to the database in individual
 transactions, but we'll batch them up into a single transaction. To do that,
-combine the three maps into a single vector of maps. Let's bind the EDN schema
-text to a variable called `movie_schema`:
+combine the three maps into a single vector of maps. Include a metadata-only
+map for `"edb.tx"` to explicitly supply the source of the generated
+`:db/txInstant` assertion; it does not supply a default for other maps. Let's
+bind the EDN schema text to a variable called `movie_schema`:
 
 ```rust
     let movie_schema = r#"[
-        {:db/ident :movie/title
+        {:db/id "edb.tx" :db/source :db.source/system}
+        {:db/source :db.source/system
+         :db/ident :movie/title
          :db/valueType :db.type/string
          :db/cardinality :db.cardinality/one
          :db/doc "The title of the movie"}
-        {:db/ident :movie/genre
+        {:db/source :db.source/system
+         :db/ident :movie/genre
          :db/valueType :db.type/string
          :db/cardinality :db.cardinality/one
          :db/doc "The genre of the movie"}
-        {:db/ident :movie/release-year
+        {:db/source :db.source/system
+         :db/ident :movie/release-year
          :db/valueType :db.type/long
          :db/cardinality :db.cardinality/one
          :db/doc "The year the movie was released in theaters"}
@@ -181,8 +194,8 @@ The returned `TxReport` contains:
 The printed EDN report represents these as `:edb/db-before-t`,
 `:edb/db-after-t`, `:edb/tx-data`, and `:edb/tempids`. The first two are basis
 numbers, here `0` and `1`; the Rust report retains the database values themselves.
-Each datom in the printed transaction data has five components:
-`[entity attribute value transaction added?]`.
+Each datom in the printed transaction data has six components:
+`[entity attribute value transaction source added?]`.
 
 The presence of `db_before` and `db_after` shows the local state transition.
 `with_edn` does not persist this information to storage. Retain `db_after` to
@@ -205,13 +218,17 @@ schema. Start by defining your data, again storing it in a variable first:
 
 ```rust
     let first_movies = r#"[
-        {:movie/title "The Goonies"
+        {:db/id "edb.tx" :db/source :db.source/system}
+        {:db/source :db.source/system
+         :movie/title "The Goonies"
          :movie/genre "action/adventure"
          :movie/release-year 1985}
-        {:movie/title "Commando"
+        {:db/source :db.source/system
+         :movie/title "Commando"
          :movie/genre "action/adventure"
          :movie/release-year 1985}
-        {:movie/title "Repo Man"
+        {:db/source :db.source/system
+         :movie/title "Repo Man"
          :movie/genre "punk dystopia"
          :movie/release-year 1984}
     ]"#;
@@ -466,12 +483,15 @@ the native result also checks that the query returned an entity reference:
 Next, issue a transaction telling EDB about the new value for `:movie/genre`.
 Remember from the transacting data section that a local transaction takes a
 database value, transaction data, and a transaction instant. In this case,
-specify one special key, `:db/id`, whose value is the entity ID we just
-retrieved. The transaction looks like this:
+specify `:db/id`, whose value is the entity ID we just retrieved, and
+`:db/source` for the new assertion and the retraction it causes. The transaction
+looks like this:
 
 ```rust
     let update = format!(
-        r#"[{{:db/id {commando_id} :movie/genre "future governor"}}]"#
+        r#"[{{:db/id "edb.tx" :db/source :db.source/system}}
+            {{:db/id {commando_id} :db/source :db.source/system
+              :movie/genre "future governor"}}]"#
     );
     let update_report = movies_report.db_after.with_edn(&update, 3_000)?;
     println!("{}", write_edn(&transaction_report_to_edn(
@@ -482,13 +502,16 @@ retrieved. The transaction looks like this:
     )?)?);
 ```
 
-```edn
+In this schematic report, `source-id` stands for the resolved entity ID of
+`:db.source/system`:
+
+```text
 {:edb/db-before-t 2
  :edb/db-after-t 3
  :edb/tx-data
- [[13194139533315 50 #inst "1970-01-01T00:00:03.000Z" 13194139533315 true]
-  [17592186045419 1000 "action/adventure" 13194139533315 false]
-  [17592186045419 1000 "future governor" 13194139533315 true]]
+ [[13194139533315 50 #inst "1970-01-01T00:00:03.000Z" 13194139533315 source-id true]
+  [17592186045419 1000 "action/adventure" 13194139533315 source-id false]
+  [17592186045419 1000 "future governor" 13194139533315 source-id true]]
  :edb/tempids {}}
 ```
 

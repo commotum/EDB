@@ -150,7 +150,10 @@ the EDN transaction collection and a request key with
 [transacting schema](06_transact_schema.md) section. Save that file in your
 application's working directory. It defines `:movie/title` and `:movie/genre`
 as cardinality-one strings and `:movie/release-year` as a cardinality-one long,
-along with their documentation strings. Follow that guide starting from the
+along with their documentation strings. Each schema map supplies
+`:db/source :db.source/system`; the metadata-only map
+`{:db/id "edb.tx" :db/source :db.source/system}` explicitly attributes the
+generated `:db/txInstant`. Follow that guide starting from the
 schema section, using these client calls to submit the same data.
 
 Insert this code before `Ok(())` in `main`:
@@ -183,28 +186,30 @@ flag and a separately fallible local report. The report contains:
 | `tempids` | `:edb/tempids` | Temporary IDs mapped to assigned entity IDs |
 
 For a freshly created database, the printed report has this shape. IDs, time
-and basis depend on your database; the timestamp below is illustrative:
+and basis depend on your database; the timestamp below is illustrative.
+In this schematic report, `source-id` denotes the resolved entity ID of
+`:db.source/system`:
 
-```edn
+```text
 {:edb/db-before-t 0
  :edb/db-after-t 1
  :edb/tx-data
- [[0 13 #edb/ref 1000 13194139533313 true]
-  [0 13 #edb/ref 1001 13194139533313 true]
-  [0 13 #edb/ref 1002 13194139533313 true]
-  [1000 10 :movie/genre 13194139533313 true]
-  [1000 40 #edb/ref 23 13194139533313 true]
-  [1000 41 #edb/ref 35 13194139533313 true]
-  [1000 62 "The genre of the movie" 13194139533313 true]
-  [1001 10 :movie/title 13194139533313 true]
-  [1001 40 #edb/ref 23 13194139533313 true]
-  [1001 41 #edb/ref 35 13194139533313 true]
-  [1001 62 "The title of the movie" 13194139533313 true]
-  [1002 10 :movie/release-year 13194139533313 true]
-  [1002 40 #edb/ref 22 13194139533313 true]
-  [1002 41 #edb/ref 35 13194139533313 true]
-  [1002 62 "The year the movie was released in theaters" 13194139533313 true]
-  [13194139533313 50 #inst "1970-01-01T00:00:01.000Z" 13194139533313 true]]
+ [[0 13 #edb/ref 1000 13194139533313 source-id true]
+  [0 13 #edb/ref 1001 13194139533313 source-id true]
+  [0 13 #edb/ref 1002 13194139533313 source-id true]
+  [1000 10 :movie/genre 13194139533313 source-id true]
+  [1000 40 #edb/ref 23 13194139533313 source-id true]
+  [1000 41 #edb/ref 35 13194139533313 source-id true]
+  [1000 62 "The genre of the movie" 13194139533313 source-id true]
+  [1001 10 :movie/title 13194139533313 source-id true]
+  [1001 40 #edb/ref 23 13194139533313 source-id true]
+  [1001 41 #edb/ref 35 13194139533313 source-id true]
+  [1001 62 "The title of the movie" 13194139533313 source-id true]
+  [1002 10 :movie/release-year 13194139533313 source-id true]
+  [1002 40 #edb/ref 22 13194139533313 source-id true]
+  [1002 41 #edb/ref 35 13194139533313 source-id true]
+  [1002 62 "The year the movie was released in theaters" 13194139533313 source-id true]
+  [13194139533313 50 #inst "1970-01-01T00:00:01.000Z" 13194139533313 source-id true]]
  :edb/tempids {"__map/00000000000000000000" 1000
               "__map/00000000000000000001" 1001
               "__map/00000000000000000002" 1002}}
@@ -212,7 +217,7 @@ and basis depend on your database; the timestamp below is illustrative:
 
 The report includes three attribute definitions, their schema installation
 facts, and the transaction time. Each datom is
-`[entity attribute value transaction added?]`; `#edb/ref` marks an entity
+`[entity attribute value transaction source added?]`; `#edb/ref` marks an entity
 reference. The schema maps omit `:db/id`, so EDB generates temporary IDs. Their
 names and allocation order are implementation details.
 

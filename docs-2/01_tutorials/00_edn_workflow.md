@@ -30,7 +30,11 @@ target/release/edb transactor --database edn-demo --endpoint /tmp/edb-edn-demo/w
 ```
 
 The supplied [schema](../../examples/edn/schema.edn) and
-[people](../../examples/edn/people.edn) are complete transaction inputs:
+[people](../../examples/edn/people.edn) are complete transaction inputs. Their
+maps explicitly use the built-in source entity `:db.source/system`, and each
+transaction includes `{:db/id "edb.tx" :db/source :db.source/system}` for its
+generated `:db/txInstant`. Applications can describe and use their own source
+entities.
 
 ```sh
 target/release/edb transact --database edn-demo --endpoint /tmp/edb-edn-demo/writer.sock --request-key install-person-schema --file examples/edn/schema.edn
@@ -58,15 +62,25 @@ delivery through the normal transport.
 
 ## Transactions and exact retries
 
+Map forms use `:db/source`; primitive additions and retractions take the source
+as their final argument. Sources resolve to ordinary entity ids. The metadata-only
+map supplies the source of `:db/txInstant`, not a default for other forms.
+
 ```edn
 ;; No :db/id: assert facts about a new/upserted identity.
-[{:person/name "Alice" :person/email "alice@example.com"}]
+[{:db/id "edb.tx" :db/source :db.source/system}
+ {:db/source :db.source/system
+  :person/name "Alice" :person/email "alice@example.com"}]
 
 ;; Existing identity: change only the facts explicitly asserted.
-[{:db/id [:person/email "alice@example.com"] :person/name "Alicia"}]
+[{:db/id "edb.tx" :db/source :db.source/system}
+ {:db/id [:person/email "alice@example.com"]
+  :db/source :db.source/system
+  :person/name "Alicia"}]
 
 ;; Equivalent authoring with a primitive form.
-[[:db/add [:person/email "alice@example.com"] :person/name "Alicia"]]
+[{:db/id "edb.tx" :db/source :db.source/system}
+ [:db/add [:person/email "alice@example.com"] :person/name "Alicia" :db.source/system]]
 ```
 
 Omitted attributes are not retractions. Lists/vectors of many-values, nested
@@ -76,13 +90,17 @@ nested `:db/id`, including an existing numeric ID or lookup reference, identifie
 the child without requiring a component edge or a repeated unique attribute:
 
 ```edn
-[{:db/id [:person/email "alice@example.com"]
+[{:db/id "edb.tx" :db/source :db.source/system}
+ {:db/id [:person/email "alice@example.com"]
+  :db/source :db.source/system
   :person/friends [{:db/id [:person/email "bob@example.com"]
                     :person/name "Robert"}]}]
 ```
 
 This changes Bob's name through the noncomponent `:person/friends` reference;
 his omitted email and Alice's omitted attributes remain unchanged.
+The nested map inherits the parent's source unless it supplies its own
+`:db/source`; the reference edge retains the parent's source.
 Without `:db/id`, a forward nested map needs a component edge or a unique
 attribute. An anonymous reverse nested map needs a unique attribute: a reverse
 component reference does not make the nested entity the outer entity's component.
@@ -116,9 +134,9 @@ for transaction callbacks and supply query registries in a Rust application.
 `transact` requires a caller-supplied `--request-key`. Retry the same request and
 options with the same key after a lost response. Whitespace/comments, map/set
 order and outer transaction order do not change EDN request identity. Ordered
-list/vector contents and numeric representations remain request data. Equivalent
-EDN and typed authoring are not promised to have identical request digests;
-continue retrying a request through its original representation.
+list/vector contents, numeric representations and explicit sources remain request
+data. Equivalent EDN and typed authoring are not promised to have identical
+request digests; continue retrying a request through its original representation.
 
 EDN intent remains schema-independent until authoritative transaction processing.
 Retained receipt lookup happens before current schema, idents or program bindings
@@ -138,7 +156,8 @@ use edb_core::{Database, TransactionRequest};
 use edb_core::edn::{read_edn, write_edn};
 use edb_core::edn_query::{EdnQueryArgument, parse_query_edn};
 
-let data = read_edn(r#"[{:person/name "Alice"}]"#)?;
+let data = read_edn(r#"[{:db/id "edb.tx" :db/source :db.source/system}
+                      {:db/source :db.source/system :person/name "Alice"}]"#)?;
 let text = write_edn(&data)?;
 let request = TransactionRequest::from_edn("create-alice", &text)?;
 // Send request with the existing Connection/TransactionClient APIs.

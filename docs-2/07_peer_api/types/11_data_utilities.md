@@ -80,8 +80,10 @@ compare as sequences, while maps and sets compare independently of entry order.
 Numeric domains remain distinct for EDN equality: `1` and `1N` are distinct keys.
 
 Choose the data structure for the API receiving it. An `EntityMap` has
-`id: Option<EntityRef>` and `attributes: Vec<(AttributeRef, MapValue)>`;
-`TxForm::EntityMap` describes entity assertions, not a stored map value.
+`id: Option<EntityRef>`, `source: Option<EntityRef>`, and
+`attributes: Vec<(AttributeRef, MapValue)>`; `TxForm::EntityMap` describes entity
+assertions, not a stored map value. Top-level assertion maps supply a source;
+nested maps inherit it unless overridden.
 `MapValue::Many` describes multiple assertions and `MapValue::Nested` a nested
 entity. Transaction-function arguments use `RuntimeValue::Vector` and
 `RuntimeValue::map`; the latter accepts `(Value, RuntimeValue)` pairs, validates

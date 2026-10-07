@@ -71,13 +71,20 @@ placement policy applies. You can override it with an explicit
 
 ### Installing named partitions
 
+The transaction examples below use `99` as an existing source entity id. Each
+submitted transaction includes a metadata declaration such as
+`{:db/id "edb.tx" :db/source 99}` to attribute its generated `:db/txInstant`;
+this does not supply a default source for other forms.
+
 To install a new named partition, transact an entity with an ident and reference
 that new entity as a `:db.install/partition` value of the system entity
 `:db.part/db`. For example, this transaction uses reverse-reference notation to
 install the partition `:app.part/orders`:
 
 ```clojure
-[{:db/ident :app.part/orders
+[{:db/id "edb.tx" :db/source 99}
+ {:db/source 99
+  :db/ident :app.part/orders
   :db.install/_partition :db.part/db}]
 ```
 
@@ -112,6 +119,7 @@ use edb_core::*;
 
 let install = TxForm::EntityMap(EntityMap {
     id: Some(EntityRef::Temp("partition".into())),
+    source: Some(EntityRef::Id(99)),
     attributes: vec![
         (AttributeRef::Ident(Keyword::new("db", "ident")),
          MapValue::Value(Value::Keyword(Keyword::new("app.part", "orders")).into())),
@@ -120,6 +128,9 @@ let install = TxForm::EntityMap(EntityMap {
     ],
 });
 ```
+
+Submit `install` alongside an `EntityMap` with `id: Some(EntityRef::Tx)`,
+`source: Some(EntityRef::Id(99))`, and empty attributes for transaction metadata.
 
 `AttributeRef::Ident(Keyword::new("db.install", "_partition"))` is also accepted
 for this reverse installation spelling. It lowers to ordinary installation
@@ -176,12 +187,13 @@ The value of `:db/force-partition` is a map from tempid strings to desired
 partitions. Named partitions are specified by their installed keyword:
 
 ```clojure
-[{:db/id "order"
+[{:db/id "edb.tx" :db/source 99}
+ {:db/id "order" :db/source 99
   :order/lineItems ["item1" "item2"]}
- {:db/id "item1"
+ {:db/id "item1" :db/source 99
   :lineItem/product "chocolate"
   :lineItem/quantity 1}
- {:db/id "item2"
+ {:db/id "item2" :db/source 99
   :lineItem/product "whisky"
   :lineItem/quantity 2}
  {:db/force-partition {"order" :app.part/orders
@@ -198,8 +210,9 @@ partition 343:
 ```rust
 let partition = implicit_part(343)?;
 let text = format!(r#"
-[{{:db/id "customer" :customer/order "order"}}
- {{:db/id "order" :order/id "55555"}}
+[{{:db/id "edb.tx" :db/source 99}}
+ {{:db/id "customer" :db/source 99 :customer/order "order"}}
+ {{:db/id "order" :db/source 99 :order/id "55555"}}
  {{:db/force-partition {{"customer" {partition} "order" {partition}}}}}]
 "#);
 let report = database.with_edn(&text, 1_000)?;
@@ -223,9 +236,10 @@ as their containing order:
 ```rust
 let partition = implicit_part(500)?;
 let text = format!(r#"
-[{{:db/id "order" :order/lineItems ["item1" "item2"]}}
- {{:db/id "item1" :lineItem/product "chocolate" :lineItem/quantity 1}}
- {{:db/id "item2" :lineItem/product "whisky" :lineItem/quantity 2}}
+[{{:db/id "edb.tx" :db/source 99}}
+ {{:db/id "order" :db/source 99 :order/lineItems ["item1" "item2"]}}
+ {{:db/id "item1" :db/source 99 :lineItem/product "chocolate" :lineItem/quantity 1}}
+ {{:db/id "item2" :db/source 99 :lineItem/product "whisky" :lineItem/quantity 2}}
  {{:db/force-partition {{"order" {partition}}}
    :db/match-partition {{"item1" "order" "item2" "order"}}}}]
 "#);
@@ -328,7 +342,8 @@ edb with --database orders --file order.edn \
 Using the ordinary default, install a named partition:
 
 ```clojure
-[{:db/ident :part/orders :db.install/_partition :db.part/db}]
+[{:db/id "edb.tx" :db/source 99}
+ {:db/source 99 :db/ident :part/orders :db.install/_partition :db.part/db}]
 ```
 
 Then select its keyword as the execution default. A configured name is resolved

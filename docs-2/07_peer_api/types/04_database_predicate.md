@@ -29,8 +29,9 @@ Parameters:
   removed**. Database reads through this argument do not recursively invoke
   this predicate or any earlier chained predicate.
 - `val`: a datom. Its fields are `entity: u64`, `attribute: u32`, `value: Value`,
-  `tx: u64` (a transaction entity ID), and `added: bool`. The callback can see
-  assertions and retractions, including when filtering a point-in-time value.
+  `tx: u64` (a transaction entity ID), `source: u64` (a source entity ID), and
+  `added: bool`. The callback can see assertions and retractions, including when
+  filtering a point-in-time value.
 
 Returns `true` if the datom matches the predicate; `false` excludes it. Returning
 `true` does not guarantee that the datom appears in the read result: other
@@ -79,11 +80,13 @@ use edb_core::{Database, IndexOrder, Keyword, SemanticError};
 
 fn example() -> Result<(), SemanticError> {
     let installed = Database::bootstrap()?.with_edn(r#"[
+      {:db/id "edb.tx" :db/source :db.source/system}
       {:db/ident :person/name :db/valueType :db.type/string
-       :db/cardinality :db.cardinality/one}
+       :db/cardinality :db.cardinality/one :db/source :db.source/system}
     ]"#, 1_000)?.db_after;
     let populated = installed.with_edn(r#"[
-      {:db/id "person" :person/name "Ada"}
+      {:db/id "edb.tx" :db/source :db.source/system}
+      {:db/id "person" :person/name "Ada" :db/source :db.source/system}
     ]"#, 2_000)?.db_after;
     let db = populated.database_value();
     let name = db.schema().resolve_ident(&Keyword::new("person", "name"))

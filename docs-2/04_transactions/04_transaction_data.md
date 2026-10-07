@@ -25,11 +25,13 @@ The symbols `keyword`, `string`, `boolean`, `instant`, `uuid`, `long`, `bigint`,
 ```
 tx-data      = [tx-form*]
 tx-form      = (list-form | map-form | builtin-form | tx-fn)
-list-form    = ([':db/add' tx-entid identifier value]
-              | [':db/retract' tx-entid identifier value?])
-map-form     = {(':db/id' (tx-entid | nil))? (keyword map-value)*}
+list-form    = ([':db/add' tx-entid identifier value source]
+              | [':db/retract' tx-entid identifier value? source])
+map-form     = {(':db/id' (tx-entid | nil))? (':db/source' source)?
+                (keyword map-value)*}
 map-value    = (value | map-form | [map-value*])
 tx-entid     = (identifier | tempid)
+source       = tx-entid
 tempid       = nonempty string not beginning with ':'
 identifier   = (eid | lookup-ref | ident)
 eid          = nonnegative-long | #edb/ref nonnegative-integer
@@ -39,8 +41,8 @@ value        = (string | keyword | symbol | boolean | ref | instant | uuid
               | number | bytes | uri | tuple | function)
 ref          = tx-entid
 number       = (long | bigint | float | double | bigdec)
-builtin-form = ([':db/cas' tx-entid identifier (value | nil) value]
-              | [':db/retractEntity' tx-entid]
+builtin-form = ([':db/cas' tx-entid identifier (value | nil) value source]
+              | [':db/retractEntity' tx-entid source]
               | [':db/ensure' tx-entid identifier])
 tx-fn        = [tx-fn-name tx-fn-arg*]
 tx-fn-name   = (identifier | qualified-symbol | function)
@@ -73,51 +75,57 @@ Inside these forms, there are several ways to specify entities:
 
 Each of these data forms is described in detail below. Schema attributes, idents, lookup refs, and callable bindings resolve against db-before. Install an attribute in one transaction before using it in a later transaction.
 
-The grammar describes the ordinary forms. EDN sets can also supply cardinality-many map values. Top-level partition directive maps are described in [Partitions](02_partitions.md). An empty transaction is valid and still produces transaction metadata. EDN input is data, not evaluated Clojure: bare symbols do not substitute application variables.
+Each assertion or retraction explicitly supplies a source entity identifier, resolved to an ordinary entity id in the datom. A transaction can contain forms from several sources. Source identifiers use the same entity resolution rules as other entity positions; they are not free-form labels.
+
+The examples below use `99` as an illustrative existing source entity id and show the forms relevant to each example. Each submitted transaction also includes an explicit source for its [transaction metadata](#reified-transactions), such as `{:db/id "edb.tx" :db/source 99}`. That declaration does not supply a default source for other forms.
+
+The grammar describes the ordinary forms. EDN sets can also supply cardinality-many map values. Top-level partition directive maps are described in [Partitions](02_partitions.md). A transaction with no domain changes is valid and still requires a source declaration for its transaction metadata. EDN input is data, not evaluated Clojure: bare symbols do not substitute application variables.
 
 ### Native Forms and Request Identity
 
 Rust callers can construct `TxOp` and `TxForm` values directly, including `EntityMap`, `MapValue`, and unresolved `EntityRef` values. `read_edn_transaction` reads EDN into transaction forms without resolving attributes or entities. For a fresh durable request, resolution uses the authoritative db-before; for `with_edn`, it uses the database value supplied by the caller. Both representations use the same map expansion and transaction assessment rules.
 
-Equivalent effects do not imply identical requests. EDN request identity ignores whitespace, comments, map-entry order, set-member order, and the order of the outer transaction forms. It retains the order and list/vector representation inside each form, numeric type distinctions, and decimal scales. Replacing an EDN map with primitive additions, changing a nested vector's order, or rebuilding EDN as typed Rust forms can therefore change request identity even when the resulting facts are the same.
+`TxOp::Add`, `Retract`, and `Cas` carry a `source: EntityRef` field. `RetractEntity`, `InstallAttribute`, and `AlterAttribute` append an `EntityRef` source to their existing tuple arguments. `EntityMap` carries `source: Option<EntityRef>`; omission is allowed when a nested map inherits its parent's explicit source or when the map produces no datoms. `Ensure` and partition directives do not produce datoms and need no source. A native transaction-metadata declaration is an `EntityMap` with `id: Some(EntityRef::Tx)`, `source: Some(source)`, and empty attributes. Primitive-only `DatabaseValue::with` callers instead include a sourced `TxOp::Add` for `:db/txInstant`, matching the call's explicit instant.
+
+Equivalent effects do not imply identical requests. EDN request identity ignores whitespace, comments, map-entry order, set-member order, and the order of the outer transaction forms. It retains sources, the order and list/vector representation inside each form, numeric type distinctions, and decimal scales. Replacing an EDN map with primitive additions, changing a nested vector's order, or rebuilding EDN as typed Rust forms can therefore change request identity even when the resulting facts are the same.
 
 For an [exact retry](00_transactions.md#interpret-the-outcome), retain the original request representation, request key, and explicit basis/time options. A recorded receipt is resolved before fresh schema, ident, or function resolution, so subsequent changes to those bindings do not reinterpret a committed request.
 
 ## Assert and Retract
 
 ```
-list-form                  = ([':db/add' tx-entid identifier value]
-                             | [':db/retract' tx-entid identifier value?])
+list-form                  = ([':db/add' tx-entid identifier value source]
+                             | [':db/retract' tx-entid identifier value? source])
 ```
 
 A primitive list form asserts the addition (*:db/add*) or retraction (*:db/retract*) of a single datom. An addition indicates that a fact is true at a point in time, and a retraction indicates that a fact is not true at a point in time.
 
-Both forms include an entity id, attribute, and a value, with the value being optional for retractions:
+Both forms include an entity id, attribute, value, and source identifier, with the value being optional for retractions:
 
 ```
-[:db/add entity-id attribute value]
-[:db/retract entity-id attribute value?]
+[:db/add entity-id attribute value source-id]
+[:db/retract entity-id attribute value? source-id]
 ```
 
 The example below asserts that 42's primary email is "edb@example.com":
 
 ```
-[:db/add 42 :email/primary-address "edb@example.com"]
+[:db/add 42 :email/primary-address "edb@example.com" 99]
 ```
 
 The example below asserts that 42's primary email is *no longer* "edb@example.com":
 
 ```
-[:db/retract 42 :email/primary-address "edb@example.com"]
+[:db/retract 42 :email/primary-address "edb@example.com" 99]
 ```
 
 As a convenience, you can omit the value in a retract form, e.g.
 
 ```
-[:db/retract 42 :email/primary-address]
+[:db/retract 42 :email/primary-address 99]
 ```
 
-EDB will expand such forms to zero or more retractions, matching all additions of that E/A combination present in db-before.
+EDB will expand such forms to zero or more retractions, matching all additions of that E/A combination present in db-before. The source identifies the retractor, not the source of the assertions being withdrawn. Retractions match E/A/V independently of the original source, and earlier assertions retain their attribution.
 
 Note that adds and retracts in tx-data do not include the transaction id because it is not known until EDB assigns it.
 
@@ -125,17 +133,17 @@ While the names "add" and "retract" are verbs, tx-data forms describe facts rath
 
 ```edn
 ;; Input form
-[:db/retract 42 :email/primary-address "edb@example.com"]
+[:db/retract 42 :email/primary-address "edb@example.com" 99]
 
 ;; Resulting datom, if the fact exists (illustrative transaction entity id)
-[42 :email/primary-address "edb@example.com" 13194139635723 false]
+[42 :email/primary-address "edb@example.com" 13194139635723 99 false]
 ```
 
-For a cardinality-one attribute, adding a different value also retracts the previous value. Omitting an attribute from transaction data leaves it unchanged. Adding two different values to the same cardinality-one attribute does not mean “last one wins”; the resulting conflict fails the transaction.
+For a cardinality-one attribute, adding a different value also retracts the previous value with the source of the new assertion. Omitting an attribute from transaction data leaves it unchanged. Cardinality counts distinct values, so two sources can assert the same value without a conflict. Adding two different values to the same cardinality-one attribute does not mean “last one wins”; the resulting conflict fails the transaction. Other derived assertions and retractions, including composite tuples, likewise carry the source of the contribution that causes them; expansion does not silently choose one source when several contributions are involved.
 
 ### Redundancy Elimination
 
-EDB will automatically exclude redundant datoms in tx-data. Datoms are considered redundant if they are equal to an existing datom in every component except for tx-id. A retraction that does not match the E/A/V of an existing datom is also redundant, as the absence of a datom already (and efficiently!) indicates that a fact is not true.
+EDB will automatically exclude redundant datoms in tx-data. Datoms are considered redundant if they are equal to a current datom in every component except for tx-id, including source. An assertion with the same E/A/V from a different source is retained. A retraction that does not match the E/A/V of a current assertion is redundant, as the absence of a datom already (and efficiently!) indicates that a fact is not true.
 
 Note that entire transactions are never redundant, as the [transaction time](#reified-transactions) is always a new fact.
 
@@ -144,25 +152,27 @@ Some system attributes trigger schema processing. In particular, an assertion of
 ## Map Forms
 
 ```
-map-form                   = {(':db/id' (tx-entid | nil))? (keyword map-value)*}
+map-form                   = {(':db/id' (tx-entid | nil))? (':db/source' source)?
+                              (keyword map-value)*}
 ```
 
-The map form is a shorthand for a set of additions. The map has an optional *:db/id* key identifying the entity, plus any number of attribute/value pairs.
+The map form is a shorthand for a set of additions. The map has an optional *:db/id* key identifying the entity, a *:db/source* key identifying the source of its assertions, plus any number of attribute/value pairs. A top-level entity map that produces assertions requires `:db/source`; a nested map can inherit it from its parent.
 
 ```
 {:db/id entity-id
+ :db/source source-id
  attribute value
  attribute value
  ... }
 ```
 
-The map form is equivalent to a set of primitive additions, where the entity-id is taken from the *:db/id* key in the map (if present) or assigned an (anonymous) temporary id. An explicit `:db/id nil` is treated like an omitted id. `:db/id` is map syntax, not a stored attribute.
+The map form is equivalent to a set of primitive additions, where the entity-id is taken from the *:db/id* key in the map (if present) or assigned an (anonymous) temporary id. An explicit `:db/id nil` is treated like an omitted id. `:db/id` and `:db/source` are map syntax, not stored attributes. Each resulting assertion carries the map's source. To assert different attributes of one entity from different sources, use separate maps for the same entity or primitive forms.
 
 Omitting `:db/id` does not guarantee a distinct new entity: a unique-identity assertion can resolve the anonymous tempid to an existing entity. Anonymous tempids do not collide with explicit tempid names in the submitted forms.
 
 ```
-[:db/add entity-id attribute value]
-[:db/add entity-id attribute value]
+[:db/add entity-id attribute value source-id]
+[:db/add entity-id attribute value source-id]
 ...
 ```
 
@@ -171,7 +181,8 @@ A map adds the supplied attributes; omitted attributes remain unchanged. For a c
 You can specify multiple values for a *:db.cardinality/many* attribute with a list in the value position. The following example transacts a person named "Bob" with multiple aliases:
 
 ```
-[{:person/name "Bob"
+[{:db/source 99
+  :person/name "Bob"
   :person/aliases ["Robert" "Bert" "Bobby" "Curly"]}]
 ```
 
@@ -179,6 +190,7 @@ A single value can also be used for a cardinality-many attribute. To assert a si
 
 ```edn
 [{:db/id "jane"
+  :db/source 99
   :person/friends [[:person/email "joe@example.com"]]}]
 ```
 
@@ -186,10 +198,13 @@ For a cardinality-one ref, the lookup reference is the value directly. For a car
 
 ### Nested Maps
 
+Nested maps inherit their parent's explicit `:db/source` unless they supply their own. An override changes the source of the nested entity's assertions; the reference connecting it to the parent retains the parent map's source.
+
 If an attribute has *:db.type/ref*, you can specify the related entity by nesting a map or maps in the value position. This can be used to specify a parent/child relationship. The map below specifies three entities. It assumes `:order/line-items` is a cardinality-many component ref, `:line-item/product` is a ref, and products named "Chocolate" and "Whisky" already exist with unique `:product/name` values:
 
 ```
-[{:order/line-items [{:line-item/product [:product/name "Chocolate"]
+[{:db/source 99
+  :order/line-items [{:line-item/product [:product/name "Chocolate"]
                       :line-item/quantity 1}
                      {:line-item/product [:product/name "Whisky"]
                       :line-item/quantity 2}]}]
@@ -199,11 +214,14 @@ This map is equivalent to writing three separate maps:
 
 ```
 [{:db/id "order"
+  :db/source 99
   :order/line-items ["item-1", "item-2"]}
  {:db/id "item-1"
+  :db/source 99
   :line-item/product [:product/name "Chocolate"]
   :line-item/quantity 1}
  {:db/id "item-2"
+  :db/source 99
   :line-item/product [:product/name "Whisky"]
   :line-item/quantity 2}]
 ```
@@ -211,12 +229,12 @@ This map is equivalent to writing three separate maps:
 Which in turn is equivalent to writing each datom as a list form:
 
 ```
-[[:db/add "order" :order/line-items "item-1"]
- [:db/add "order" :order/line-items "item-2"]
- [:db/add "item-1" :line-item/product [:product/name "Chocolate"]]
- [:db/add "item-1" :line-item/quantity 1]
- [:db/add "item-2" :line-item/product [:product/name "Whisky"]]
- [:db/add "item-2" :line-item/quantity 2]]
+[[:db/add "order" :order/line-items "item-1" 99]
+ [:db/add "order" :order/line-items "item-2" 99]
+ [:db/add "item-1" :line-item/product [:product/name "Chocolate"] 99]
+ [:db/add "item-1" :line-item/quantity 1 99]
+ [:db/add "item-2" :line-item/product [:product/name "Whisky"] 99]
+ [:db/add "item-2" :line-item/quantity 2 99]]
 ```
 
 EDB requires that an anonymous nested map either be referenced by a forward [component attribute](../03_schema/02_schema_reference.md#dbiscomponent) or include a [unique](../03_schema/01_identity_and_values.md) attribute. A nested map with explicit `:db/id` can identify its entity directly without either condition. Either unique identity or unique value satisfies the anonymous-map guard; only unique identity supplies upsert semantics. This constraint prevents the accidental creation of easily-orphaned entities that have no unique identity or relation to other entities.
@@ -229,6 +247,7 @@ A map key beginning with an underscore in the name portion reverses a ref attrib
 
 ```edn
 [{:db/id [:person/email "joe@example.com"]
+  :db/source 99
   :person/_friends [[:person/email "jane@example.com"]]}]
 ```
 
@@ -249,14 +268,14 @@ Function arguments may contain scalar values, `nil`, lists/vectors, and maps who
 The built-in forms are:
 
 ```edn
-[:db/cas entity attribute old-value new-value]
-[:db/retractEntity entity]
+[:db/cas entity attribute old-value new-value source-id]
+[:db/retractEntity entity source-id]
 [:db/ensure entity spec]
 ```
 
-`:db.fn/cas` and `:db.fn/retractEntity` are accepted aliases. Compare-and-swap requires a cardinality-one attribute and compares against db-before; `nil` in the old-value position means absence. Entity retraction also retracts component descendants. `:db/ensure` requests checks defined by an entity spec; it is virtual transaction input rather than a stored fact.
+`:db.fn/cas` and `:db.fn/retractEntity` are accepted aliases. Compare-and-swap requires a cardinality-one attribute and compares its distinct value against db-before; `nil` in the old-value position means absence. Its source applies to both the new assertion and any generated retraction. Entity retraction also retracts component descendants, attributing the retractions to its supplied source. `:db/ensure` requests checks defined by an entity spec; it is virtual transaction input rather than a stored fact.
 
-See [native computation](../07_peer_api/02_native_computation.md) for compiled callbacks and [persisted programs](01_persisted_programs.md) for durable program deployment. All function expansion runs against the transaction's immutable db-before and shares the transaction's resource limits.
+See [native computation](../07_peer_api/02_native_computation.md) for compiled callbacks and [persisted programs](01_persisted_programs.md) for durable program deployment. All function expansion runs against the transaction's immutable db-before and shares the transaction's resource limits. Functions return forms with explicit sources under the same rules as directly supplied forms; invoking a function does not implicitly attribute its results to the function or caller.
 
 The [transaction functions reference](07_transaction_functions.md) covers when
 to use functions, built-in operations, cancellation, testing and deployment.
@@ -277,9 +296,10 @@ Having obtained an entity id, you can use it anywhere in transaction data that a
 
 ```
 ;; list form
-[:db/add 42 :customer/status :active]
+[:db/add 42 :customer/status :active 99]
 ;; equivalent map form
 {:db/id 42
+ :db/source 99
  :customer/status :active}
 ```
 
@@ -287,6 +307,7 @@ For brevity, examples often show entity ids as famous small numbers such as '42'
 
 ```
 {:db/id 17592186046416
+ :db/source 99
  :customer/status :active}
 ```
 
@@ -310,33 +331,35 @@ Tempids can be used in transaction data wherever an entity (E) is expected. The 
 
 ```
 ;; using "jdoe" to connect two datoms about the same entity
-[[:db/add "jdoe" :person/first "Jan"]
- [:db/add "jdoe" :person/last "Doe"]]
+[[:db/add "jdoe" :person/first "Jan" 99]
+ [:db/add "jdoe" :person/last "Doe" 99]]
 
 ;; using "jdoe" twice, to relate three different entities ceo->jdoe->intern
-[[:db/add "ceo" :hr/manages "jdoe"]
- [:db/add "jdoe" :hr/manages "intern"]
- [:db/add "intern" :person/first "Alex"]]
+[[:db/add "ceo" :hr/manages "jdoe" 99]
+ [:db/add "jdoe" :hr/manages "intern" 99]
+ [:db/add "intern" :person/first "Alex" 99]]
 
 ;; using "jdoe" to relate two different map forms
-[{:person/email "shaftoe@example.com"
+[{:db/source 99
+  :person/email "shaftoe@example.com"
   :person/friends ["jdoe"]}
  {:db/id "jdoe"
+  :db/source 99
   :person/email "jdoe@example.com"}]
 ```
 
 During transaction assessment, EDB assigns an entity id to every distinct tempid established in entity position. Both instances of "jdoe" below resolve to the same entity id:
 
 ```edn
-[[:db/add "jdoe" :person/first "Jane"]
- [:db/add "jdoe" :person/last "Doe"]]
+[[:db/add "jdoe" :person/first "Jane" 99]
+ [:db/add "jdoe" :person/last "Doe" 99]]
 
 ;; Resulting datoms (illustrative entity and transaction entity ids)
-[[42 :person/first "Jane" 13194139635723 true]
- [42 :person/last "Doe" 13194139635723 true]]
+[[42 :person/first "Jane" 13194139635723 99 true]
+ [42 :person/last "Doe" 13194139635723 99 true]]
 ```
 
-A tempid used as a reference value must also be established in entity position in the same transaction; a reference-only tempid fails with `transaction/tempid-not-an-entity`. The intern example includes an assertion about "intern" for this reason. The report's tempid map supplies the resolved ids. Tempids are local to one transaction; reusing a string in a later transaction does not identify the previous entity.
+A tempid used as a reference value or source must also be established in entity position in the same transaction; a reference-only or source-only tempid fails with `transaction/tempid-not-an-entity`. The intern example includes an assertion about "intern" for this reason. A new source can be described and used as a source in the same transaction, including as the source of its own description. The report's tempid map supplies the resolved ids. Tempids are local to one transaction; reusing a string in a later transaction does not identify the previous entity.
 
 An assertion of a unique identity can resolve a tempid to an existing entity rather than allocate a new one. Unique value does not supply this upsert behavior. Multiple identities for one tempid must agree on the same existing entity. See [Value and Identity Rules](../03_schema/01_identity_and_values.md), particularly the rules for composite identity.
 
@@ -348,6 +371,7 @@ Idents are named via the *:db/ident* attribute, and are most often used to name 
 
 ```
 {:db/ident :address/city
+ :db/source 99
  :db/valueType :db.type/string
  :db/cardinality :db.cardinality/one}
 ```
@@ -357,7 +381,7 @@ Idents can be used in EDB data anywhere an entity is expected. Idents are resolv
 For example, in any transaction against a database including the *:address/city* entity above, you can use *:address/city* in the attribute position of a datom, e.g.
 
 ```
-[:db/add 42 :address/city "Olin"]
+[:db/add 42 :address/city "Olin" 99]
 ```
 
 In fact, since idents name attributes, every example of transaction data on this page is an example of idents in use.
@@ -418,16 +442,21 @@ EDN does not coerce a long into a double merely because the attribute expects a 
 
 When the transactor processes a transaction, it creates a transaction entity to represent it. By default, this entity has one attribute, *:db/txInstant*, whose value is the instant that the transaction was processed. In addition, every datom in a transaction refers to the transaction entity through its *:tx*.
 
-You can add additional attributes to a transaction entity to capture other useful information, such as the purpose of the transaction, the application that executed it, the provenance of the data it added, or the user who caused it to execute, or any other information that might be useful for auditing purposes.
+Each submission explicitly supplies the source of `:db/txInstant`, either through `{:db/id "edb.tx" :db/source source-id}` with no attribute entries or an explicit sourced addition of `:db/txInstant`. The metadata-only map declares the source for the generated instant without adding a domain attribute or providing a default for other transaction forms. A populated `"edb.tx"` map supplies the source of only its own assertions, allowing transaction annotations from several sources. Initial database bootstrap statements use the ordinary built-in source entity `:db.source/system`; application forms require their own explicit sources.
+
+You can add additional attributes to a transaction entity to capture other useful information, such as the purpose of the transaction, the application that executed it, or the user who caused it to execute. These describe the transaction as a whole; each assertion or retraction separately identifies its source in the datom's source coordinate.
 
 EDB will resolve the reserved [tempid](#tempids) "edb.tx" to the current transaction. You can use this tempid to make assertions about the current transaction as you would for any other entity.
 
-The example below annotates a transaction imported from a file with a *:data/src* attribute to indicate the source of the import.
+The example below annotates a transaction imported from a file with a *:data/src* attribute to record the import URL. The source entity `99` identifies the source of the assertions, independently of that URL.
 
 ```
-[{:db/id "edb.tx"
+[{:db/id "edb.tx" :db/source 99}
+ {:db/id "edb.tx"
+  :db/source 99
   :data/src "https://example.com/catalogs/catalog-2_29_2012.xml"}
- {:product/name "Marbles"}]
+ {:db/source 99
+  :product/name "Marbles"}]
 ```
 
 You can query transaction entities like any other entities in the system.
@@ -441,6 +470,7 @@ Explicit additions of *:db/txInstant* must respect the monotonic ordering of wal
 
 ```edn
 [{:db/id "edb.tx"
+  :db/source 99
   :db/txInstant #inst "2026-09-26T12:00:00Z"
   :data/src "https://example.com/catalogs/catalog-2_29_2012.xml"}]
 ```

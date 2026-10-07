@@ -20,18 +20,19 @@ The examples below refer to Jane Doe, her address in North Carolina, and John,
 who likes Jane. At the datom level, these facts look like this (entity and
 transaction IDs are shown symbolically, and attributes by their idents):
 
-| E | A | V | Tx | Added |
-| --- | --- | --- | --- | --- |
-| Jane | `:person/firstName` | `"Jane"` | T1 | `true` |
-| Jane | `:person/lastName` | `"Doe"` | T1 | `true` |
-| Jane | `:person/address` | Address | T1 | `true` |
-| Address | `:address/state` | `"NC"` | T1 | `true` |
-| John | `:person/firstName` | `"John"` | T2 | `true` |
-| John | `:person/likes` | Jane | T2 | `true` |
+| E | A | V | Tx | S | Added |
+| --- | --- | --- | --- | --- | --- |
+| Jane | `:person/firstName` | `"Jane"` | T1 | `:db.source/system` | `true` |
+| Jane | `:person/lastName` | `"Doe"` | T1 | `:db.source/system` | `true` |
+| Jane | `:person/address` | Address | T1 | `:db.source/system` | `true` |
+| Address | `:address/state` | `"NC"` | T1 | `:db.source/system` | `true` |
+| John | `:person/firstName` | `"John"` | T2 | `:db.source/system` | `true` |
+| John | `:person/likes` | Jane | T2 | `:db.source/system` | `true` |
 
 Each row is a fact about the entity in E. The reference values in V connect
 Jane to her address and John to Jane. Tx identifies the transaction that
-asserted the fact; `Added = true` marks an assertion. Reading Jane's attributes
+asserted the fact; S identifies the source, shown here by its ident, and
+`Added = true` marks an assertion. Reading Jane's attributes
 gathers the rows with Jane in E. Following `:person/address` reaches the rows
 about Address; navigating backward through `:person/likes` reaches John.
 
@@ -44,7 +45,9 @@ flowchart LR
 This setup creates those facts, together with a street and email address, in an
 in-memory database. It groups all the data assertions into one transaction
 instead of the two illustrated above. The database allocates entity IDs; the
-examples retain Jane's ID as `jane_id`.
+examples retain Jane's ID as `jane_id`. Each map explicitly attributes its facts
+to `:db.source/system`. The metadata-only `"edb.tx"` maps attribute the generated
+transaction instants.
 
 ```rust
 use edb_core::{
@@ -53,27 +56,32 @@ use edb_core::{
 };
 
 let installed = Database::bootstrap()?.with_edn(r#"[
-  {:db/ident :person/firstName :db/valueType :db.type/string
+  {:db/id "edb.tx" :db/source :db.source/system}
+  {:db/source :db.source/system :db/ident :person/firstName :db/valueType :db.type/string
    :db/cardinality :db.cardinality/one}
-  {:db/ident :person/lastName :db/valueType :db.type/string
+  {:db/source :db.source/system :db/ident :person/lastName :db/valueType :db.type/string
    :db/cardinality :db.cardinality/one}
-  {:db/ident :person/email :db/valueType :db.type/string
+  {:db/source :db.source/system :db/ident :person/email :db/valueType :db.type/string
    :db/cardinality :db.cardinality/one :db/unique :db.unique/identity}
-  {:db/ident :person/address :db/valueType :db.type/ref
+  {:db/source :db.source/system :db/ident :person/address :db/valueType :db.type/ref
    :db/cardinality :db.cardinality/one}
-  {:db/ident :person/likes :db/valueType :db.type/ref
+  {:db/source :db.source/system :db/ident :person/likes :db/valueType :db.type/ref
    :db/cardinality :db.cardinality/many}
-  {:db/ident :address/street :db/valueType :db.type/string
+  {:db/source :db.source/system :db/ident :address/street :db/valueType :db.type/string
    :db/cardinality :db.cardinality/one}
-  {:db/ident :address/state :db/valueType :db.type/string
+  {:db/source :db.source/system :db/ident :address/state :db/valueType :db.type/string
    :db/cardinality :db.cardinality/one}
 ]"#, 0)?.db_after;
 
 let report = installed.with_edn(r#"[
-  {:db/id "address" :address/street "123 Main Street" :address/state "NC"}
-  {:db/id "jane" :person/firstName "Jane" :person/lastName "Doe"
+  {:db/id "edb.tx" :db/source :db.source/system}
+  {:db/id "address" :db/source :db.source/system
+   :address/street "123 Main Street" :address/state "NC"}
+  {:db/id "jane" :db/source :db.source/system
+   :person/firstName "Jane" :person/lastName "Doe"
    :person/email "jane@example.com" :person/address "address"}
-  {:db/id "john" :person/firstName "John" :person/likes ["jane"]}
+  {:db/id "john" :db/source :db.source/system
+   :person/firstName "John" :person/likes ["jane"]}
 ]"#, 1)?;
 let jane_id = report.tempids["jane"];
 let john_id = report.tempids["john"];
@@ -233,7 +241,8 @@ report that view's boundaries.
 Entities represent only a point in time, not the database across time. Notice
 that the *across time* aspect of the database vanishes when making entities.
 An entity is an associative view of the facts visible in its captured value,
-not an attribute history.
+not an attribute history. It projects distinct values, so contributions of the
+same value from different sources do not change scalar or collection shapes.
 
 | Datom | Entity |
 | --- | --- |
@@ -241,10 +250,12 @@ not an attribute history.
 | A | keys |
 | V | values |
 | Tx | n/a |
+| S | n/a |
 | Added | n/a |
 
-The transaction and added/retracted fields of a datom do not become fields of
-the entity view. To inspect them, use the captured database's datoms or history.
+The transaction, source, and added/retracted fields of a datom do not become
+fields of the entity view. To inspect them, use the captured database's datoms or
+history.
 
 The point-in-time nature of entities means that entities can be derived from
 point-in-time database views: a captured database, `as_of(t)`, `since(t)`, a

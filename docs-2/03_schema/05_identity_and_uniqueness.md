@@ -33,8 +33,13 @@ For example, after installing `:person/email`, this transaction requests an
 entity identified within the transaction as `"joe"`:
 
 ```edn
-[{:db/id "joe" :person/email "joe@example.com"}]
+[{:db/id "edb.tx" :db/source 99}
+ {:db/id "joe" :db/source 99 :person/email "joe@example.com"}]
 ```
+
+The transaction examples assume entity 99 identifies the contributor. Each map
+declares its source; the metadata-only `"edb.tx"` map attributes the generated
+transaction instant.
 
 The transaction report's `tempids` map gives the actual id assigned to each
 named tempid. Reusing a tempid string in a later transaction does not identify
@@ -64,7 +69,7 @@ value for the `:db/ident` attribute:
 
 ```edn
 ;; Attribute definition elided for brevity.
-{:db/ident :person/loves}
+{:db/source 99 :db/ident :person/loves}
 ```
 
 When an entity has an ident, you can use that ident in place of the numeric
@@ -102,7 +107,7 @@ These characteristics also imply situations where idents should *not* be used:
 Idents can be used instead of entity ids in the following API positions:
 
 - As the identifier argument to `entity` and `pull`.
-- In the e and a positions, and reference-valued v positions, of assertions and
+- In the e, a and s positions, and reference-valued v positions, of assertions and
   retractions in EDN transactions and speculative `with_edn` transactions.
 - In the e and a positions, and reference-valued v positions, of database
   patterns in a query. A keyword on a keyword-valued attribute remains a keyword.
@@ -126,7 +131,9 @@ Unique identity is specified through an attribute with `:db/unique` set to
 unique:
 
 ```edn
-[{:db/ident :inv/sku
+[{:db/id "edb.tx" :db/source 99}
+ {:db/source 99
+  :db/ident :inv/sku
   :db/valueType :db.type/string
   :db/cardinality :db.cardinality/one
   :db/unique :db.unique/identity}]
@@ -140,7 +147,9 @@ properties:
 - A unique identity attribute is indexed by value, in order to support uniqueness
   checks. Specifying `:db/index true` on a new unique attribute is redundant.
 - Uniqueness checks are per-attribute, and do not prevent you from using the same
-  value with a different attribute elsewhere.
+  value with a different attribute elsewhere. They apply across sources: several
+  sources can assert the same key on one entity, but cannot assign it to different
+  entities.
 - If a transaction specifies a unique identity for a temporary id, and that
   unique identity already exists in the database, then that temporary id resolves
   to the *existing* entity in the system. This *upsert* behavior makes it possible
@@ -158,8 +167,10 @@ tempid is both John Doe and account 1007.
 
 Uniqueness can be declared on reference attributes (`:db.type/ref`) as well as
 scalar and tuple attributes. Bytes attributes cannot be unique. Only
-`:db.cardinality/one` attributes can be unique. NaN cannot be used as a unique
-key; see [value and identity rules](01_identity_and_values.md).
+`:db.cardinality/one` attributes can be unique. Cardinality counts distinct values,
+so assertions of the same value by different sources still satisfy cardinality one.
+NaN cannot be used as a unique key; see
+[value and identity rules](01_identity_and_values.md).
 
 EDB provides a mechanism to declare composite uniqueness constraints via
 [composite tuples](02_schema_reference.md#composite-tuples). A fresh tempid that
@@ -184,8 +195,9 @@ Unique values have the same uniqueness constraint as unique identities, with one
 critical difference: attempts to assert a new tempid with a unique value already
 held by another entity cause `transaction/unique-value-conflict`, rather than resolving
 the tempid to that entity. An assertion against the existing entity is allowed;
-an exact reassertion is redundant. Uniqueness applies to the resulting current
-facts, not to every assertion ever retained in history.
+reasserting the same entity, attribute, value and source is redundant. A different
+source's assertion preserves its own attribution in history. Uniqueness applies to
+the resulting current facts, not to every assertion ever retained in history.
 
 ## Squuids
 
@@ -251,7 +263,9 @@ You can also use lookup refs to refer to existing entities in transactions,
 avoiding extra lookup code:
 
 ```edn
-[{:db/id [:person/email "joe@example.com"]
+[{:db/id "edb.tx" :db/source 99}
+ {:db/id [:person/email "joe@example.com"]
+  :db/source 99
   :person/loves :pizza}]
 ```
 
@@ -267,9 +281,9 @@ Lookup refs have the following restrictions and resolution rules:
   as it exists before the transaction is processed, so you cannot use a lookup
   ref to look up an entity being defined in the same transaction. Use a shared
   tempid for transaction-local references instead.
-- Transactions accept lookup refs in entity positions and reference-valued
-  positions. A cardinality-many reference in a map needs an outer collection,
-  e.g. `:person/friends [[:person/email "joe@example.com"]]`.
+- Transactions accept lookup refs in entity and source positions and
+  reference-valued positions. A cardinality-many reference in a map needs an outer
+  collection, e.g. `:person/friends [[:person/email "joe@example.com"]]`.
 - Database query patterns resolve a lookup ref in the **entity position**, either
   as a literal or through a parameterized input. Attribute positions require an
   attribute id or ident. Query reference-value positions do not resolve lookup

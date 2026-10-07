@@ -10,7 +10,8 @@ multiple data sources of different types.
 
 EDB indexes are covering indexes. This means the index actually contains the
 datoms, rather than just a pointer to them. When you (or an EDB query) iterate an
-index, you get the datoms themselves, without any additional entity lookup.
+index, you get the full datoms—`[e a v t s added?]`, including the source entity
+id—without any additional entity lookup.
 Durable cursors can still fetch index nodes as they advance.
 
 ## Datoms API
@@ -30,18 +31,21 @@ use edb_core::{
 };
 
 let installed = Database::bootstrap()?.with_edn(r#"[
+  {:db/id "edb.tx" :db/source :db.source/system}
   {:db/ident :inv/sku
+   :db/source :db.source/system
    :db/valueType :db.type/string
    :db/cardinality :db.cardinality/one
    :db/index true}
 ]"#, 1)?.db_after;
 let memory = installed.with_edn(r#"[
-  {:inv/sku "SKU-0"}
-  {:inv/sku "SKU-1"}
-  {:inv/sku "SKU-10"}
-  {:inv/sku "SKU-42"}
-  {:inv/sku "SKU-43"}
-  {:inv/sku "SKU-44"}
+  {:db/id "edb.tx" :db/source :db.source/system}
+  {:db/source :db.source/system :inv/sku "SKU-0"}
+  {:db/source :db.source/system :inv/sku "SKU-1"}
+  {:db/source :db.source/system :inv/sku "SKU-10"}
+  {:db/source :db.source/system :inv/sku "SKU-42"}
+  {:db/source :db.source/system :inv/sku "SKU-43"}
+  {:db/source :db.source/system :inv/sku "SKU-44"}
 ]"#, 2)?.db_after;
 let db = memory.database_value();
 let sku = db.schema().resolve_ident(&Keyword::new("inv", "sku"))
@@ -68,7 +72,8 @@ prefix to that exact value. It does not include `"SKU-43"`.
 
 `IndexPrefix` contains resolved IDs and values. Its components must be contiguous
 from the left: an AVET entity component requires a value component. Prefixes
-support up to E/A/V in their index order; they do not have a transaction field.
+support up to E/A/V in their index order; they do not have transaction or source
+fields.
 See [the index model](01_index_model.md) for component order and index coverage.
 
 ## Seek APIs
@@ -114,7 +119,8 @@ The schema-aware helpers `eavt_boundary`, `aevt_boundary`, `avet_boundary`, and
 `IndexComponents::Empty`, `One`, `Two`, `Three`, and `Four` express zero through
 four contiguous components in index order. The fourth is
 `IndexTransaction::T(t)` or `IndexTransaction::Tx(tx_entity)`; transaction order
-is descending. Assertion/retraction is not a fifth boundary component.
+is descending, followed by source ascending and assertions before retractions.
+Source and assertion/retraction are not boundary components.
 `collect_seek_datoms` and `collect_reverse_seek_datoms` explicitly materialize
 their respective cursors.
 

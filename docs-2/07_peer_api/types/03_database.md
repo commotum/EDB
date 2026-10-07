@@ -42,6 +42,7 @@ corresponding `IndexPrefix` or `IndexBoundary` variant.
 | `IndexOrder::Avet` | AVET | Attribute, value, entity, transaction. |
 | `IndexOrder::Vaet` | VAET | Value, attribute, entity, transaction; reverse references. |
 
+All four retain the source entity ID after the transaction coordinate.
 EAVT and AEVT contain all datoms visible in the selected view. AVET contains
 datoms for attributes with indexing or uniqueness enabled and an available
 projection. VAET contains datoms for reference attributes. See the
@@ -156,6 +157,12 @@ The input is primitive operations, transaction forms, or EDN transaction data,
 respectively. Supply the transaction instant explicitly as Unix epoch
 milliseconds.
 
+Each assertion and retraction explicitly supplies its source through the
+transaction form. A metadata-only map
+`{:db/id "edb.tx" :db/source S}` attributes the generated `:db/txInstant`;
+primitive operations use an explicit sourced `TxOp::Add` for that fact instead.
+This declaration does not supply a default source for other forms.
+
 The report contains `db_before`, `db_after`, `tx_data`, and `tempids`. No
 connection advances and no entity IDs are reserved. IDs allocated on a
 speculative branch are not a promise of IDs allocated by a later submission.
@@ -214,7 +221,9 @@ Use a bounded seek for a history AVET range.
 A history database cannot be used with APIs that require a single point in
 time: entity navigation, Pull (including index Pull), or speculative
 transactions. Queries can return additions and retractions, distinguished by
-the fifth datom position (`?added`); raw reads expose `Datom.added`.
+the sixth datom position (`?added`); the fifth is the source entity ID.
+Raw reads expose `Datom.source` and `Datom.added`. Each retained assertion and
+retraction keeps its own attribution.
 No-history retention and excision can remove historical datoms. The
 [transaction log](../../06_indexes/00_indexes_and_log.md) is a separate API.
 
@@ -366,7 +375,7 @@ Collecting methods return vectors. Cursors yield
 `Result<Datom, SemanticError>` incrementally: both construction and advancement
 can fail, and an error terminates the cursor. Handle each result. A [Datom](05_datom.md) has
 `entity: u64`, `attribute: u32`, `value: Value`, `tx: u64` (a transaction entity
-ID), and `added: bool`.
+ID), `source: u64` (a source entity ID), and `added: bool`.
 
 AVET availability depends on the captured value. Unrestricted AVET scans omit
 unavailable attributes. Attribute-qualified seeks reject unavailable projections;
@@ -518,16 +527,21 @@ use edb_core::edn_pull::parse_pull_edn;
 fn example() -> Result<(), SemanticError> {
     let initial = Database::bootstrap()?.database_value();
     let installed = initial.with_edn(r#"[
-      {:db/ident :person/name
+      {:db/id "edb.tx" :db/source :db.source/system}
+      {:db/ident :person/name :db/source :db.source/system
        :db/valueType :db.type/string
        :db/cardinality :db.cardinality/one}
     ]"#, 1_000)?.db_after;
     let first = installed.with_edn(r#"[
-      {:db/id "person" :person/name "Ada"}
+      {:db/id "edb.tx" :db/source :db.source/system}
+      {:db/id "person" :db/source :db.source/system :person/name "Ada"}
     ]"#, 2_000)?;
     let id = first.tempids["person"];
     let changed = first.db_after.with_edn(
-        &format!(r#"[[:db/add {id} :person/name "Augusta"]]"#),
+        &format!(r#"[
+          {{:db/id "edb.tx" :db/source :db.source/system}}
+          [:db/add {id} :person/name "Augusta" :db.source/system]
+        ]"#),
         3_000,
     )?.db_after;
     let pattern = parse_pull_edn("[:person/name]")?;

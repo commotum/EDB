@@ -16,27 +16,29 @@ value before deriving a view when you also need the original.
 All the inventory examples below use an entity that tracks the quantity of
 dilithium crystals on hand at a given point in time. The subset of the data
 relevant to the examples is shown below. `item` is the inventory entity, and
-`tx1` through `tx5` are the five transaction entity IDs. All dates are UTC.
+`tx1` through `tx5` are the five transaction entity IDs. This setup explicitly
+attributes each statement to the built-in source entity `:db.source/system`,
+abbreviated `system` in the table. All dates are UTC.
 
-| e | a | v | tx | added |
-| --- | --- | --- | --- | --- |
-| tx1 | :db/txInstant | 2013-12-01T00:00:00Z | tx1 | true |
-| item | :item/id | DLC-042 | tx1 | true |
-| item | :item/description | Dilithium Crystals | tx1 | true |
-| item | :item/count | 100 | tx1 | true |
-| tx2 | :db/txInstant | 2013-12-20T00:00:00Z | tx2 | true |
-| item | :item/count | 100 | tx2 | false |
-| item | :item/count | 250 | tx2 | true |
-| tx3 | :db/txInstant | 2014-02-28T00:00:00Z | tx3 | true |
-| item | :item/count | 250 | tx3 | false |
-| item | :item/count | 50 | tx3 | true |
-| tx4 | :db/txInstant | 2014-04-01T00:00:00Z | tx4 | true |
-| tx4 | :tx/error | true | tx4 | true |
-| item | :item/count | 50 | tx4 | false |
-| item | :item/count | 9999 | tx4 | true |
-| tx5 | :db/txInstant | 2014-05-15T00:00:00Z | tx5 | true |
-| item | :item/count | 9999 | tx5 | false |
-| item | :item/count | 100 | tx5 | true |
+| e | a | v | tx | s | added |
+| --- | --- | --- | --- | --- | --- |
+| tx1 | :db/txInstant | 2013-12-01T00:00:00Z | tx1 | system | true |
+| item | :item/id | DLC-042 | tx1 | system | true |
+| item | :item/description | Dilithium Crystals | tx1 | system | true |
+| item | :item/count | 100 | tx1 | system | true |
+| tx2 | :db/txInstant | 2013-12-20T00:00:00Z | tx2 | system | true |
+| item | :item/count | 100 | tx2 | system | false |
+| item | :item/count | 250 | tx2 | system | true |
+| tx3 | :db/txInstant | 2014-02-28T00:00:00Z | tx3 | system | true |
+| item | :item/count | 250 | tx3 | system | false |
+| item | :item/count | 50 | tx3 | system | true |
+| tx4 | :db/txInstant | 2014-04-01T00:00:00Z | tx4 | system | true |
+| tx4 | :tx/error | true | tx4 | system | true |
+| item | :item/count | 50 | tx4 | system | false |
+| item | :item/count | 9999 | tx4 | system | true |
+| tx5 | :db/txInstant | 2014-05-15T00:00:00Z | tx5 | system | true |
+| item | :item/count | 9999 | tx5 | system | false |
+| item | :item/count | 100 | tx5 | system | true |
 
 Here is an in-memory setup. `with_edn` returns a speculative transaction report;
 these examples require no server and commit nothing to storage. In an
@@ -55,37 +57,47 @@ use edb_core::edn_query::{EdnQueryArgument, parse_query_edn};
 use edb_core::edn_value::query_value_to_edn;
 
 let schema = r#"[
- {:db/ident :item/id :db/valueType :db.type/string
+ {:db/id "edb.tx" :db/source :db.source/system}
+ {:db/source :db.source/system
+  :db/ident :item/id :db/valueType :db.type/string
   :db/cardinality :db.cardinality/one :db/unique :db.unique/identity}
- {:db/ident :item/description :db/valueType :db.type/string
+ {:db/source :db.source/system
+  :db/ident :item/description :db/valueType :db.type/string
   :db/cardinality :db.cardinality/one}
- {:db/ident :item/count :db/valueType :db.type/long
+ {:db/source :db.source/system
+  :db/ident :item/count :db/valueType :db.type/long
   :db/cardinality :db.cardinality/one}
- {:db/ident :tx/error :db/valueType :db.type/boolean
+ {:db/source :db.source/system
+  :db/ident :tx/error :db/valueType :db.type/boolean
   :db/cardinality :db.cardinality/one}
 ]"#;
 let installed = Database::bootstrap()?.with_edn(schema, 0)?.db_after;
 let first = installed.with_edn(
-    r#"[{:db/id "crystals" :item/id "DLC-042"
+    r#"[{:db/id "edb.tx" :db/source :db.source/system}
+        {:db/id "crystals" :db/source :db.source/system :item/id "DLC-042"
          :item/description "Dilithium Crystals" :item/count 100}]"#,
     1385856000000,
 )?;
 let second = first.db_after.with_edn(
-    r#"[{:db/id [:item/id "DLC-042"] :item/count 250}]"#,
+    r#"[{:db/id "edb.tx" :db/source :db.source/system}
+        {:db/id [:item/id "DLC-042"] :db/source :db.source/system :item/count 250}]"#,
     1387497600000,
 )?;
 let third = second.db_after.with_edn(
-    r#"[{:db/id [:item/id "DLC-042"] :item/count 50}]"#,
+    r#"[{:db/id "edb.tx" :db/source :db.source/system}
+        {:db/id [:item/id "DLC-042"] :db/source :db.source/system :item/count 50}]"#,
     1393545600000,
 )?;
 let fourth = third.db_after.with_edn(
-    r#"[{:db/id [:item/id "DLC-042"] :item/count 9999}
-        {:db/id "edb.tx" :tx/error true}]"#,
+    r#"[{:db/id "edb.tx" :db/source :db.source/system}
+        {:db/id [:item/id "DLC-042"] :db/source :db.source/system :item/count 9999}
+        {:db/id "edb.tx" :db/source :db.source/system :tx/error true}]"#,
     1396310400000,
 )?;
 let bad_tx = fourth.tx_data[0].tx;
 let fifth = fourth.db_after.with_edn(
-    r#"[{:db/id [:item/id "DLC-042"] :item/count 100}]"#,
+    r#"[{:db/id "edb.tx" :db/source :db.source/system}
+        {:db/id [:item/id "DLC-042"] :db/source :db.source/system :item/count 100}]"#,
     1400112000000,
 )?;
 let db = fifth.db_after.database_value();
@@ -95,6 +107,10 @@ let item = EntityIdentifier::Lookup {
 };
 let wildcard = parse_pull_edn("[*]")?;
 ```
+
+Each metadata-only `edb.tx` map supplies the source for the generated
+`:db/txInstant`; the other maps supply sources for their own assertions and
+any resulting retractions.
 
 ## as-of
 
@@ -125,7 +141,9 @@ not use the `as_of` predecessor rule. See
 [partitions](../04_transactions/02_partitions.md).
 
 Because the `:item/count` of dilithium crystals changes over time, different
-`as_of` views show different counts:
+`as_of` views show different counts. Pull and entity navigation project distinct
+values: two sources asserting the same count still produce one count value,
+while history retains the separate contributions.
 
 ```rust
 let current = db.pull(&wildcard, item.clone())?;
@@ -248,7 +266,7 @@ let history = db.clone().history();
 let query = parse_query_edn(r#"
     [:find ?aname ?v ?inst
      :in $ ?e
-     :where [?e ?a ?v ?tx true]
+     :where [?e ?a ?v ?tx _ true]
             [?tx :db/txInstant ?inst]
             [?a :db/valueType _]
             [?a :db/ident ?aname]]
@@ -267,7 +285,10 @@ return human-readable attribute names. The count assertions are 100 on December 
 250 on December 20, 50 on February 28, 9999 on April 1, and 100 on May 15. Query
 relations have no chronological order guarantee; sort the result by `?inst` in
 the caller when presenting a timeline. Replace `true` with `?added` and return
-that variable to include retractions as well.
+that variable to include retractions as well. To distinguish sources, replace
+the `_` source slot with `?source` and add it to `:find`. History retains distinct
+contributions of the same value. A retraction retains the retracting source
+without changing the source of the earlier assertion.
 
 Simplified views of data that do not account for time are incompatible with
 history, since a history database can see multiple different values for the
@@ -316,8 +337,9 @@ under an arbitrary custom filter. Filtering does not repair the transaction
 history or transact a correction. A later retraction of 9999 in `tx5` also remains
 visible in the corrected history; it belongs to a different transaction.
 
-Retraction collapse respects stored-fact equality. In particular, top-level
-decimal values with equal magnitudes but different scales remain distinct:
+Retraction collapse matches entity, attribute and stored value, regardless of
+the original asserting source. In particular, top-level decimal values with
+equal magnitudes but different scales remain distinct:
 retracting `1.0M` does not retract `1.00M`. This applies to both forward and
 reverse filtered index traversal. See
 [decimal equality and stored scale](../03_schema/01_identity_and_values.md#decimal-equality-and-stored-scale).
@@ -366,8 +388,9 @@ which clauses receive the plain source; this is part of its trusted read policy.
 Filters can do more than look at single datoms. They can also consider datoms in
 the context of the database. For example, imagine that you mark the transactions
 in your system with a `:source/confidence` field that indicates your confidence
-in the source, on a scale from 0 to 100. You could then filter a point-in-time
-database as follows:
+in that transaction's contributions, on a scale from 0 to 100. This is transaction
+metadata; the individual datoms retain their own sources. You could then filter
+a point-in-time database as follows:
 
 ```rust
 fn filter_by_confidence(db: DatabaseValue, conf: i64) -> DatabaseValue {
@@ -410,8 +433,10 @@ added by transactions with a confidence score higher than 90:
 
 Install `:source/confidence` as a cardinality-one Long and `:story/title` as a
 cardinality-one String. A transaction can assert both a story title and
-`{:db/id "edb.tx" :source/confidence 95}`. The threshold check does not itself
-enforce the application's 0–100 range.
+`{:db/id "edb.tx" :db/source :db.source/system :source/confidence 95}`,
+with an explicit source on the story assertion and the metadata-only `edb.tx`
+map for `:db/txInstant`. The threshold check does not itself enforce the
+application's 0–100 range.
 
 ## Usage Considerations
 

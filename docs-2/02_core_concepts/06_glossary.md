@@ -16,8 +16,8 @@ Use `DatabaseValue::as_of(t)` for logical time or `as_of_time_point` for a
 ## Assertion
 
 An atomic fact in the database, associating an [entity](#entity),
-[attribute](#attribute), [value](#value), and a [tx](#tx). Opposite of a
-[retraction](#retraction). Its datom has `added = true`.
+[attribute](#attribute), [value](#value), [tx](#tx), and [source](#source).
+Opposite of a [retraction](#retraction). Its datom has `added = true`.
 
 ## Attribute
 
@@ -48,8 +48,8 @@ exposes less information.
 
 ## Cardinality
 
-Property of an [attribute](#attribute) that specifies how many values of the
-attribute can be associated with a single entity. Possible values are
+Property of an [attribute](#attribute) that specifies how many distinct values of
+the attribute can be associated with a single entity. Possible values are
 `:db.cardinality/one` and `:db.cardinality/many`.
 
 ## Caches
@@ -122,9 +122,10 @@ transactions without changing a value already held by an application. See
 
 ## Datom
 
-An atomic fact in a database, composed of entity/attribute/value/transaction/added.
-Pronounced like "datum", but pluralized as datoms. The `added` flag distinguishes
-assertions from retractions. See the [data model](01_data_model.md).
+An atomic fact in a database, composed of
+entity/attribute/value/transaction/source/added. Pronounced like "datum", but
+pluralized as datoms. The `added` flag distinguishes assertions from retractions.
+See the [data model](01_data_model.md).
 
 ## Database Identity
 
@@ -321,6 +322,8 @@ An atomic fact in the database, dissociating an [entity](#entity) from a
 particular [value](#value) of an [attribute](#attribute). Opposite of an
 [assertion](#assertion). Its datom has `added = false`. Retraction preserves
 history subject to retention and `:db/noHistory`; it is distinct from excision.
+A retraction carries its own [source](#source), leaving the original assertion's
+attribution unchanged.
 
 ## Role
 
@@ -358,6 +361,15 @@ A cache that stores encoded immutable object bytes instead of decoded objects.
 EDB's optional local SSD cache stores authenticated canonical bytes and falls
 back to PostgreSQL on runtime cache failures. See
 [local SSD cache](../09_optional/00_local_cache.md).
+
+## Source
+
+The ordinary [entity](#entity) to whom an assertion or retraction is attributed.
+The application explicitly supplies its ID for each statement. A source is
+described by ordinary database facts, and one transaction can contain statements
+from multiple sources. Assertions of the same entity/attribute/value from different
+sources retain distinct attribution while counting as one value for
+[cardinality](#cardinality).
 
 ## Storage Resources
 

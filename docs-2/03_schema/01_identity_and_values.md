@@ -6,16 +6,28 @@ Stored-fact equality additionally distinguishes the scale of top-level decimal
 values. These rules explain when two representations identify the same key and
 when asserting a value changes the stored information.
 
+Source does not change value equality, unique keys or lookup-ref identity.
+Different sources can contribute the same stored value without adding distinct
+current values for cardinality.
+
 For entity identifiers, idents, upserts and lookup-ref syntax, see
 [identity and uniqueness](05_identity_and_uniqueness.md). The
 [schema reference](02_schema_reference.md) defines value types and tuple shapes.
 
 ## Immutable facts and transaction coordinates
 
-A datom has five fields: entity (`entity`), attribute (`attribute`), value
-(`value`), transaction (`tx`) and assertion/retraction (`added`). `added: true`
-asserts a fact; `added: false` retracts it. Transactions produce new immutable
-database values. A previously captured value keeps its own view of those facts.
+A datom has six fields: entity (`entity`), attribute (`attribute`), value
+(`value`), transaction (`tx`), source (`source`) and assertion/retraction (`added`).
+`added: true` asserts a fact; `added: false` retracts it. Transactions produce new
+immutable database values. A previously captured value keeps its own view of
+those facts.
+
+Source is an ordinary entity ID supplied explicitly for each assertion or
+retraction. One transaction can contain statements from several sources.
+Datom equality includes all six fields; asserting the same EAV from a different
+source preserves a distinct contribution. A retraction changes the current fact
+regardless of its original source and records the retracting source, leaving the
+earlier assertion's attribution intact.
 
 Logical transaction time and the transaction entity ID are distinct coordinates.
 `Datom::tx` is the transaction entity ID. `t_to_tx(t)` constructs that ID in the
@@ -33,10 +45,11 @@ Use transaction tempids to request new entities; see
 [partitions](../04_transactions/02_partitions.md).
 
 Index orders group their leading coordinates as E/A/V, A/E/V, A/V/E or V/A/E.
-Within the same logical key, transactions sort descending, with assertions
-before retractions at the same transaction. Only after those coordinates does
-stored-value ordering distinguish decimal scales. The public five-field datom
-shape does not imply ordinary field-by-field ascending order.
+Within the same logical key, transactions sort descending, then sources
+ascending, with assertions before retractions at the same transaction and source.
+Only after those coordinates does stored-value ordering distinguish decimal
+scales. The public six-field datom shape does not imply ordinary field-by-field
+ascending order.
 
 ## Value equality is shared by indexes and identities
 
@@ -87,10 +100,12 @@ URI values retain their original spelling but use component comparison for
 identity, redundancy, index order and query joins. Scheme and server-host ASCII
 case, percent-escape hex case and numeric port padding do not create different
 identities. URI normalization is not performed: default ports, dot path segments
-and escaped/unescaped characters remain distinct. An equivalent reassertion is
-redundant; a retraction may record the alias spelling supplied with that new fact.
+and escaped/unescaped characters remain distinct. An equivalent reassertion from
+the same source is redundant; a retraction may record the alias spelling supplied
+with that new fact.
 Previously captured values remain unchanged. Exact retry digests distinguish the
-submitted spellings even when they identify the same logical URI.
+submitted spellings and source declarations even when they identify the same
+logical URI.
 
 For native ordered indexes, absent authority sorts before server authority,
 which sorts before registry authority. Within server authorities, user info,
@@ -184,14 +199,19 @@ A composite tuple is derived from its constituent attributes. Declaring the tupl
 `Unique::Identity` makes that derived key unique; it does not make a fresh tempid
 implicitly resolve from constituent-only assertions.
 
-For an existing entity with `:item/year` 2026 and `:item/season` `"fall"`:
+For an existing entity with `:item/year` 2026 and `:item/season` `"fall"`, and an
+existing source entity `99`:
 
 ```edn
 ;; Explicit composite value selects the existing entity before derivation.
-[{:db/id "semester"
+[{:db/id "edb.tx" :db/source 99}
+ {:db/id "semester" :db/source 99
   :item/year-season [2026 "fall"]
   :item/label "Updated"}]
 ```
+
+The `edb.tx` map attributes the generated transaction instant; the `semester`
+map attributes its own assertions.
 
 The composite assertion is an **upsert hint**, not a direct stored write. The
 constituents still determine the actual tuple. Supplying a nonexistent composite
@@ -208,13 +228,14 @@ composite hint); the engine then derives the new key and enforces its uniqueness
 
 For a nonunique cardinality-one `Float` or `Double`, asserting a finite value over
 NaN works in one transaction. The report/history contains both the NaN retraction
-and finite assertion at that transaction. Retained earlier database values still
-show NaN. Replacing a finite value with NaN works the same way.
+and finite assertion at that transaction, both attributed to the replacing
+assertion's source. Retained earlier database values still show NaN. Replacing a
+finite value with NaN works the same way.
 
 EDB gives NaN stable logical equality for indexing and redundancy: reasserting
-NaN with different payload bits is redundant, and a different NaN payload can
-retract the existing NaN. This is a native value-semantic choice, not IEEE `==` or
-a promise to preserve arbitrary NaN payload bits.
+NaN with different payload bits from the same source is redundant, and a different
+NaN payload can retract the existing NaN. This is a native value-semantic choice,
+not IEEE `==` or a promise to preserve arbitrary NaN payload bits.
 
 NaN remains disallowed on attributes with either `Unique::Identity` or
 `Unique::Value`; assertions fail with `transaction/nan-cannot-identify`, including

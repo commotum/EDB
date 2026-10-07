@@ -3,25 +3,28 @@
 This page provides an explanation of each of the indexes EDB maintains.
 
 EDB maintains four indexes that contain ordered sets of datoms. Each of these
-indexes is named based on the sort order used. E, A, and V are sorted in ascending
-order, while T is sorted in descending order:
+indexes is named based on the leading sort order used. Each index retains all six
+datom components, `[e a v t s added?]`. E, A, and V are sorted in ascending order,
+followed by T in descending order, source in ascending order, and assertions before
+retractions:
 
 | Index | Sort order | Contains |
 | --- | --- | --- |
-| EAVT | entity / attribute / value / tx | all datoms in the selected view |
-| AEVT | attribute / entity / value / tx | all datoms in the selected view |
-| AVET | attribute / value / entity / tx | `:db/unique` or `:db/index` attributes whose projection is ready |
-| VAET | value / attribute / entity / tx | `:db.type/ref` attributes |
+| EAVT | entity / attribute / value / tx / source / added? | all datoms in the selected view |
+| AEVT | attribute / entity / value / tx / source / added? | all datoms in the selected view |
+| AVET | attribute / value / entity / tx / source / added? | `:db/unique` or `:db/index` attributes whose projection is ready |
+| VAET | value / attribute / entity / tx / source / added? | `:db.type/ref` attributes |
 
-Entity and attribute components sort by their numeric IDs, not by their ident
-names. Values use EDB's value comparison. For the same E/A/V and transaction,
-assertions sort before retractions; stored value representation breaks any
-remaining ties. A datom's `tx` is a transaction entity ID; logical T and transaction
-IDs have distinct native representations.
+Entity, attribute, and source components sort by their numeric IDs, not by their
+ident names. Values use EDB's value comparison. For the same E/A/V, transaction,
+and source, `added? = true` sorts before `false`; stored value representation
+breaks any remaining ties. A datom's `tx` is a transaction entity ID; logical T
+and transaction IDs have distinct native representations.
 
 The tables below show illustrative slices of a music database, not output from
 an installed sample dataset. Small entity and transaction numbers stand in for
-allocated IDs. Attribute names stand in for numeric attribute IDs; these examples
+allocated IDs; source entity 99 identifies the contributor in these examples.
+Attribute names stand in for numeric attribute IDs; these examples
 assume `:release/artistCredit`, `:release/artists`, `:release/name`, and
 `:release/year` have ascending attribute IDs. Rows outside each illustrated slice
 are omitted.
@@ -35,13 +38,13 @@ predefined set of columns.
 
 The example below shows the scalar facts about entity 42 grouped together:
 
-| E | A | V | Tx | Op |
-| --- | --- | --- | --- | --- |
-| 41 | `:release/name` | "Abbey Road" | 1007 | assert |
-| 42 | `:release/artistCredit` | "The Beatles" | 1007 | assert |
-| 42 | `:release/name` | "Magical Mystery Tour" | 1007 | assert |
-| 42 | `:release/year` | 1967 | 1007 | assert |
-| 43 | `:release/name` | "Let It Be" | 1234 | assert |
+| E | A | V | Tx | S | Op |
+| --- | --- | --- | --- | --- | --- |
+| 41 | `:release/name` | "Abbey Road" | 1007 | 99 | assert |
+| 42 | `:release/artistCredit` | "The Beatles" | 1007 | 99 | assert |
+| 42 | `:release/name` | "Magical Mystery Tour" | 1007 | 99 | assert |
+| 42 | `:release/year` | 1967 | 1007 | 99 | assert |
+| 43 | `:release/name` | "Let It Be" | 1234 | 99 | assert |
 
 EAVT is also useful in master or detail lookups, since the references to detail
 entities are just ordinary values alongside the scalar attributes of the master
@@ -60,13 +63,13 @@ all `:release/name` attributes are grouped together. This allows EDB to query fo
 all values of the `:release/name` attribute by traversing one contiguous attribute
 range.
 
-| A | E | V | Tx | Op |
-| --- | --- | --- | --- | --- |
-| `:release/artistCredit` | 42 | "The Beatles" | 1007 | assert |
-| `:release/name` | 41 | "Abbey Road" | 1007 | assert |
-| `:release/name` | 42 | "Magical Mystery Tour" | 1007 | assert |
-| `:release/name` | 43 | "Let It Be" | 1234 | assert |
-| `:release/year` | 42 | 1967 | 1007 | assert |
+| A | E | V | Tx | S | Op |
+| --- | --- | --- | --- | --- | --- |
+| `:release/artistCredit` | 42 | "The Beatles" | 1007 | 99 | assert |
+| `:release/name` | 41 | "Abbey Road" | 1007 | 99 | assert |
+| `:release/name` | 42 | "Magical Mystery Tour" | 1007 | 99 | assert |
+| `:release/name` | 43 | "Let It Be" | 1234 | 99 | assert |
+| `:release/year` | 42 | 1967 | 1007 | 99 | assert |
 
 ## AVET
 
@@ -75,14 +78,14 @@ and value. The example below shows a portion of the AVET index allowing lookup
 by `:release/name`. Two entities can have the same name when the attribute is
 indexed without being unique.
 
-| A | V | E | Tx | Op |
-| --- | --- | --- | --- | --- |
-| `:release/name` | "Abbey Road" | 41 | 1007 | assert |
-| `:release/name` | "Let It Be" | 43 | 1234 | assert |
-| `:release/name` | "Let It Be" | 55 | 2367 | assert |
-| `:release/name` | "Magical Mystery Tour" | 42 | 1007 | assert |
-| `:release/year` | 1967 | 42 | 1007 | assert |
-| `:release/year` | 1984 | 55 | 2367 | assert |
+| A | V | E | Tx | S | Op |
+| --- | --- | --- | --- | --- | --- |
+| `:release/name` | "Abbey Road" | 41 | 1007 | 99 | assert |
+| `:release/name` | "Let It Be" | 43 | 1234 | 99 | assert |
+| `:release/name` | "Let It Be" | 55 | 2367 | 99 | assert |
+| `:release/name` | "Magical Mystery Tour" | 42 | 1007 | 99 | assert |
+| `:release/year` | 1967 | 42 | 1007 | 99 | assert |
+| `:release/year` | 1984 | 55 | 2367 | 99 | assert |
 
 AVET adds another maintained ordering of an attribute's datoms. To maintain AVET
 for an attribute, specify `:db/index true` or a value for `:db/unique` when
@@ -110,12 +113,12 @@ navigation of relationships in reverse. Assuming that The Beatles are entity
 100, the following table shows how their releases would be grouped together in
 this index:
 
-| V | A | E | Tx | Op |
-| --- | --- | --- | --- | --- |
-| 100 | `:release/artists` | 41 | 1007 | assert |
-| 100 | `:release/artists` | 42 | 1007 | assert |
-| 100 | `:release/artists` | 43 | 1234 | assert |
-| 200 | `:release/artists` | 55 | 2367 | assert |
+| V | A | E | Tx | S | Op |
+| --- | --- | --- | --- | --- | --- |
+| 100 | `:release/artists` | 41 | 1007 | 99 | assert |
+| 100 | `:release/artists` | 42 | 1007 | 99 | assert |
+| 100 | `:release/artists` | 43 | 1234 | 99 | assert |
+| 200 | `:release/artists` | 55 | 2367 | 99 | assert |
 
 VAET is maintained for reference attributes without requiring `:db/index true`.
 An integer stored under `:db.type/long` is not a reference and does not enter
@@ -214,10 +217,10 @@ scan, but this does not make current-query cost independent of recent changes,
 filtering or retention work. Temporal and custom views can consume history to
 determine visible facts.
 
-Recent current-view reads buffer one logical E/A/V event group to select the
-newest operation for each distinct stored value representation. This avoids
-materializing the entire index, but cursor memory can grow with the size of
-that group; it is not limited to a single datom.
+Recent current-view reads buffer one logical E/A/V event group to determine the
+visible source-bearing datoms for each distinct stored value representation.
+This avoids materializing the entire index, but cursor memory can grow with the
+size of that group; it is not limited to a single datom.
 
 The [optional local SSD cache](../09_optional/00_local_cache.md) can reuse
 immutable object bytes across processes. It supplements in-memory caching and

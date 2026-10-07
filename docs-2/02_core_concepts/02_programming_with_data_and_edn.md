@@ -106,10 +106,11 @@ The attribute must be installed in the database supplied to the query. See the [
 
 ## Transaction EDN Example
 
-Below is an example of a transaction written in EDN notation. Assuming the attributes are installed and no identity-unique value resolves to an existing entity, this transaction creates a new entity with two attributes: `:person/name` and `:person/email`.
+Below is an example of a transaction written in EDN notation. Assuming the attributes are installed, entity `99` identifies the contributor, and no identity-unique value resolves to an existing entity, this transaction creates a new entity with two attributes: `:person/name` and `:person/email`.
 
 ```edn
-[{:person/name "Anna" :person/email "anna@example.com"}]
+[{:db/id "edb.tx" :db/source 99}
+ {:db/source 99 :person/name "Anna" :person/email "anna@example.com"}]
 ```
 
 In the transaction above:
@@ -117,7 +118,9 @@ In the transaction above:
 - `:person/name` and `:person/email` are namespaced keywords denoting the idents of attributes the new entity will possess.
 - `"Anna"` is a string denoting the value of the `:person/name` attribute.
 - `"anna@example.com"` is a string denoting the value of the `:person/email` attribute.
-- The entire transaction is a vector containing a nested map.
+- `:db/source` supplies the source entity ID for each map's assertions; it is transaction syntax, not a stored attribute.
+- The metadata-only `"edb.tx"` map attributes the generated `:db/txInstant` assertion to source `99`. It does not supply a default source for the other map.
+- The entire transaction is a vector containing two maps.
 
 Check [transaction structure](../04_transactions/04_transaction_data.md) for more information about how transactions are structured, including implicit temporary IDs and upserts.
 

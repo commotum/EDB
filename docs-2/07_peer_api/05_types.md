@@ -26,7 +26,7 @@ for operations organized by function and method.
 | [Attribute](types/01_attribute.md) | Programmatic representation of a [schema attribute](../03_schema/02_schema_reference.md). |
 | [Connection](types/02_connection.md) | A connection to a database for submitting and monitoring transactions, and retrieving the current value of the database. Submission uses an attached or explicitly selected transaction endpoint. |
 | [DatabaseValue, Database](types/03_database.md) | An immutable, point-in-time database value. `DatabaseValue` is the captured read value; `Database` supplies the eager in-memory representation. |
-| [Datom](types/05_datom.md) | A point-in-time fact: `[entity, attribute, value, transaction, added]`. Facts in a database value are immutable; owned Rust datoms have public fields. |
+| [Datom](types/05_datom.md) | A point-in-time fact: `[entity, attribute, value, transaction, source, added]`. Facts in a database value are immutable; owned Rust datoms have public fields. |
 | [Entity](types/06_entity.md) | Lazy, associative access to an entity's attributes in a database value. |
 | [AsyncOperation<T>, AsyncTransaction](types/07_async_operation.md) | Futures that support a completion callback. |
 | [LogValue, LogTransaction](types/08_log.md) | Access to the transaction log and its transaction records. |

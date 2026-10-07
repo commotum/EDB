@@ -171,6 +171,7 @@ Datoms expose named Rust fields, rather than keyword or positional lookup:
 | `attribute` | `u32` | Attribute ID. |
 | `value` | `Value` | Attribute value. |
 | `tx` | `u64` | Transaction entity ID; use `tx_to_t` for its logical coordinate. |
+| `source` | `u64` | ID of the entity to whom the assertion or retraction is attributed. |
 | `added` | `bool` | `true` for assertion, `false` for retraction. |
 
 AVET covers available indexed/unique projections, and VAET covers references.
@@ -245,7 +246,7 @@ fn history(self) -> DatabaseValue;
 Returns a database value containing retained assertions and retractions across
 time. A history value can be passed to datom cursors, bounded index scans and
 queries, but not to speculative transactions or Pull. Queries against history
-include retractions as well as assertions. The fifth datom field, `added`, is
+include retractions as well as assertions. The sixth datom field, `added`, is
 true for assertions and false for retractions.
 
 Temporal and custom filters remain in force. Index history is subject to
@@ -434,13 +435,15 @@ use edb_core::edn_pull::parse_pull_edn;
 fn main() -> Result<(), SemanticError> {
     let initial = Database::bootstrap()?.database_value();
     let schema = initial.with_edn(r#"[
-      {:db/ident :person/name
+      {:db/id "edb.tx" :db/source :db.source/system}
+      {:db/ident :person/name :db/source :db.source/system
        :db/valueType :db.type/string
        :db/cardinality :db.cardinality/one}
     ]"#, 1_000)?;
     let report = schema.db_after.with_edn(r#"[
-      {:db/id "ada" :person/name "Ada"}
-      {:db/id "grace" :person/name "Grace"}
+      {:db/id "edb.tx" :db/source :db.source/system}
+      {:db/id "ada" :db/source :db.source/system :person/name "Ada"}
+      {:db/id "grace" :db/source :db.source/system :person/name "Grace"}
     ]"#, 2_000)?;
     let pattern = parse_pull_edn("[:person/name]")?;
     let expected = report.db_after.pull(&pattern, report.tempids["ada"])?;
@@ -542,7 +545,10 @@ fn transact(&self, request: TransactionRequest, timeout: Duration)
 Submits a transaction and waits for its result. Construct the request using
 `TransactionRequest::new(request_key, operations)`, `from_forms(request_key, forms)`
 or `from_edn(request_key, text)`. EDN transaction data is an outer vector of
-operation vectors, entity maps and transaction calls. See
+operation vectors, entity maps and transaction calls. Each assertion or
+retraction carries an explicitly supplied source entity ID through these forms.
+A metadata-only map `{:db/id "edb.tx" :db/source S}` supplies the source for the
+generated transaction instant, without providing a default for other forms. See
 [transaction data](../04_transactions/04_transaction_data.md).
 
 Requires an attached transaction client. Returns a `ServiceTransactionReport`:

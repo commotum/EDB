@@ -24,7 +24,9 @@ Synchronous API functions have the following common semantics:
 
 The following example shows a simple transaction using the synchronous API.
 It assumes `connection` has an attached writer and the
-[movie schema](../01_tutorials/06_transact_schema.md) is already installed:
+[movie schema](../01_tutorials/06_transact_schema.md) is already installed.
+Entity `99` identifies the contributor supplying the movie facts and the
+transaction instant:
 
 ```rust,ignore
 use edb_core::TransactionRequest;
@@ -32,7 +34,8 @@ use std::time::Duration;
 
 let request = TransactionRequest::from_edn(
     "add-goonies",
-    r#"[{:db/id "goonies"
+    r#"[{:db/id "edb.tx" :db/source 99}
+        {:db/id "goonies" :db/source 99
          :movie/title "The Goonies"
          :movie/genre "action/adventure"
          :movie/release-year 1985}]"#,

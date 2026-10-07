@@ -13,7 +13,9 @@ of the database (db-before).
 
 A transaction function is a pure function `[db-before, args] -> tx-data`, i.e. a
 transaction function takes db-before plus args you provide and produces tx-data
-for inclusion in the transaction.
+for inclusion in the transaction. Every generated assertion or retraction carries
+an explicit source entity reference. A function can receive sources through its
+ordinary arguments; its binding or deployment does not supply them implicitly.
 
 Transaction functions support the operation of
 [`DatabaseValue::with_forms`](05_transaction_model.md), which computes a
@@ -51,7 +53,7 @@ approaches listed earlier if they are sufficient for your needs.
 | value type | attribute [value type](../03_schema/02_schema_reference.md#dbvaluetype) |
 | uniqueness | attribute [uniqueness constraint](../03_schema/02_schema_reference.md#dbunique) |
 | single / multi value attribute | attribute [cardinality](../03_schema/02_schema_reference.md#dbcardinality) |
-| optimistic concurrency at the level of a single datom | [`:db/cas`](#dbcas) |
+| optimistic concurrency at the level of a single attribute value | [`:db/cas`](#dbcas) |
 | attribute predicate | attribute spec [`:db.attr/preds`](../03_schema/02_schema_reference.md#attribute-predicates) |
 | entity required attributes | entity spec [`:db.entity/attrs`](../03_schema/02_schema_reference.md#required-attributes) |
 | entity predicate against db-after | entity spec [`:db.entity/preds`](../03_schema/02_schema_reference.md#entity-predicates) |
@@ -117,12 +119,17 @@ the transaction service. See [native application computation](../07_peer_api/02_
 
 ## Invoking Transaction Functions
 
+The transaction excerpts below assume that entity `99` identifies the contributor.
+When submitting them, include the metadata-only map
+`{:db/id "edb.tx" :db/source 99}` to attribute the generated `:db/txInstant`.
+This declaration does not supply a default source for the other forms.
+
 EDB recognizes built-in operations in transaction list/vector forms and treats
 other callable heads as function references. For example, the following
 transaction data includes a call to the built-in `:db/retractEntity` operation:
 
 ```edn
-[[:db/retractEntity [:person/email "jdoe@example.com"]]]
+[[:db/retractEntity [:person/email "jdoe@example.com"] 99]]
 ```
 
 Custom transaction functions can abort a transaction by returning an error, or
@@ -136,10 +143,11 @@ use edb_core::*;
 fn add_doc_program() -> Program {
     Program {
         kind: ProgramKind::Transaction,
-        arity: 2,
+        arity: 3,
         instructions: vec![
             Instruction::PushArgument(0),
             Instruction::PushArgument(1),
+            Instruction::PushArgument(2),
             Instruction::EmitAdd(DB_DOC as u32),
             Instruction::Return,
         ],
@@ -151,15 +159,16 @@ After [installing](#deploying-database-functions) this program as `:app/add-doc`
 invoke it in a later transaction:
 
 ```edn
-[[:app/add-doc #edb/ref 17592186062233 "this is foo's doc"]]
+[[:app/add-doc #edb/ref 17592186062233 "this is foo's doc" #edb/ref 99]]
 ```
 
 Replace the illustrative number with an existing entity's ID. The `#edb/ref`
 tag makes the argument a runtime entity reference and accepts a numeric ID,
 not a tempid string. An untagged string passed to a function remains a string;
-the VM's `EmitAdd` instruction requires an entity reference in its entity
-position. Typed Rust callers can also supply a
-`RuntimeValue::Entity(EntityRef::Temp(...))` when creating an entity.
+the VM's `EmitAdd` instruction consumes `[entity, value, source]` stack operands
+(bottom to top), with entity references in the entity and source positions.
+Typed Rust callers can also supply a `RuntimeValue::Entity(EntityRef::Temp(...))`
+when creating an entity.
 
 An equivalent native deployment can accept the original string tempid directly:
 
@@ -170,9 +179,10 @@ fn doc_registry() -> Result<NativeRegistry, SemanticError> {
     let mut builder = NativeRegistry::builder();
     builder.transaction(Symbol::new("my.fns", "add-doc"), |_db, args, control| {
         let [RuntimeValue::Scalar(Value::String(e)),
-             RuntimeValue::Scalar(Value::String(doc))] = args else {
+             RuntimeValue::Scalar(Value::String(doc)),
+             RuntimeValue::Entity(source)] = args else {
             return Err(SemanticError::incorrect(
-                "app/arguments", "add-doc requires a tempid and doc string",
+                "app/arguments", "add-doc requires a tempid, doc string, and source reference",
             ));
         };
         control.reserve(e.len().saturating_add(doc.len()))?;
@@ -180,6 +190,7 @@ fn doc_registry() -> Result<NativeRegistry, SemanticError> {
             entity: EntityRef::Temp(e.clone()),
             attribute: DB_DOC as u32,
             value: Value::String(doc.clone()).into(),
+            source: source.clone(),
         })])
     })?;
     Ok(builder.build())
@@ -189,7 +200,7 @@ fn doc_registry() -> Result<NativeRegistry, SemanticError> {
 Supply this registry to the host and submit:
 
 ```edn
-[[my.fns/add-doc "foo" "this is foo's doc"]]
+[[my.fns/add-doc "foo" "this is foo's doc" #edb/ref 99]]
 ```
 
 The EDN reader never loads or evaluates Rust code. A symbol names an already
@@ -204,27 +215,28 @@ The following operations are automatically available in EDB.
 
 ### :db/retractEntity
 
-The `:db/retractEntity` operation takes an entity ID as an argument. It retracts
-all the attribute values where the given entity ID is either the entity or a
+The `:db/retractEntity` operation takes an entity ID and a source entity ID. It
+retracts all the attribute values where the given entity ID is either the entity or a
 reference value, effectively retracting the entity's own data and any references
 to the entity as well. Entities that are
 [components](../03_schema/02_schema_reference.md#dbiscomponent) of the given
-entity are also recursively retracted. It does not remove historical assertions.
+entity are also recursively retracted. Every resulting retraction carries the
+supplied source. Historical assertions retain their original attribution.
 
 The following examples specify an entity by ID or by a
 [lookup ref](04_transaction_data.md). The numeric IDs are illustrative; use
 actual allocated IDs from your database.
 
 ```edn
-[[:db/retractEntity 17592186062233]]
+[[:db/retractEntity 17592186062233 99]]
 ;; or with a lookup ref
-[[:db/retractEntity [:person/email "jdoe@example.com"]]]
+[[:db/retractEntity [:person/email "jdoe@example.com"] 99]]
 
 ;; example of what :db/retractEntity might expand to
 ;; attributes shown by name for readability
-[[:db/retract 17592186062233 :person/email "jdoe@example.com"]
- [:db/retract 17592186062233 :person/name "Jane Doe"]
- [:db/retract 17592186062232 :team/members 17592186062233]]
+[[:db/retract 17592186062233 :person/email "jdoe@example.com" 99]
+ [:db/retract 17592186062233 :person/name "Jane Doe" 99]
+ [:db/retract 17592186062232 :team/members 17592186062233 99]]
 ```
 
 Expansion reads db-before and follows reference-typed incoming attributes;
@@ -234,9 +246,9 @@ spelling `:db.fn/retractEntity` is also accepted.
 
 ### :db/cas
 
-The `:db/cas` (compare-and-swap) operation takes four arguments: an entity ID, an
-attribute, an expected current value, and a new value. The attribute must be
-`:db.cardinality/one`. If the entity has the expected value for the given
+The `:db/cas` (compare-and-swap) operation takes five arguments: an entity ID, an
+attribute, an expected current value, a new value, and a source entity ID. The
+attribute must be `:db.cardinality/one`. If the entity has the expected value for the given
 attribute in db-before, `:db/cas` asserts the new value. Otherwise, the transaction
 aborts with a `Conflict` error whose code is `transaction/cas-failed`.
 
@@ -249,15 +261,17 @@ is 100 at the time the transaction executes. Replace the illustrative entity ID
 with the account's actual ID:
 
 ```edn
-[[:db/cas 17592186062233 :account/balance 100 110]]
+[[:db/cas 17592186062233 :account/balance 100 110 99]]
 
 ;; the resulting change, if the old balance is 100
-[[:db/retract 17592186062233 :account/balance 100]
- [:db/add     17592186062233 :account/balance 110]]
+[[:db/retract 17592186062233 :account/balance 100 99]
+ [:db/add     17592186062233 :account/balance 110 99]]
 ```
 
 The old-value check observes db-before, not preceding forms in the transaction.
 Cardinality-one replacement supplies the retraction of the previous value.
+Both the retraction and the new assertion carry the supplied source, independently
+of the source that asserted the old value.
 The spelling `:db.fn/cas` is also accepted.
 
 ### :db/force-partition
@@ -267,7 +281,7 @@ In EDN it is a transaction map directive, not a function-call vector:
 
 ```edn
 [{:db/force-partition {"person" :db.part/user}}
- {:db/id "person" :person/name "Jane Doe"}]
+ {:db/id "person" :db/source 99 :person/name "Jane Doe"}]
 ```
 
 ### :db/match-partition
@@ -277,7 +291,7 @@ in desired partitions:
 
 ```edn
 [{:db/match-partition {"person" [:person/email "jdoe@example.com"]}}
- {:db/id "person" :person/name "John Doe"}]
+ {:db/id "person" :db/source 99 :person/name "John Doe"}]
 ```
 
 These directives control new allocation; they do not move existing or upserted
@@ -295,9 +309,10 @@ write a custom transaction function, adhering to the following rules:
 2. It must use the supplied db-before and data arguments. Native callbacks take
    the database as their first argument; stored programs read it through VM
    instructions and address explicit arguments with `PushArgument`.
-3. On success, it must return valid transaction data, which can include more
-   transaction functions. Generated data goes through ordinary transaction
-   validation; returning it does not bypass schema or consistency checks.
+3. On success, it must return valid transaction data with explicit sources on
+   assertions and retractions, and can include more transaction functions.
+   Generated data goes through ordinary transaction validation; returning it
+   does not bypass schema or consistency checks.
 4. To abort, return a `SemanticError` from native code, or reject through a stored
    program's `Require` or `RequireAnomaly` instruction.
 5. Use EDB's native argument representations. EDN lists and vectors become
@@ -336,9 +351,9 @@ be representable as runtime data. Cancellation returns `program/rejected`,
 preserves the typed anomaly, and adds `:edb/cancelled true`. The simpler `Require`
 instruction supplies a category and message without constructing an anomaly map.
 
-The following native function ensures that a user map has both `:name` and
-`:email` strings. Install `:user/name` and `:user/email` as string attributes
-before invoking it.
+The following native function accepts a user map and a source reference, and
+ensures that the map has both `:name` and `:email` strings. Install `:user/name`
+and `:user/email` as string attributes before invoking it.
 
 ```rust
 use edb_core::*;
@@ -349,7 +364,9 @@ fn user_registry() -> Result<NativeRegistry, SemanticError> {
         let invalid = || SemanticError::incorrect(
             "app/invalid-user", "User map must contain :email and :name strings",
         );
-        let [RuntimeValue::Map(entries)] = args else { return Err(invalid()); };
+        let [RuntimeValue::Map(entries), RuntimeValue::Entity(source)] = args else {
+            return Err(invalid());
+        };
         control.check(entries.len() as u64)?;
         let field = |name: &str| entries.iter().find_map(|(key, value)| {
             if key != &Value::Keyword(Keyword::unqualified(name)) { return None; }
@@ -363,6 +380,7 @@ fn user_registry() -> Result<NativeRegistry, SemanticError> {
         control.reserve(name.len().saturating_add(email.len()))?;
         Ok(vec![TxForm::EntityMap(EntityMap {
             id: None,
+            source: Some(source.clone()),
             attributes: vec![
                 (AttributeRef::Ident(Keyword::new("user", "name")),
                  MapValue::Value(Value::String(name.clone()).into())),
@@ -380,9 +398,9 @@ first transaction succeeds; the second is canceled because it has `:address`
 instead of `:email`:
 
 ```edn
-[[my.fns/add-user {:name "Marshall" :email "test@test.com"}]]
+[[my.fns/add-user {:name "Marshall" :email "test@test.com"} #edb/ref 99]]
 
-[[my.fns/add-user {:name "Marshall" :address "test@test.com"}]]
+[[my.fns/add-user {:name "Marshall" :address "test@test.com"} #edb/ref 99]]
 ;; Incorrect, app/invalid-user:
 ;; User map must contain :email and :name strings
 ```
@@ -405,12 +423,14 @@ For example, the `doc_registry` above can be exercised without a live service:
 use edb_core::edn_transaction::read_edn_transaction;
 
 let db = DatabaseValue::from(Database::new(Schema::new())?);
+let source = db.entid(&Keyword::new("db.source", "system")).expect("built-in source");
 let options = TransactionExecutionOptions {
     native: doc_registry()?,
     ..Default::default()
 };
 let forms = read_edn_transaction(
-    r#"[[my.fns/add-doc "foo" "this is foo's doc"]]"#,
+    &format!(r#"[{{:db/id "edb.tx" :db/source {source}}}
+                 [my.fns/add-doc "foo" "this is foo's doc" #edb/ref {source}]]"#),
 )?;
 let report = db.with_forms_with_execution_options(
     &forms, 1, SpeculationLimits::default(), &options,
@@ -438,7 +458,8 @@ containing a program hash; retrieving it does not return a compiled Rust closure
 
 `PostgresOperator::install_program` stages the complete immutable program closure
 and submits ordinary `:db/ident` and `:db/fn` assertions. Given a configured
-operator and running service, install the earlier program with:
+operator and running service, install the earlier program with contributor `99`
+as the source of the binding assertions and generated `:db/txInstant`:
 
 ```rust
 operator.install_program(
@@ -447,6 +468,7 @@ operator.install_program(
     Keyword::new("app", "add-doc"),
     &add_doc_program(),
     &[],
+    EntityRef::Id(99),
     std::time::Duration::from_secs(10),
 )?;
 ```

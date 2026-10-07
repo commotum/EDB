@@ -17,9 +17,11 @@ allocations do not prevent a match. Consider the following example.
 
   let empty = Database::bootstrap()?;
   let schema = empty.with_edn(r#"
-      [{:db/ident :some-bytes
+      [{:db/source :db.source/system
+        :db/ident :some-bytes
         :db/valueType :db.type/bytes
-        :db/cardinality :db.cardinality/one}]
+        :db/cardinality :db.cardinality/one}
+       {:db/id "edb.tx" :db/source :db.source/system}]
   "#, 10)?;
   ```
 
@@ -29,8 +31,11 @@ allocations do not prevent a match. Consider the following example.
 
   ```rust
   let report = schema.db_after.with_edn(r#"
-      [{:db/id "first"  :some-bytes #edb/bytes "010203"}
-       {:db/id "second" :some-bytes #edb/bytes "010203"}]
+      [{:db/id "first"  :db/source :db.source/system
+        :some-bytes #edb/bytes "010203"}
+       {:db/id "second" :db/source :db.source/system
+        :some-bytes #edb/bytes "010203"}
+       {:db/id "edb.tx" :db/source :db.source/system}]
   "#, 20)?;
   let db = report.db_after.database_value();
   ```

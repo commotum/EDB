@@ -72,8 +72,9 @@ bounds.
 
 `IndexComponents::One` through `Four` supply a contiguous sequence from the left.
 `Empty` starts at the beginning of the index for forward seek or the end for
-reverse seek. E, A and V sort ascending; T sorts descending. Thus reversing an
-E/A/V history group visits its transactions in ascending order. Entity and
+reverse seek. E, A and V sort ascending; T sorts descending, followed by source
+IDs ascending and assertions before retractions. Thus reversing an E/A/V
+history group visits its transactions in ascending order. Entity and
 attribute order use numeric IDs. See the [index model](01_index_model.md).
 
 Use schema-aware helpers such as `db.avet_boundary(...)` to resolve attribute
@@ -91,13 +92,15 @@ let cursor = db.reverse_seek_cursor(&boundary)?;
 
 This example assumes an indexed `:item/score` long attribute. A transaction
 component uses `IndexTransaction::T(t)` or `IndexTransaction::Tx(tx_entity_id)`;
-there is no fifth assertion/retraction component. At a full E/A/V/T boundary,
-both directions include all datoms tied on those supplied components.
+there is no source or assertion/retraction boundary component. At a full
+E/A/V/T boundary, both directions include all datoms tied on those supplied
+components.
 
 The following tables illustrate different aspects of seek positioning. Each
 shows a slice of AVET. Small entity numbers stand in for allocated IDs, and
-transaction components are omitted. Result tables list the first returned
-datom unless they explicitly show continued traversal.
+transaction, source and assertion/retraction components are omitted. Result
+tables list the first returned datom unless they explicitly show continued
+traversal.
 
 ### Attribute only
 

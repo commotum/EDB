@@ -8,15 +8,18 @@ covering index is one that contains actual data values, not just pointers to
 where those values can be found.
 
 EDB maintains four covering indexes that contain ordered sets of datoms. Each
-of these indexes is named based on the sort order used. E, A, and V are sorted
-in ascending order, while T is sorted in descending order:
+index retains and returns all six datom fields: `[e a v t s added?]`. Index names
+reflect the leading sort components. E, A, and V are sorted in ascending order,
+while T is sorted in descending order. Source follows T in ascending order,
+then `added` sorts `true` before `false`; stored-value representation breaks
+any remaining ties:
 
 | Index | Sort order | Contains |
 | --- | --- | --- |
-| EAVT | entity / attribute / value / tx | all datoms in the selected view |
-| AEVT | attribute / entity / value / tx | all datoms in the selected view |
-| AVET | attribute / value / entity / tx | `:db/unique` or `:db/index` attributes whose projection is ready |
-| VAET | value / attribute / entity / tx | `:db.type/ref` attributes |
+| EAVT | entity / attribute / value / tx / source / added | all datoms in the selected view |
+| AEVT | attribute / entity / value / tx / source / added | all datoms in the selected view |
+| AVET | attribute / value / entity / tx / source / added | `:db/unique` or `:db/index` attributes whose projection is ready |
+| VAET | value / attribute / entity / tx / source / added | `:db.type/ref` attributes |
 
 EDB indexes are used behind the scenes in
 [Query](../05_query_and_pull/00_queries.md), the
@@ -93,7 +96,7 @@ omitted bounds select the captured range. T, transaction references and instants
 have explicit `TimePoint` representations. A later commit does not extend this
 cursor. `tx_data` selects an exact transaction.
 
-Log transactions retain additions and retractions even when `noHistory`
+Log transactions retain additions and retractions with their sources even when `noHistory`
 consolidation omitted facts from indexes. Excision can change retained generation;
 the log is not an exception to that policy or a storage retention pin. Traversal
 authenticates pages and keeps one decoded transaction plus navigation state;

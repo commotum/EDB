@@ -1,7 +1,7 @@
 # Datom
 
 `edb_core::Datom` represents a point-in-time fact:
-`[entity, attribute, value, transaction, added]`.
+`[entity, attribute, value, transaction, source, added]`.
 
 Facts in a database value are immutable. The Rust representation is an owned
 struct with public fields; changing a datom you own does not change the database.
@@ -16,6 +16,7 @@ retract facts. `Datom`, `Value`, and `IndexOrder` are exported by `edb_core`.
 | `attribute` | `u32` | This datom's attribute ID (A). |
 | `value` | `Value` | This datom's value (V). |
 | `tx` | `u64` | This datom's transaction entity ID (Tx). |
+| `source` | `u64` | The source entity ID for this assertion or retraction (S). |
 | `added` | `bool` | Whether this datom was added or retracted. |
 
 ## Field details
@@ -54,6 +55,16 @@ construct a transaction entity ID from T. Both functions return
 it with the converted value rather than the raw `tx` field. The transaction's
 wall-clock time is a separate `:db/txInstant` fact.
 
+### `source`
+
+The entity ID explicitly supplied by the application for the source of this
+assertion or retraction. The source is an ordinary entity described by ordinary
+facts. Datoms in one transaction can have different sources.
+
+A retraction carries the retracting source's ID; it does not change the source
+of the earlier assertion. Assertions with the same entity, attribute, and value
+but different sources retain their distinct attribution.
+
 ### `added`
 
 Is this datom added or retracted? `true` indicates an assertion; `false`
@@ -67,13 +78,14 @@ retention settings can remove historical information. See
 
 ## Access and ownership
 
-Read fields directly: `datom.entity`, `datom.attribute`, `datom.tx`, and
-`datom.added`. The conceptual tuple positions are E, A, V, Tx, and added, in
-that order. `Datom` has no positional `get(index)` method, indexing operator,
-or collection interface. Use field access or Rust struct destructuring.
+Read fields directly: `datom.entity`, `datom.attribute`, `datom.tx`,
+`datom.source`, and `datom.added`. The conceptual tuple positions are E, A, V,
+Tx, S, and added, in that order. `Datom` has no positional `get(index)` method,
+indexing operator, or collection interface. Use field access or Rust struct
+destructuring.
 
 `Datom` implements `Clone`, `Debug`, `Eq`, and `PartialEq`. Cloning produces an
-owned datom, including its owned value. Equality compares all five fields;
+owned datom, including its owned value. Equality compares all six fields;
 value equality uses `Value::index_cmp`, so numerically equivalent values can
 compare equal across numeric representations.
 
@@ -94,11 +106,11 @@ or `PartialOrd`; choose the desired order explicitly with `cmp_in`.
 | `Vaet` | Value, attribute, entity |
 
 Values use `Value::index_cmp`. After the leading components compare equal,
-transactions sort in descending order, then assertions (`added == true`)
-before retractions. Finally, `Value::stored_cmp` breaks remaining ties; it
-distinguishes the scale of top-level decimal values. Consequently, two datoms
-can be equal under `==` yet compare differently under `cmp_in` when their
-top-level decimal scales differ.
+transactions sort in descending order, then sources in ascending order, then
+assertions (`added == true`) before retractions. Finally, `Value::stored_cmp`
+breaks remaining ties; it distinguishes the scale of top-level decimal values.
+Consequently, two datoms can be equal under `==` yet compare differently under
+`cmp_in` when their top-level decimal scales differ.
 
 Choosing an order for comparison does not determine which datoms belong in an
 index. AVET includes eligible attributes with ready projections; VAET includes
@@ -117,22 +129,26 @@ fn example() -> Result<(), SemanticError> {
         attribute: 100,
         value: Value::String("Ada".into()),
         tx: t_to_tx(7)?,
+        source: 300,
         added: true,
     };
     assert_eq!(assertion.entity, 42);
     assert_eq!(assertion.attribute, 100);
     assert_eq!(&assertion.value, &Value::String("Ada".into()));
     assert_eq!(tx_to_t(assertion.tx)?, 7);
+    assert_eq!(assertion.source, 300);
     assert!(assertion.added);
 
     let retraction = Datom {
         tx: t_to_tx(8)?,
+        source: 301,
         added: false,
         ..assertion.clone()
     };
     let mut datoms = vec![assertion, retraction];
     datoms.sort_by(|left, right| left.cmp_in(right, IndexOrder::Eavt));
     assert_eq!(tx_to_t(datoms[0].tx)?, 8);
+    assert_eq!(datoms[0].source, 301);
     assert!(!datoms[0].added);
     Ok(())
 }

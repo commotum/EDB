@@ -352,8 +352,9 @@ the fixed-dependency closure and stores a temporary staging root that expires
 according to the collection cutoff. Dependencies must already exist; callers
 receive a hash and have no deployment handle to release.
 
-`install_program(client, request_key, ident, &program, &dependencies, timeout)`
-stages the supplied closure and transacts the binding. An exact retry resolves
+`install_program(client, request_key, ident, &program, &dependencies, source, timeout)`
+stages the supplied closure and transacts the binding. The explicit `source: EntityRef`
+attributes the binding assertions and transaction instant. An exact retry resolves
 its acknowledged receipt before requiring deployment dependencies again. Once a
 committed graph references the program, ordinary graph ownership retains it.
 Unbound staging roots expire under the configured retention policy.

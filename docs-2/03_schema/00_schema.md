@@ -8,19 +8,29 @@ is different from a stored null value.
 Install this EDN as an ordinary transaction:
 
 ```edn
-[{:db/ident :person/name
+[{:db/id "edb.tx" :db/source :db.source/system}
+ {:db/ident :person/name
+  :db/source :db.source/system
   :db/valueType :db.type/string
   :db/cardinality :db.cardinality/one}
  {:db/ident :person/email
+  :db/source :db.source/system
   :db/valueType :db.type/string
   :db/cardinality :db.cardinality/one
   :db/unique :db.unique/identity}]
 ```
 
+Each map explicitly attributes its facts to the ordinary built-in source entity
+`:db.source/system`. `:db/source` is map metadata, not a stored attribute. The
+metadata-only `edb.tx` map attributes the generated `:db/txInstant`; it does not
+supply a default source for other maps.
+
 Then submit application data in a later transaction:
 
 ```edn
-[{:person/name "Alice" :person/email "alice@example.com"}]
+[{:db/id "edb.tx" :db/source :db.source/system}
+ {:db/source :db.source/system
+  :person/name "Alice" :person/email "alice@example.com"}]
 ```
 
 Use the complete [schema fixture](../../examples/edn/schema.edn) and
@@ -45,6 +55,9 @@ See [identity and uniqueness](05_identity_and_uniqueness.md) for entity IDs,
 idents, domain keys, UUIDs and lookup references across transactions and reads.
 
 Cardinality-one replacement retracts the old fact and asserts the new fact.
+Both statements carry the replacement's source; the earlier assertion retains
+its original source in history. Cardinality counts distinct values, so two
+sources asserting the same value still satisfy cardinality one.
 Omitting an attribute in a map does not retract it. A cardinality-many attribute
 accepts a single value or a collection of values; wrap a many-reference lookup
 in its outer collection.

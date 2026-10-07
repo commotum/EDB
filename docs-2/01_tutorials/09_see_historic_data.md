@@ -57,12 +57,15 @@ database may allocate different IDs. Query relations have no row-order guarantee
 
 Remember back to the [transact data](07_transact_data.md) tutorial that a
 transaction requires an active connection and a collection of transaction data.
-In this case, we will specify one very special key, `:db/id`, to which we will
-bind the entity ID we just retrieved. The transaction looks like this:
+In this case, we will bind `:db/id` to the entity ID we just retrieved and supply
+`:db/source` for the update. The metadata-only `edb.tx` map supplies the source
+for the generated transaction instant. The transaction looks like this:
 
 ```rust
 let update = format!(
-    r#"[{{:db/id {commando_id} :movie/genre "future governor"}}]"#
+    r#"[{{:db/id "edb.tx" :db/source :db.source/system}}
+        {{:db/id {commando_id} :db/source :db.source/system
+          :movie/genre "future governor"}}]"#
 );
 let endpoint = std::env::var("EDB_TUTORIAL_ENDPOINT")?;
 let request = TransactionRequest::from_edn("tutorial-commando-genre", &update)?;
@@ -77,19 +80,24 @@ println!("{}", write_edn(&transaction_report_to_edn(
 )?)?);
 ```
 
-```edn
+In the report excerpts below, `source-id` stands for the entity ID of
+`:db.source/system`.
+
+```text
 {:edb/db-before-t 3
  :edb/db-after-t 4
  :edb/tx-data
- [[13194139533316 50 #inst "2023-11-14T22:13:23.000Z" 13194139533316 true]
-  [17592186045419 1000 "action/adventure" 13194139533316 false]
-  [17592186045419 1000 "future governor" 13194139533316 true]]
+ [[13194139533316 50 #inst "2023-11-14T22:13:23.000Z" 13194139533316 source-id true]
+  [17592186045419 1000 "action/adventure" 13194139533316 source-id false]
+  [17592186045419 1000 "future governor" 13194139533316 source-id true]]
  :edb/tempids {}}
 ```
 
 The report contains an assertion of `"future governor"` and a retraction of
 `"action/adventure"`. Because `:movie/genre` has cardinality one, asserting the
-new genre replaces the old genre in the current view.
+new genre replaces the old genre in the current view. The retraction carries
+the update's source; the earlier assertion retains its original source in
+history.
 
 Keep `tutorial-commando-genre` and the same transaction data when retrying after
 a lost reply. A confirmed commit remains committed even if opening or rendering
@@ -152,20 +160,20 @@ newer database value.
   establish a time boundary. Remember the results from issuing the transaction
   where you transacted the first movies:
 
-  ```edn
+  ```text
   {:edb/db-before-t 2
    :edb/db-after-t 3
    :edb/tx-data
-   [[13194139533315 50 #inst "2023-11-14T22:13:22.000Z" 13194139533315 true]
-    [17592186045419 1000 "action/adventure" 13194139533315 true]
-    [17592186045419 1001 "Commando" 13194139533315 true]
-    [17592186045419 1002 1985 13194139533315 true]
-    [17592186045420 1000 "action/adventure" 13194139533315 true]
-    [17592186045420 1001 "The Goonies" 13194139533315 true]
-    [17592186045420 1002 1985 13194139533315 true]
-    [17592186045421 1000 "punk dystopia" 13194139533315 true]
-    [17592186045421 1001 "Repo Man" 13194139533315 true]
-    [17592186045421 1002 1984 13194139533315 true]]
+   [[13194139533315 50 #inst "2023-11-14T22:13:22.000Z" 13194139533315 source-id true]
+    [17592186045419 1000 "action/adventure" 13194139533315 source-id true]
+    [17592186045419 1001 "Commando" 13194139533315 source-id true]
+    [17592186045419 1002 1985 13194139533315 source-id true]
+    [17592186045420 1000 "action/adventure" 13194139533315 source-id true]
+    [17592186045420 1001 "The Goonies" 13194139533315 source-id true]
+    [17592186045420 1002 1985 13194139533315 source-id true]
+    [17592186045421 1000 "punk dystopia" 13194139533315 source-id true]
+    [17592186045421 1001 "Repo Man" 13194139533315 source-id true]
+    [17592186045421 1002 1984 13194139533315 source-id true]]
    :edb/tempids {"__map/00000000000000000000" 17592186045419
                 "__map/00000000000000000001" 17592186045420
                 "__map/00000000000000000002" 17592186045421}}
@@ -173,7 +181,8 @@ newer database value.
 
 In the `:edb/tx-data` collection, the transaction's own `:db/txInstant` datom has
 the transaction entity ID as its first number (`13194139533315` here). Every
-datom also carries that transaction ID in its fourth position. The
+datom also carries that transaction ID in its fourth position, followed by its
+source entity ID and assertion or retraction flag. The
 `:edb/db-after-t` field identifies the same transaction's logical number, `3`.
 These are distinct representations of the point we'd like to look at—the one
 before we updated the genre of "Commando".

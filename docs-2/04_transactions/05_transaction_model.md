@@ -6,24 +6,27 @@ There are a number of potential causes for confusion when learning the model. Fi
 
 ## It’s All About Information
 
-An EDB database is *information*, specifically a set of atomic immutable facts. Because “fact” has many casual meanings, we call facts in EDB *datoms*. There are two kinds of datoms, *additions* and *retractions*, named via `:db/add` and `:db/retract` in transaction data. Each datom associates an entity (E) with a value (V) via an attribute (A), similar to the subject/predicate/object of RDF. In the example below, the entity Stu is related to the value `"pizza"` by the attribute `:person/likes`.
+An EDB database is *information*, specifically a set of atomic immutable statements. We call these statements in EDB *datoms*. There are two kinds of datoms, *additions* and *retractions*, named via `:db/add` and `:db/retract` in transaction data. Each datom associates an entity (E) with a value (V) via an attribute (A), similar to the subject/predicate/object of RDF. It also records the transaction (T), source (S), and assertion/retraction flag: `[e a v t s added?]`. The source is an ordinary entity id explicitly supplied for each assertion or retraction; one transaction can contain statements from several sources. In the example below, the entity Stu is related to the value `"pizza"` by the attribute `:person/likes`.
 
 ```edn
-[[:db/add "Stu" :person/likes "pizza"]]
+[{:db/id "edb.tx" :db/source 99}
+ [:db/add "Stu" :person/likes "pizza" 99]]
 ```
 
-Here `"Stu"` is a transaction-local tempid, and `:person/likes` must already be installed as a string attribute. To identify an existing Stu, use an entity id, ident or lookup ref instead. See [Transaction Data](04_transaction_data.md).
+Here `"Stu"` is a transaction-local tempid, `99` identifies an existing source entity, and `:person/likes` must already be installed as a string attribute. The metadata-only `"edb.tx"` map explicitly attributes the generated `:db/txInstant`; it does not provide a default source for other forms. To identify an existing Stu, use an entity id, ident or lookup ref instead. See [Transaction Data](04_transaction_data.md).
 
 A transaction is *information*, specifically a set of assertions and retractions written as above. An EDB transaction is declarative. The `transact` APIs atomically accrue a transaction to a database. On their own, the datoms of a transaction ‘do’ nothing. They could instead be considered mere clauses named:
 
 ```text
-[[:it-is-now-true-that Stu :person/likes "pizza"]
- [:it-is-no-longer-true-that Stu :person/likes "ice-cream"]]
+[[:it-is-now-true-that Stu :person/likes "pizza" 99]
+ [:it-is-no-longer-true-that Stu :person/likes "ice-cream" 99]]
 ```
 
 These clause names explain the meaning; they are not EDB transaction syntax.
 
 A *database value* represents the database at a particular transaction basis, with current facts and retained history. Ordinary transactions accrue new information (like a log or ledger). *A database is not a set of places that get updated*. The word value emphasizes that databases, like datoms, are immutable. For brevity, database value is often shorthanded as *db value* or even *db*. Current-state reads omit retracted facts; history exposes additions and retractions. Retention policies such as [noHistory](../03_schema/02_schema_reference.md#dbnohistory) and [excision](../08_operations/00_deployment.md#excision) mean that retaining every fact forever is not an unconditional promise.
+
+An assertion of the same entity, attribute and value by a different source is not redundant: both assertions retain their attribution, while ordinary current-value reads still return one distinct value. Redundant assertions are compared by EAVS. A retraction removes the current EAV fact regardless of its original source; the retraction carries its own source and leaves the earlier assertions' attribution unchanged.
 
 ## with and transact
 
@@ -46,19 +49,19 @@ Any particular transaction successor is the product of the immediate predecessor
 
 Speculation does not reserve entity ids or guarantee that a later submission will have the same db-before. Submit the original logical forms, not speculative ids or a datom diff. Use `TransactionRequest::comparing_basis` if a plan requires the live basis to remain unchanged. Filtered and temporal views assess against the full underlying basis and preserve their view on the result; history views cannot transact. Match the writer’s allocation defaults and native deployment when those affect the preview.
 
-Durable requests also carry a caller-owned request key. After an ambiguous outcome, retry the identical request with the same key. Receipt resolution precedes fresh assessment, so an accepted request returns its original outcome rather than applying the information a second time. Reusing the key for different intent conflicts. A confirmed commit can still have a local report-opening error; see [Transactions, Reports and Exact Retries](00_transactions.md).
+Durable requests also carry a caller-owned request key. After an ambiguous outcome, retry the identical request, including its explicit sources, with the same key. Receipt resolution precedes fresh assessment, so an accepted request returns its original outcome rather than applying the information a second time. Reusing the key for different intent conflicts. A confirmed commit can still have a local report-opening error; see [Transactions, Reports and Exact Retries](00_transactions.md).
 
 ## Application Correctness
 
 Programs may wish to enforce business-rules validations at transaction boundaries. EDB supports such validations with [entity specs](../03_schema/02_schema_reference.md#entity-specs), whose entity predicates have access to db-after, the proposed end-of-transaction database value. An entity spec is checked when requested through `:db/ensure`; defining it does not automatically validate every entity in every transaction. Attribute predicates validate asserted values. Application correctness depends on the rules the application actually installs and requests.
 
-Programs may wish to generate, transform or validate input data with reference to data already in the database. EDB supports such transformations and validations via [transaction functions](04_transaction_data.md#transaction-functions), which follow the pure-function model of functional programming with values. A transaction function is passed the value of db-before for this transaction, and its result is transaction data added to the other data in the transaction, but not incorporated in the db until transaction completion. Thus deterministic transaction functions produce the same result regardless of the order in which they appear, and preserve the declarative nature of EDB transactions. They are not stored procedures manipulating intermediate states.
+Programs may wish to generate, transform or validate input data with reference to data already in the database. EDB supports such transformations and validations via [transaction functions](04_transaction_data.md#transaction-functions), which follow the pure-function model of functional programming with values. A transaction function is passed the value of db-before for this transaction, and its result is transaction data added to the other data in the transaction, but not incorporated in the db until transaction completion. Its returned assertions and retractions carry explicit sources. Thus deterministic transaction functions produce the same result regardless of the order in which they appear, and preserve the declarative nature of EDB transactions. They are not stored procedures manipulating intermediate states.
 
 One way to think about transaction functions is that they are like the helper functions one might run in the application when creating the initial transaction data. Like those helpers, they only create data; they are not operations affecting a db. Unlike helpers run before submission, transaction functions run during assessment and are supplied with db-before, the value of the database immediately preceding the transaction in which they are invoked. This allows you to functionally increment values, confirm prerequisites etc. that you could not safely decide from an earlier application read, since you cannot know beforehand which db value your transaction will create the successor of.
 
 Thus an EDB transaction function, however named (`compare-and-swap`, `create-customer` etc.), is not an operation modifying a database, nor a grouping of such operations, and does not ‘do’ anything to the durable database by itself. Verb-like names indicate the purpose of the data but do not imply effects.
 
-The built-in `:db/cas` checks a cardinality-one attribute against db-before; `nil` as the expected value means absence. Its proposed new value participates in the same whole-transaction assessment as every other assertion. Two different assertions for one cardinality-one attribute fail rather than implementing “last one wins.” Unique values cannot have multiple holders in the successor, while unique identity assertions may unify tempids with an existing entity. See [Value and Identity Rules](../03_schema/01_identity_and_values.md).
+The built-in `:db/cas` checks a cardinality-one attribute against db-before; `nil` as the expected value means absence. Its proposed new value participates in the same whole-transaction assessment as every other assertion. Its supplied source attributes both the assertion and any resulting retraction. Two different asserted values for one cardinality-one attribute fail rather than implementing “last one wins”; multiple sources asserting the same value still satisfy cardinality-one. Unique values cannot have multiple holders in the successor, while unique identity assertions may unify tempids with an existing entity. See [Value and Identity Rules](../03_schema/01_identity_and_values.md).
 
 EDB supports [persisted programs](01_persisted_programs.md) and explicitly deployed [native Rust callbacks](../07_peer_api/02_native_computation.md). Rust callbacks are ordinary application code, so purity is a requirement on that code, not a guarantee that the language prevents external effects. Keep their results dependent on supplied arguments and database values. Send mail, charge cards and perform other external effects only through a separate workflow reacting to committed transactions.
 
@@ -79,9 +82,9 @@ EDB transaction functions and entity specs bring the power of declarative and fu
 EDB is designed to facilitate creating correct applications and reasoning about the information they produce. `transact` and speculative `with` produce transaction successors. Reads can also derive temporal or filtered views without creating transactions. Given a complete EDB database value, you know that:
 
 - It represents current facts and retained history at a captured basis. Current, history and temporal reads expose different portions of that information.
-- Each datom is associated with a transaction. Logical `basis_t` orders transactions; the transaction entity id and wall-clock `:db/txInstant` are distinct representations, and adjacent instants may be equal.
+- Each datom is associated with a transaction and an explicitly supplied source entity. Logical `basis_t` orders transactions; the transaction entity id and wall-clock `:db/txInstant` are distinct representations, and adjacent instants may be equal.
 - A transaction successor is the product of its immediate predecessor and the atomic addition of a single transaction, in toto, representing a set of facts at a single indivisible point in logical time.
-- Transactions and the log of their assertions are reified. You can make assertions about a transaction, such as its provenance, and use a datom’s transaction reference or the transaction log to associate facts with the transaction that asserted them, subject to retention.
+- Transactions and the log of their assertions are reified. You can make assertions about a transaction and use a datom’s transaction reference or the transaction log to associate facts with the transaction that asserted them, subject to retention. Each statement's source remains independent of transaction annotations.
 
 EDB’s transaction APIs, including transaction functions and entity specs, use complete database values at their respective before/after boundaries. There is no smaller imperative DML supporting sub-transaction mutations, stored procedures grouping those mutations, mid-transaction database states, mid-transaction concurrency semantics or sub-transaction time. Exposing such states would compromise the properties above.
 

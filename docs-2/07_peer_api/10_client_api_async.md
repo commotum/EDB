@@ -196,7 +196,8 @@ collections:
 | 1: A | `attribute` | Attribute ID, `u32`. |
 | 2: V | `value` | Typed `Value`. |
 | 3: TX | `tx` | Transaction entity ID, `u64`; use `tx_to_t` for logical T. |
-| 4: added | `added` | `true` for assertion, `false` for retraction. |
+| 4: S | `source` | Source entity ID, `u64`. |
+| 5: added | `added` | `true` for assertion, `false` for retraction. |
 
 See [Datom](types/05_datom.md) and [index APIs](../06_indexes/04_index_apis.md).
 
@@ -261,7 +262,7 @@ across time. This native view construction performs no I/O. Pass it to
 datom cursors and bounded scans on a blocking worker. History cannot be used
 for Pull or speculative transactions.
 
-Queries against history include retractions as well as assertions; the fifth
+Queries against history include retractions as well as assertions; the sixth
 datom field, `added`, distinguishes them. Temporal/custom filters remain in
 force. History is subject to no-history consolidation and excision; the log
 has separate retention behavior. See [history views](types/03_database.md#history).
@@ -526,7 +527,10 @@ fn transact(&self, request: TransactionRequest, timeout: Duration)
 Submits a transaction through the attached writer. Construct a request with
 `TransactionRequest::new(request_key, operations)`, `from_forms(request_key,
 forms)` or `from_edn(request_key, text)`. EDN transaction data is a collection
-of operation vectors, entity maps and transaction calls; see
+of operation vectors, entity maps and transaction calls. Each assertion and
+retraction carries an explicitly supplied source entity ID. A metadata-only
+`{:db/id "edb.tx" :db/source S}` map supplies the source for the generated
+transaction instant, without supplying a default for other forms; see
 [transaction data](../04_transactions/04_transaction_data.md).
 
 The admission result is a waiter, not proof of durability. Awaiting it yields
@@ -542,12 +546,14 @@ The admission result is a waiter, not proof of durability. Awaiting it yields
 | `replayed` | Whether an existing receipt supplied the result. |
 | `diagnostics` | Optional per-submission transaction diagnostics. |
 
-For example, assuming the movie schema and attached writer are installed:
+For example, assuming the movie schema and attached writer are installed
+and entity `99` identifies the contributor:
 
 ```rust,ignore
 let request = edb_core::TransactionRequest::from_edn(
     "add-goonies",
-    r#"[{:db/id "goonies" :movie/title "The Goonies"}]"#,
+    r#"[{:db/id "edb.tx" :db/source 99}
+        {:db/id "goonies" :db/source 99 :movie/title "The Goonies"}]"#,
 )?;
 let report = client.transact(request, std::time::Duration::from_secs(30))?.await?;
 let goonies = report.tempids["goonies"];

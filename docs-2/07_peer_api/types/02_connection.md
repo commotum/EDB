@@ -237,16 +237,21 @@ The request key identifies the submission for exact retries.
 
 Transaction data can contain any combination of assertions, retractions,
 transaction functions, or entity maps. These EDN examples assume the named
-attributes and transaction function have been installed:
+attributes and transaction function have been installed, and source entity `99`
+identifies the contributor. The function accepts a source argument for its
+emitted assertions and retractions:
 
 | Type | Example |
 | --- | --- |
-| Assertion | `[:db/add 1001 :some-attr/name "Some attr value"]` |
-| Retraction | `[:db/retract 1001 :some-attr/name "Some attr value"]` |
-| Transaction function | `[:some/fn-name "argument"]` |
-| Entity map | `{:db/id "new-entity" :some-attr/name "some value" :another-attr/name 42}` |
+| Assertion | `[:db/add 1001 :some-attr/name "Some attr value" 99]` |
+| Retraction | `[:db/retract 1001 :some-attr/name "Some attr value" 99]` |
+| Transaction function | `[:some/fn-name "argument" 99]` |
+| Entity map | `{:db/id "new-entity" :db/source 99 :some-attr/name "some value" :another-attr/name 42}` |
 
-Wrap forms in an outer vector for `from_edn`. See
+Wrap forms in an outer vector for `from_edn` and include
+`{:db/id "edb.tx" :db/source 99}` to attribute the generated `:db/txInstant`.
+That declaration does not supply a default source for the other forms; each
+assertion and retraction carries its own source. See
 [transaction data](../../04_transactions/04_transaction_data.md) and
 [transaction functions](../../04_transactions/07_transaction_functions.md).
 

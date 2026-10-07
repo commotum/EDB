@@ -231,7 +231,11 @@ Datoms have these named fields:
 | `attribute` | `u32` | Attribute ID. |
 | `value` | `Value` | Stored value. |
 | `tx` | `u64` | Reified transaction entity ID. |
+| `source` | `u64` | Source entity ID for the assertion or retraction. |
 | `added` | `bool` | `true` for assertion, `false` for retraction. |
+
+Datom reads retain distinct source contributions for the same entity, attribute,
+and value.
 
 AVET readiness and error behavior differ between eager prefixes, durable
 prefixes, and attribute-qualified seek boundaries. Check `has_avet` when relying
@@ -395,14 +399,16 @@ fn history(self) -> DatabaseValue;
 Returns a special database containing retained assertions and retractions across
 time. This value can be used for raw index access and queries, but not for
 entity navigation, Pull, or transactions. As-of, since, and custom predicate
-bounds remain in force. Queries can distinguish assertions and retractions with
-the fifth datom field:
+bounds remain in force. Queries can inspect source in the fifth datom field and
+distinguish assertions and retractions with the sixth:
 
 ```edn
-[?e ?a ?v ?tx ?added]
+[?e ?a ?v ?tx ?source ?added]
 ```
 
-`?added` is `true` for an assertion. Historical indexes can omit data affected by
+`?source` is the entity ID to which the statement is attributed; a retraction's
+source does not change the source of the earlier assertion. `?added` is `true`
+for an assertion. Historical indexes can omit data affected by
 no-history retention or excision. The captured transaction log is a separate
 API. See [indexes and log](../06_indexes/00_indexes_and_log.md).
 
@@ -939,7 +945,9 @@ Given a connection with an attached transaction endpoint and a set of informatio
 in a `TransactionRequest`, submits a transaction and blocks until a result or
 wait error is available. Construct requests from primitive operations, forms,
 or EDN using `TransactionRequest::new`, `from_forms`, or `from_edn`. Every durable
-request includes a request key for exact retry handling.
+request includes a request key for exact retry handling. Each assertion and
+retraction supplies a source entity ID in its transaction form; a single request
+can include several sources.
 
 A successful report includes `db_before`, `db_after`, `tx_data`, and `tempids`,
 plus `basis_t`, `tx_hash`, `replayed`, and optional diagnostics. These database
@@ -1061,8 +1069,13 @@ advance a connection, or reserve entity IDs.
 
 Transaction data is semantically an unordered set of information. Syntactically,
 `with` accepts primitive operations; `with_forms` also accepts entity maps and
-transaction calls; `with_edn` parses the EDN representation. If the data is valid,
-the report contains:
+transaction calls; `with_edn` parses the EDN representation. Each assertion and
+retraction carries an explicit source. Both durable and speculative transactions
+also supply attribution for `:db/txInstant`: use a metadata-only entity map with
+`id: Some(EntityRef::Tx)`, `source: Some(source)`, and empty `attributes`, or an
+explicit sourced `TxOp::Add` of the transaction instant when using primitive
+operations. The EDN metadata declaration is shown below; it supplies no default
+source for other forms. If the data is valid, the report contains:
 
 | Field | Meaning |
 | --- | --- |
@@ -1091,12 +1104,15 @@ use edb_core::{Database, Keyword, SemanticError};
 fn example() -> Result<(), SemanticError> {
     let initial = Database::bootstrap()?.database_value();
     let schema = initial.with_edn(r#"[
+      {:db/id "edb.tx" :db/source :db.source/system}
       {:db/ident :person/name
+       :db/source :db.source/system
        :db/valueType :db.type/string
        :db/cardinality :db.cardinality/one}
     ]"#, 1_000)?;
     let report = schema.db_after.with_edn(r#"[
-      {:db/id "person" :person/name "Ada"}
+      {:db/id "edb.tx" :db/source :db.source/system}
+      {:db/id "person" :db/source :db.source/system :person/name "Ada"}
     ]"#, 2_000)?;
     let id = report.tempids["person"];
     let entity = report.db_after.entity(id)?.expect("resolved entity ID");

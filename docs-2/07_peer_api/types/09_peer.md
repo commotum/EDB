@@ -251,8 +251,11 @@ Use `EntityRef::Temp(String)` in typed transaction forms, or string tempids in
 EDN transaction data:
 
 ```edn
-[{:db/id "person" :person/name "Ada"}]
+[{:db/id "edb.tx" :db/source :db.source/system}
+ {:db/id "person" :db/source :db.source/system :person/name "Ada"}]
 ```
+
+The `edb.tx` map supplies the source for the generated transaction time.
 
 A tempid names the same entity everywhere it appears within that transaction.
 There is no global tempid constructor or reserved negative-number range for
@@ -384,12 +387,15 @@ use edb_core::edn_query::{EdnQueryArgument, parse_query_edn};
 fn example() -> Result<(), SemanticError> {
     let initial = Database::bootstrap()?.database_value();
     let schema = initial.with_edn(r#"[
+      {:db/id "edb.tx" :db/source :db.source/system}
       {:db/ident :person/name
+       :db/source :db.source/system
        :db/valueType :db.type/string
        :db/cardinality :db.cardinality/one}
     ]"#, 1_000)?;
     let report = schema.db_after.with_edn(r#"[
-      {:db/id "person" :person/name "Ada"}
+      {:db/id "edb.tx" :db/source :db.source/system}
+      {:db/id "person" :db/source :db.source/system :person/name "Ada"}
     ]"#, 2_000)?;
     assert!(report.tempids.get("person").is_some());
     let query = parse_query_edn("[:find ?name :where [?e :person/name ?name]]")?;

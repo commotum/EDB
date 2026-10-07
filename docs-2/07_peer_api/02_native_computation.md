@@ -82,19 +82,23 @@ needs it. The database does not archive native machine code; retain source/build
 artifacts externally. Do not silently reuse a version for incompatible code.
 
 Functions receive exact db-before, `RuntimeValue` arguments and a
-`NativeCallContext`, and return transaction forms. Returned calls expand under the
-same transaction controls. Attribute predicates receive values; ensured entity
-predicates receive the complete proposed db-after. Only literal true accepts a
-predicate; rejection data/errors and panic containment follow the native boundary.
+`NativeCallContext`, and return transaction forms with explicit sources for their
+assertions and retractions. Pass sources as ordinary function arguments when needed.
+Returned calls expand under the same transaction controls. Attribute predicates
+receive values; ensured entity predicates receive the complete proposed db-after.
+Only literal true accepts a predicate; rejection data/errors and panic containment
+follow the native boundary.
 The receipt check happens first: removing or changing a deployment cannot change
 an already accepted request's exact retry. A new request needing missing code fails.
 
 Native schema predicates can name a registered callback directly. After
 registering `demo.people/valid-name?` as an attribute predicate, attach it to
-an existing attribute:
+an existing attribute. These excerpts use an existing source entity `99`; each
+submitted transaction also includes `{:db/id "edb.tx" :db/source 99}` to attribute
+its generated `:db/txInstant`:
 
 ```edn
-[[:db/add :person/name :db.attr/preds demo.people/valid-name?]]
+[[:db/add :person/name :db.attr/preds demo.people/valid-name? 99]]
 ```
 
 Entity predicate symbols work the same way through `:db.entity/preds`.
@@ -102,7 +106,8 @@ An optional temporal alias can bind a stable database ident to a native name.
 To use aliases, install `native_deployment_attribute(id)`, then transact:
 
 ```edn
-[{:db/ident :checks/valid-person
+[{:db/source 99
+  :db/ident :checks/valid-person
   :edb.native/deployment demo.people/valid-person}]
 ```
 
@@ -136,10 +141,13 @@ submit this file through `edb transact --database people --endpoint SOCKET
 --request-key person-1 --file person.edn`:
 
 ```edn
-[[demo.people.v1/add-person "person" "  ALICE   Smith  "]]
+[{:db/id "edb.tx" :db/source :db.source/system}
+ [demo.people.v1/add-person "person" "  ALICE   Smith  " :db.source/system]]
 ```
 
-The result stores `"alice smith"` under `:person/name`. The stock client does not
+The function uses its final argument as the source of the returned assertions.
+The result stores `"alice smith"` under `:person/name`, attributed here to the
+explicitly supplied `:db.source/system` entity. The stock client does not
 load code; it sends ordinary data to the explicitly extended host. The stock
 transactor has an empty native registry. Restart the custom host with the same
 deployment for new calls; accepted retries retain their original results.

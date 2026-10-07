@@ -71,37 +71,54 @@ attribute is used. A value can be one of the built-in types, including entity
 references, strings, keywords, numbers, booleans, instants, UUIDs, URIs, bytes and
 tuples. The E/A/V portion of a datom is similar to the triples of a traditional
 triple store. Each datom also includes the ID of the transaction entity (Tx) that
-added it, and a boolean indicating whether it is an assertion or retraction:
+added it, a source entity ID (S) explicitly supplied by the application, and a
+boolean indicating whether it is an assertion or retraction:
 
 ```text
-[Entity  Attribute  Value  Transaction  Added-or-retracted]
+[Entity  Attribute  Value  Transaction  Source  Added-or-retracted]
 ```
+
+The source is an ordinary entity describing the person, institution, publication
+or other origin to whom the statement is attributed. One transaction can contain
+facts from several sources. A retraction carries its own source; it does not
+change the attribution of the earlier assertion.
 
 Datoms sharing a common E can be projected into an entity, an associative
 attribute-to-value view of the assertions with that entity ID as of a given
 point in time. Cardinality-one attributes have at most one current value;
-cardinality-many attributes can have a set of values. Reference values connect
-entities without requiring a separate join-table model.
+cardinality-many attributes can have a set of values. Two sources asserting the
+same value retain distinct attribution while contributing one value to this
+view. Reference values connect entities without requiring a separate join-table
+model.
 
 For example, after installing the attributes, this EDN transaction records two
-facts about a person:
+facts about a person. Assume entity `99` identifies the contributor:
 
 ```edn
-[{:person/name "Alice"
+[{:db/id "edb.tx" :db/source 99}
+ {:db/source 99
+  :person/name "Alice"
   :person/email "alice@example.com"}]
 ```
+
+The `:db/source` entries supply attribution. The metadata-only `"edb.tx"` map
+attributes the generated `:db/txInstant` fact; each domain map supplies its own
+source.
 
 If `:person/email` is unique, a later transaction can identify that person with
 a lookup reference and change the name:
 
 ```edn
-[{:db/id [:person/email "alice@example.com"]
+[{:db/id "edb.tx" :db/source 99}
+ {:db/id [:person/email "alice@example.com"]
+  :db/source 99
   :person/name "Alicia"}]
 ```
 
 For a cardinality-one name, the resulting transaction retracts the old value
-and asserts the new one. The omitted email remains unchanged. A captured
-pre-transaction value still sees Alice; a post-transaction value sees Alicia.
+and asserts the new one, both attributed to source `99`. The omitted email remains
+unchanged. A captured pre-transaction value still sees Alice; a post-transaction
+value sees Alicia.
 The [transaction data reference](../04_transactions/04_transaction_data.md)
 explains entity maps, identifiers, assertions and retractions.
 
@@ -110,8 +127,8 @@ programmatically through logical time `t` and the database value's `basis_t`.
 The transaction entity ID and `t` are related representations, not interchangeable
 raw numbers. Transactions are themselves entities, recording wall-clock time
 in `:db/txInstant` along with additional datoms you choose to add. This gives
-provenance, such as the actor or source of a change, the same queryable form as
-application facts.
+transaction metadata, such as the purpose of a change, the same queryable form as
+application facts. Each of these datoms also has its own source.
 
 Schema is also data: an attribute is an entity whose facts describe its name,
 value type, cardinality and other constraints. See
@@ -131,7 +148,8 @@ The EDB information model has the following benefits:
   low-latency access and supports navigation patterns that would be expensive
   with a server roundtrip for every attribute or relationship.
 - **Auditability:** the total ordering of transactions and retention of assertions
-  and retractions let you inspect the steps in the history of your data.
+  and retractions let you inspect the steps in the history of your data and the
+  source of each statement.
   Transaction entities offer a place to store domain-specific provenance metadata.
   History retention and excision policies determine what remains available.
 - **History:** because datoms record their transaction, database values can be
@@ -243,8 +261,10 @@ similar in purpose to a page in a traditional relational database.
 | AVET | Attribute / value / entity / transaction | Indexed or unique attributes whose projection is ready |
 | VAET | Reference value / attribute / entity / transaction | Reference-valued datoms |
 
-Within a logical E/A/V group, newer transactions sort first. Current and history
-views use their corresponding trees plus captured recent information; history
+Within a logical E/A/V group, newer transactions sort first, followed by source
+ID in ascending order and assertions before retractions. All four indexes retain
+source attribution. Current and history views use their corresponding trees
+plus captured recent information; history
 exposes assertions and retractions. Schema's indexing intent and completed
 physical indexing are distinct. Use `DatabaseValue::has_avet` to inspect readiness
 on the captured value, or synchronization APIs to await the required publication.

@@ -39,8 +39,8 @@ keyword or numeric reference and a search string; relation binding produces
 to enforce status, ownership or other selection rules. See the working syntax
 in [queries.md](00_queries.md#fulltext-and-structured-facts).
 
-Each hit describes an assertion, not just an entity. The value is the original
-string, including its capitalization and punctuation. Several strings asserted
+Each hit identifies an entity, value and assertion transaction. The value is the
+original string, including its capitalization and punctuation. Several strings asserted
 for a many-valued attribute on the same entity in one transaction remain distinct
 hits. Retracting and later reasserting the same string produces distinct
 assertion transactions in a retained history view. The query form can select an
@@ -129,7 +129,9 @@ explicit top-k truncation (`stats.truncated`); work/byte/parser budgets fail wit
 an error instead of silently returning partial results. Limit zero returns no
 hits and reports truncation when matches exist.
 Visible hits are deduplicated by entity, original value and assertion transaction
-before ranking and truncation. Hidden candidates therefore do not consume the
+before ranking and truncation, even when several sources supplied the same fact
+in that transaction. Datom/history queries expose their distinct attribution.
+Hidden candidates therefore do not consume the
 result limit. The limit bounds returned hits, not candidate discovery or
 validation work. Cooperative cancellation cannot interrupt an application filter
 callback that never returns.

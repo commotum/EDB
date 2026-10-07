@@ -96,7 +96,8 @@ return errors.
 | `data` | A `Vec<Datom>` containing the datoms asserted or retracted by the transaction. |
 
 The [datoms](types/05_datom.md) have typed fields `entity`, `attribute`, `value`,
-`tx`, and `added`. `added` is `true` for assertions and `false` for retractions.
+`tx`, `source`, and `added`. `source` identifies the entity to whom the assertion
+or retraction is attributed. `added` is `true` for assertions and `false` for retractions.
 Rust structs can be destructured accordingly:
 
 ```rust
@@ -104,8 +105,8 @@ use edb_core::{Datom, LogTransaction};
 
 fn print_datoms(transaction: LogTransaction) {
     let LogTransaction { t, data } = transaction;
-    for Datom { entity, attribute, value, tx, added } in data {
-        println!("T={t} E={entity} A={attribute} V={value:?} TX={tx} added={added}");
+    for Datom { entity, attribute, value, tx, source, added } in data {
+        println!("T={t} E={entity} A={attribute} V={value:?} TX={tx} S={source} added={added}");
     }
 }
 ```
@@ -171,18 +172,18 @@ fn count_transactions(log: &LogValue) -> Result<QueryOutcome, SemanticError> {
 
 The `tx-data` function returns the datoms associated with a particular T or
 transaction reference. You will typically use the relation binding form
-`[[?e ?a ?v _ ?op]]` to capture the results:
+`[[?e ?a ?v _ _ ?op]]` to capture the results:
 
 ```edn
-[(tx-data $log ?tx) [[?e ?a ?v _ ?op]]]
+[(tx-data $log ?tx) [[?e ?a ?v _ _ ?op]]]
 ```
 
-The five positions are entity, attribute, value, transaction, and assertion flag.
-Entity, attribute, and transaction positions are numeric references; `?op` is a
-boolean. Note the underscore binding: the transaction is already bound on input
-to the function, so leave that output position unbound when it is not needed.
+The six positions are entity, attribute, value, transaction, source, and assertion flag.
+Entity, attribute, transaction, and source positions are numeric references; `?op`
+is a boolean. The first underscore skips the transaction, which is already bound
+on input to the function; the second skips the assertion or retraction's source.
 EDB also permits an already-bound transaction reference in that output position:
-`[(tx-data $log ?tx) [[?e ?a ?v ?tx ?op]]]` unifies the returned reference with
+`[(tx-data $log ?tx) [[?e ?a ?v ?tx _ ?op]]]` unifies the returned reference with
 `?tx`. When the input is a numeric T, use `_` or a different variable for the
 transaction-reference output.
 Trailing columns can also be omitted, as in `[[?e]]`.

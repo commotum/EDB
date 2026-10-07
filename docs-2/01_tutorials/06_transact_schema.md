@@ -27,10 +27,14 @@ Every attribute definition has [three required attributes](../03_schema/02_schem
 You can also supply the optional `:db/doc` attribute, which stores a docstring
 of the attribute which you can query for later.
 
+Each map explicitly attributes its assertions through `:db/source`. For this
+tutorial, we'll use the built-in source entity `:db.source/system`.
+
 - Our first attribute, "title", will be defined as:
 
   ```edn
   {:db/ident :movie/title
+   :db/source :db.source/system
    :db/valueType :db.type/string
    :db/cardinality :db.cardinality/one
    :db/doc "The title of the movie"}
@@ -40,6 +44,7 @@ of the attribute which you can query for later.
 
   ```edn
   {:db/ident :movie/genre
+   :db/source :db.source/system
    :db/valueType :db.type/string
    :db/cardinality :db.cardinality/one
    :db/doc "The genre of the movie"}
@@ -50,6 +55,7 @@ of the attribute which you can query for later.
 
   ```edn
   {:db/ident :movie/release-year
+   :db/source :db.source/system
    :db/valueType :db.type/long
    :db/cardinality :db.cardinality/one
    :db/doc "The year the movie was released in theaters"}
@@ -57,22 +63,28 @@ of the attribute which you can query for later.
 
 You could choose to send each of these attributes to the database in individual
 transactions. We'll batch them up into a single transaction and combine the
-three maps into a single vector of maps. Let's save our schema vector in a file
-called `movie-schema.edn`:
+three maps into a single vector of maps. We'll also include a metadata-only
+`"edb.tx"` map to attribute the generated `:db/txInstant`; this does not supply
+a default source for the other maps. Let's save our schema
+vector in a file called `movie-schema.edn`:
 
 ```sh
 cat > movie-schema.edn <<'EDN'
-[{:db/ident :movie/title
+[{:db/id "edb.tx" :db/source :db.source/system}
+ {:db/ident :movie/title
+  :db/source :db.source/system
   :db/valueType :db.type/string
   :db/cardinality :db.cardinality/one
   :db/doc "The title of the movie"}
 
  {:db/ident :movie/genre
+  :db/source :db.source/system
   :db/valueType :db.type/string
   :db/cardinality :db.cardinality/one
   :db/doc "The genre of the movie"}
 
  {:db/ident :movie/release-year
+  :db/source :db.source/system
   :db/valueType :db.type/long
   :db/cardinality :db.cardinality/one
   :db/doc "The year the movie was released in theaters"}]
@@ -98,38 +110,41 @@ target/release/edb transact --database edn-demo \
 The executable prints EDN with `:edb/committed true`, `:edb/basis-t`,
 `:edb/tx-hash`, and `:edb/replayed`. The report fields look like this; IDs, time
 and basis depend on your database. This example assumes the "Hello world"
-transaction from the previous section was the first transaction:
+transaction from the previous section was the first transaction.
 
-```edn
+In this schematic report, `source-id` denotes the resolved entity ID of
+`:db.source/system`.
+
+```text
 {:edb/db-before-t 1
  :edb/db-after-t 2
  :edb/tx-data
- [[0 13 #edb/ref 1000 13194139533314 true]
-  [0 13 #edb/ref 1001 13194139533314 true]
-  [0 13 #edb/ref 1002 13194139533314 true]
-  [1000 10 :movie/genre 13194139533314 true]
-  [1000 40 #edb/ref 23 13194139533314 true]
-  [1000 41 #edb/ref 35 13194139533314 true]
-  [1000 62 "The genre of the movie" 13194139533314 true]
-  [1001 10 :movie/title 13194139533314 true]
-  [1001 40 #edb/ref 23 13194139533314 true]
-  [1001 41 #edb/ref 35 13194139533314 true]
-  [1001 62 "The title of the movie" 13194139533314 true]
-  [1002 10 :movie/release-year 13194139533314 true]
-  [1002 40 #edb/ref 22 13194139533314 true]
-  [1002 41 #edb/ref 35 13194139533314 true]
-  [1002 62 "The year the movie was released in theaters" 13194139533314 true]
-  [13194139533314 50 #inst "2023-11-14T22:13:21.000Z" 13194139533314 true]]
+ [[0 13 #edb/ref 1000 13194139533314 source-id true]
+  [0 13 #edb/ref 1001 13194139533314 source-id true]
+  [0 13 #edb/ref 1002 13194139533314 source-id true]
+  [1000 10 :movie/genre 13194139533314 source-id true]
+  [1000 40 #edb/ref 23 13194139533314 source-id true]
+  [1000 41 #edb/ref 35 13194139533314 source-id true]
+  [1000 62 "The genre of the movie" 13194139533314 source-id true]
+  [1001 10 :movie/title 13194139533314 source-id true]
+  [1001 40 #edb/ref 23 13194139533314 source-id true]
+  [1001 41 #edb/ref 35 13194139533314 source-id true]
+  [1001 62 "The title of the movie" 13194139533314 source-id true]
+  [1002 10 :movie/release-year 13194139533314 source-id true]
+  [1002 40 #edb/ref 22 13194139533314 source-id true]
+  [1002 41 #edb/ref 35 13194139533314 source-id true]
+  [1002 62 "The year the movie was released in theaters" 13194139533314 source-id true]
+  [13194139533314 50 #inst "2023-11-14T22:13:21.000Z" 13194139533314 source-id true]]
  :edb/tempids {"__map/00000000000000000000" 1000
               "__map/00000000000000000001" 1001
               "__map/00000000000000000002" 1002}}
 ```
 
-Each datom is `[entity attribute value transaction added?]`. The report contains
-the three attribute definitions, the automatically generated schema installation
-facts, and the transaction time. `#edb/ref` marks an entity reference. Because we
-omitted `:db/id` from the maps, EDB generated temporary IDs; their names and
-allocation order are implementation details.
+Each datom is `[entity attribute value transaction source added?]`. The report
+contains the three attribute definitions, the automatically generated schema
+installation facts, and the transaction time. `#edb/ref` marks an entity reference.
+Because we omitted `:db/id` from the attribute maps, EDB generated temporary IDs;
+their names and allocation order are implementation details.
 
 `:edb/committed true` confirms that the transaction was persisted. The
 `:edb/db-before-t` and `:edb/db-after-t` values identify the database versions

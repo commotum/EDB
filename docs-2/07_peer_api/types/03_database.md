@@ -158,10 +158,13 @@ respectively. Supply the transaction instant explicitly as Unix epoch
 milliseconds.
 
 Each assertion and retraction explicitly supplies its source through the
-transaction form. A metadata-only map
-`{:db/id "edb.tx" :db/source S}` attributes the generated `:db/txInstant`;
-primitive operations use an explicit sourced `TxOp::Add` for that fact instead.
-This declaration does not supply a default source for other forms.
+transaction form. Include `[:db/txInstant S]`, or the native operation
+`TxOp::TxInstant { source: S }`, to attribute the supplied transaction instant
+to source `S`. A sourced `TxOp::Add` or map asserting that same instant on the
+current transaction is also sufficient. The `tx_instant` argument supplies the
+value only; it does not supply a source. Different sources may contribute the
+same timestamp, but all timestamp assertions must agree with `tx_instant`.
+The dedicated form does not supply a default source for other forms.
 
 The report contains `db_before`, `db_after`, `tx_data`, and `tempids`. No
 connection advances and no entity IDs are reserved. IDs allocated on a
@@ -527,19 +530,19 @@ use edb_core::edn_pull::parse_pull_edn;
 fn example() -> Result<(), SemanticError> {
     let initial = Database::bootstrap()?.database_value();
     let installed = initial.with_edn(r#"[
-      {:db/id "edb.tx" :db/source :db.source/system}
+      [:db/txInstant :db.source/system]
       {:db/ident :person/name :db/source :db.source/system
        :db/valueType :db.type/string
        :db/cardinality :db.cardinality/one}
     ]"#, 1_000)?.db_after;
     let first = installed.with_edn(r#"[
-      {:db/id "edb.tx" :db/source :db.source/system}
+      [:db/txInstant :db.source/system]
       {:db/id "person" :db/source :db.source/system :person/name "Ada"}
     ]"#, 2_000)?;
     let id = first.tempids["person"];
     let changed = first.db_after.with_edn(
         &format!(r#"[
-          {{:db/id "edb.tx" :db/source :db.source/system}}
+          [:db/txInstant :db.source/system]
           [:db/add {id} :person/name "Augusta" :db.source/system]
         ]"#),
         3_000,

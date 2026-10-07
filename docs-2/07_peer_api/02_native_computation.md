@@ -84,7 +84,10 @@ artifacts externally. Do not silently reuse a version for incompatible code.
 Functions receive exact db-before, `RuntimeValue` arguments and a
 `NativeCallContext`, and return transaction forms with explicit sources for their
 assertions and retractions. Pass sources as ordinary function arguments when needed.
-Returned calls expand under the same transaction controls. Attribute predicates
+Returned calls expand under the same transaction controls. A callback can return
+`TxForm::Op(TxOp::TxInstant { source })` to attribute the selected transaction
+instant. Expansion does not read the clock; the source applies only to that
+timestamp assertion. Attribute predicates
 receive values; ensured entity predicates receive the complete proposed db-after.
 Only literal true accepts a predicate; rejection data/errors and panic containment
 follow the native boundary.
@@ -94,8 +97,8 @@ an already accepted request's exact retry. A new request needing missing code fa
 Native schema predicates can name a registered callback directly. After
 registering `demo.people/valid-name?` as an attribute predicate, attach it to
 an existing attribute. These excerpts use an existing source entity `99`; each
-submitted transaction also includes `{:db/id "edb.tx" :db/source 99}` to attribute
-its generated `:db/txInstant`:
+submitted transaction also includes `[:db/txInstant 99]` to attribute
+its selected `:db/txInstant`:
 
 ```edn
 [[:db/add :person/name :db.attr/preds demo.people/valid-name? 99]]
@@ -141,7 +144,7 @@ submit this file through `edb transact --database people --endpoint SOCKET
 --request-key person-1 --file person.edn`:
 
 ```edn
-[{:db/id "edb.tx" :db/source :db.source/system}
+[[:db/txInstant :db.source/system]
  [demo.people.v1/add-person "person" "  ALICE   Smith  " :db.source/system]]
 ```
 

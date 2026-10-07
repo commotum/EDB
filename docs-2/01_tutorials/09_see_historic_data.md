@@ -58,12 +58,12 @@ database may allocate different IDs. Query relations have no row-order guarantee
 Remember back to the [transact data](07_transact_data.md) tutorial that a
 transaction requires an active connection and a collection of transaction data.
 In this case, we will bind `:db/id` to the entity ID we just retrieved and supply
-`:db/source` for the update. The metadata-only `edb.tx` map supplies the source
-for the generated transaction instant. The transaction looks like this:
+`:db/source` for the update. The `:db/txInstant` form supplies the source for
+the transaction's selected instant. The transaction looks like this:
 
 ```rust
 let update = format!(
-    r#"[{{:db/id "edb.tx" :db/source :db.source/system}}
+    r#"[[:db/txInstant :db.source/system]
         {{:db/id {commando_id} :db/source :db.source/system
           :movie/genre "future governor"}}]"#
 );

@@ -8,7 +8,7 @@ is different from a stored null value.
 Install this EDN as an ordinary transaction:
 
 ```edn
-[{:db/id "edb.tx" :db/source :db.source/system}
+[[:db/txInstant :db.source/system]
  {:db/ident :person/name
   :db/source :db.source/system
   :db/valueType :db.type/string
@@ -22,13 +22,13 @@ Install this EDN as an ordinary transaction:
 
 Each map explicitly attributes its facts to the ordinary built-in source entity
 `:db.source/system`. `:db/source` is map metadata, not a stored attribute. The
-metadata-only `edb.tx` map attributes the generated `:db/txInstant`; it does not
-supply a default source for other maps.
+`[:db/txInstant :db.source/system]` form attributes the transaction's selected
+instant to that source; it does not supply a default source for other forms.
 
 Then submit application data in a later transaction:
 
 ```edn
-[{:db/id "edb.tx" :db/source :db.source/system}
+[[:db/txInstant :db.source/system]
  {:db/source :db.source/system
   :person/name "Alice" :person/email "alice@example.com"}]
 ```

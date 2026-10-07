@@ -435,13 +435,13 @@ use edb_core::edn_pull::parse_pull_edn;
 fn main() -> Result<(), SemanticError> {
     let initial = Database::bootstrap()?.database_value();
     let schema = initial.with_edn(r#"[
-      {:db/id "edb.tx" :db/source :db.source/system}
+      [:db/txInstant :db.source/system]
       {:db/ident :person/name :db/source :db.source/system
        :db/valueType :db.type/string
        :db/cardinality :db.cardinality/one}
     ]"#, 1_000)?;
     let report = schema.db_after.with_edn(r#"[
-      {:db/id "edb.tx" :db/source :db.source/system}
+      [:db/txInstant :db.source/system]
       {:db/id "ada" :db/source :db.source/system :person/name "Ada"}
       {:db/id "grace" :db/source :db.source/system :person/name "Grace"}
     ]"#, 2_000)?;
@@ -547,8 +547,10 @@ Submits a transaction and waits for its result. Construct the request using
 or `from_edn(request_key, text)`. EDN transaction data is an outer vector of
 operation vectors, entity maps and transaction calls. Each assertion or
 retraction carries an explicitly supplied source entity ID through these forms.
-A metadata-only map `{:db/id "edb.tx" :db/source S}` supplies the source for the
-generated transaction instant, without providing a default for other forms. See
+The form `[:db/txInstant S]`, or native `TxOp::TxInstant { source }`, asserts the
+current transaction's selected instant with source `S`. An explicit sourced
+`:db/txInstant` assertion is also sufficient. Neither supplies a default source
+for other forms. See
 [transaction data](../04_transactions/04_transaction_data.md).
 
 Requires an attached transaction client. Returns a `ServiceTransactionReport`:
@@ -630,7 +632,9 @@ while leaving the durable database unaffected. The report contains `db_before`,
 
 The data forms follow the same transaction semantics as durable submission;
 speculation does not need a request key and requires an explicit transaction
-instant in Unix milliseconds. History values cannot transact. Read filters,
+instant in Unix milliseconds. The instant argument supplies the value; include
+`[:db/txInstant S]`, native `TxOp::TxInstant { source }`, or an explicit sourced
+timestamp assertion to supply its source. History values cannot transact. Read filters,
 including as-of/since, apply to the resulting view rather than to transaction
 generation or invariant checking. Speculation does not advance a connection or
 reserve IDs for a later durable transaction. See

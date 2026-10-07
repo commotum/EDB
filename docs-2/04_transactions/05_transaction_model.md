@@ -9,11 +9,11 @@ There are a number of potential causes for confusion when learning the model. Fi
 An EDB database is *information*, specifically a set of atomic immutable statements. We call these statements in EDB *datoms*. There are two kinds of datoms, *additions* and *retractions*, named via `:db/add` and `:db/retract` in transaction data. Each datom associates an entity (E) with a value (V) via an attribute (A), similar to the subject/predicate/object of RDF. It also records the transaction (T), source (S), and assertion/retraction flag: `[e a v t s added?]`. The source is an ordinary entity id explicitly supplied for each assertion or retraction; one transaction can contain statements from several sources. In the example below, the entity Stu is related to the value `"pizza"` by the attribute `:person/likes`.
 
 ```edn
-[{:db/id "edb.tx" :db/source 99}
+[[:db/txInstant 99]
  [:db/add "Stu" :person/likes "pizza" 99]]
 ```
 
-Here `"Stu"` is a transaction-local tempid, `99` identifies an existing source entity, and `:person/likes` must already be installed as a string attribute. The metadata-only `"edb.tx"` map explicitly attributes the generated `:db/txInstant`; it does not provide a default source for other forms. To identify an existing Stu, use an entity id, ident or lookup ref instead. See [Transaction Data](04_transaction_data.md).
+Here `"Stu"` is a transaction-local tempid, `99` identifies an existing source entity, and `:person/likes` must already be installed as a string attribute. The `[:db/txInstant 99]` form requests an assertion of the selected transaction instant with source `99`; it does not provide a default source for other forms. This form is declarative: its position does not affect the selected instant, and expansion does not read the clock. To identify an existing Stu, use an entity id, ident or lookup ref instead. See [Transaction Data](04_transaction_data.md).
 
 A transaction is *information*, specifically a set of assertions and retractions written as above. An EDB transaction is declarative. The `transact` APIs atomically accrue a transaction to a database. On their own, the datoms of a transaction ‘do’ nothing. They could instead be considered mere clauses named:
 

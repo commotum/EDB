@@ -32,12 +32,13 @@ transactor.
     :movie/title "Repo Man"
     :movie/genre "punk dystopia"
     :movie/release-year 1984}
-   {:db/id "edb.tx" :db/source :db.source/system}]
+   [:db/txInstant :db.source/system]]
   EDN
   ```
 
 Each movie map explicitly uses the built-in `:db.source/system` entity as its
-source. The final map supplies the source for the generated transaction timestamp.
+source. The final `:db/txInstant` form asserts the transaction's selected timestamp
+with that source.
 
 This is an example of the power of working directly with data—anything you might
 do to assemble a collection of movie maps could be substituted for the file

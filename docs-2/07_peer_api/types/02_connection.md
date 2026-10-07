@@ -236,21 +236,24 @@ Construct a `TransactionRequest` with `new(request_key, operations)`,
 The request key identifies the submission for exact retries.
 
 Transaction data can contain any combination of assertions, retractions,
-transaction functions, or entity maps. These EDN examples assume the named
-attributes and transaction function have been installed, and source entity `99`
-identifies the contributor. The function accepts a source argument for its
-emitted assertions and retractions:
+transaction functions, entity maps, or forms for the transaction instant. These
+EDN examples assume the named attributes and transaction function have been
+installed, and source entity `99` identifies the contributor. The function
+accepts a source argument for its emitted assertions and retractions:
 
 | Type | Example |
 | --- | --- |
 | Assertion | `[:db/add 1001 :some-attr/name "Some attr value" 99]` |
 | Retraction | `[:db/retract 1001 :some-attr/name "Some attr value" 99]` |
+| Transaction instant | `[:db/txInstant 99]` |
 | Transaction function | `[:some/fn-name "argument" 99]` |
 | Entity map | `{:db/id "new-entity" :db/source 99 :some-attr/name "some value" :another-attr/name 42}` |
 
 Wrap forms in an outer vector for `from_edn` and include
-`{:db/id "edb.tx" :db/source 99}` to attribute the generated `:db/txInstant`.
-That declaration does not supply a default source for the other forms; each
+`[:db/txInstant 99]` to assert the selected transaction instant with source `99`,
+or supply an explicit sourced `:db/txInstant` assertion. The native form is
+`TxOp::TxInstant { source: EntityRef::Id(99) }`.
+The form does not supply a default source for the other forms; each
 assertion and retraction carries its own source. See
 [transaction data](../../04_transactions/04_transaction_data.md) and
 [transaction functions](../../04_transactions/07_transaction_functions.md).

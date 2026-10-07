@@ -64,7 +64,7 @@ The grammar above shows only built-in schema attributes and transaction map meta
 
 The grammar shows only the transaction map form. It is also possible to define schema with the more verbose transaction list form, as these forms are semantically equivalent.
 
-`:db/source` is transaction map metadata, not a stored attribute. It explicitly names the ordinary entity to whom the map's assertions are attributed, using `tx-entid`; a source tempid must also appear in entity position in that transaction. Examples assume source entity `99` already exists. Each submitted transaction also includes `{:db/id "edb.tx" :db/source 99}` to attribute the generated `:db/txInstant`; this declaration is omitted from the excerpts and supplies no source default to other forms.
+`:db/source` is transaction map metadata, not a stored attribute. It explicitly names the ordinary entity to whom the map's assertions are attributed, using `tx-entid`; a source tempid must also appear in entity position in that transaction. Examples assume source entity `99` already exists. Each example transaction also includes the dedicated form `[:db/txInstant 99]` to assert the selected transaction instant with source `99`; this form is omitted from the excerpts and supplies no source default to other forms.
 
 Because schema is composed of ordinary EDB data, the schema grammar is a specialization of the transaction grammar. The shared grammar elements `tx-entid`, `identifier`, `eid`, `lookup-ref`, and `ident` are described in the [Transaction Data Reference](../04_transactions/04_transaction_data.md).
 

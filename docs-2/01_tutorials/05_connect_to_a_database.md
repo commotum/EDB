@@ -76,7 +76,7 @@ inside `main`, before `Ok(())`:
 let endpoint = std::env::var("EDB_TUTORIAL_ENDPOINT")?;
 let request = TransactionRequest::from_edn(
     "tutorial-hello-world",
-    r#"[{:db/id "edb.tx" :db/source :db.source/system}
+    r#"[[:db/txInstant :db.source/system]
         {:db/id "hello" :db/source :db.source/system :db/doc "Hello world"}]"#,
 )?;
 let committed = conn.transact_socket(&endpoint, request, Duration::from_secs(30))?;
@@ -92,7 +92,8 @@ println!("tempids: {:?}", report.tempids);
 schema. `"hello"` is a temporary ID that the report maps to the new entity's ID.
 `:db/source` supplies each map's attribution; it is transaction syntax, not a
 stored attribute. This example explicitly uses the built-in source entity
-`:db.source/system`. The `"edb.tx"` map attributes the generated transaction time.
+`:db.source/system`. The `[:db/txInstant :db.source/system]` form attributes the
+transaction's selected instant to that source.
 The transaction report contains the exact immutable database values before and
 after the transaction, the datoms asserted or retracted, and the temporary ID
 mapping.
@@ -103,7 +104,7 @@ connection using the peer configuration in your environment:
 ```sh
 target/release/edb transact --database edn-demo \
   --endpoint "$EDB_TUTORIAL_ENDPOINT" --request-key tutorial-hello-world --file - <<'EDN'
-[{:db/id "edb.tx" :db/source :db.source/system}
+[[:db/txInstant :db.source/system]
  {:db/id "hello" :db/source :db.source/system :db/doc "Hello world"}]
 EDN
 ```

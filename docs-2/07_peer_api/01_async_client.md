@@ -34,7 +34,7 @@ use std::time::Duration;
 
 let request = TransactionRequest::from_edn(
     "add-goonies",
-    r#"[{:db/id "edb.tx" :db/source 99}
+    r#"[[:db/txInstant 99]
         {:db/id "goonies" :db/source 99
          :movie/title "The Goonies"
          :movie/genre "action/adventure"

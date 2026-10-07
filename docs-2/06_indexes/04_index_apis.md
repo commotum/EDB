@@ -31,7 +31,7 @@ use edb_core::{
 };
 
 let installed = Database::bootstrap()?.with_edn(r#"[
-  {:db/id "edb.tx" :db/source :db.source/system}
+  [:db/txInstant :db.source/system]
   {:db/ident :inv/sku
    :db/source :db.source/system
    :db/valueType :db.type/string
@@ -39,7 +39,7 @@ let installed = Database::bootstrap()?.with_edn(r#"[
    :db/index true}
 ]"#, 1)?.db_after;
 let memory = installed.with_edn(r#"[
-  {:db/id "edb.tx" :db/source :db.source/system}
+  [:db/txInstant :db.source/system]
   {:db/source :db.source/system :inv/sku "SKU-0"}
   {:db/source :db.source/system :inv/sku "SKU-1"}
   {:db/source :db.source/system :inv/sku "SKU-10"}

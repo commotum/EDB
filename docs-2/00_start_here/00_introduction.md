@@ -95,21 +95,21 @@ For example, after installing the attributes, this EDN transaction records two
 facts about a person. Assume entity `99` identifies the contributor:
 
 ```edn
-[{:db/id "edb.tx" :db/source 99}
+[[:db/txInstant 99]
  {:db/source 99
   :person/name "Alice"
   :person/email "alice@example.com"}]
 ```
 
-The `:db/source` entries supply attribution. The metadata-only `"edb.tx"` map
-attributes the generated `:db/txInstant` fact; each domain map supplies its own
-source.
+The `[:db/txInstant 99]` form asserts the current transaction's selected
+`:db/txInstant` with source `99`. Each domain map supplies its own attribution
+through `:db/source`.
 
 If `:person/email` is unique, a later transaction can identify that person with
 a lookup reference and change the name:
 
 ```edn
-[{:db/id "edb.tx" :db/source 99}
+[[:db/txInstant 99]
  {:db/id [:person/email "alice@example.com"]
   :db/source 99
   :person/name "Alicia"}]

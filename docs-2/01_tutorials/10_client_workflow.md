@@ -151,9 +151,9 @@ the EDN transaction collection and a request key with
 application's working directory. It defines `:movie/title` and `:movie/genre`
 as cardinality-one strings and `:movie/release-year` as a cardinality-one long,
 along with their documentation strings. Each schema map supplies
-`:db/source :db.source/system`; the metadata-only map
-`{:db/id "edb.tx" :db/source :db.source/system}` explicitly attributes the
-generated `:db/txInstant`. Follow that guide starting from the
+`:db/source :db.source/system`; the dedicated form
+`[:db/txInstant :db.source/system]` attributes the transaction's selected
+instant to that source. Follow that guide starting from the
 schema section, using these client calls to submit the same data.
 
 Insert this code before `Ok(())` in `main`:

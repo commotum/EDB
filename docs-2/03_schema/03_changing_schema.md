@@ -35,8 +35,8 @@ before submitting data that relies on its new transaction behavior.
 The examples below assume the named attributes already exist with the
 appropriate value types and source entity `99` identifies the contributor.
 Submit each vector as ordinary EDN transaction data, including
-`{:db/id "edb.tx" :db/source 99}` to attribute the generated `:db/txInstant`.
-This metadata declaration is omitted from the excerpts and supplies no default
+`[:db/txInstant 99]` to attribute the selected transaction instant.
+This form is omitted from the excerpts and supplies no default
 source to other forms.
 
 ## Changing `:db/ident`

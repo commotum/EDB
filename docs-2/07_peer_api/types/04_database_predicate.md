@@ -80,12 +80,12 @@ use edb_core::{Database, IndexOrder, Keyword, SemanticError};
 
 fn example() -> Result<(), SemanticError> {
     let installed = Database::bootstrap()?.with_edn(r#"[
-      {:db/id "edb.tx" :db/source :db.source/system}
+      [:db/txInstant :db.source/system]
       {:db/ident :person/name :db/valueType :db.type/string
        :db/cardinality :db.cardinality/one :db/source :db.source/system}
     ]"#, 1_000)?.db_after;
     let populated = installed.with_edn(r#"[
-      {:db/id "edb.tx" :db/source :db.source/system}
+      [:db/txInstant :db.source/system]
       {:db/id "person" :person/name "Ada" :db/source :db.source/system}
     ]"#, 2_000)?.db_after;
     let db = populated.database_value();

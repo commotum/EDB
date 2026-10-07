@@ -122,7 +122,7 @@ There are two kinds of attributes in EDB:
 - **Domain attributes** describe aspects of your domain data. You use domain attributes to describe the data about your domain entities.
 - **Schema attributes** describe aspects of the schema itself. EDB's built-in schema vocabulary supplies the supported schema semantics. You use schema attributes to define your domain attributes; custom metadata can be added to schema entities without introducing new built-in schema behavior.
 
-Schema entities are ordinary database data and are installed through transactions. The transaction excerpts below assume source entity `99` already exists. Each full submission also includes `{:db/id "edb.tx" :db/source 99}` to attribute automatic transaction metadata such as `:db/txInstant`; this does not supply a source for other facts. For example, install this schema before submitting facts that use the attribute:
+Schema entities are ordinary database data and are installed through transactions. The transaction excerpts below assume source entity `99` already exists. Each full submission also needs a sourced `:db/txInstant` assertion. The form `[:db/txInstant 99]` requests the selected transaction instant with source `99`; it supplies no source for other facts. For example, install this schema before submitting facts that use the attribute:
 
 ```edn
 [{:db/ident :inv/id
@@ -143,7 +143,7 @@ EDB's time model is applied automatically as committed transactions are recorded
 - Every committed transaction is assigned a transaction id that is unique within the database.
 - Committed transactions are serialized, and transaction ids increase over time, so they provide a total ordering of the database's committed transactions. Logical T is the corresponding sequential time coordinate.
 - Every datom in the database includes the id of the transaction that asserted or retracted that datom.
-- Transaction ids are themselves entity ids, so transactions can have datoms that describe them. EDB records a `:db/txInstant` for every transaction, so datoms can be joined to the recorded wall-clock instant of their transaction.
+- Transaction ids are themselves entity ids, so transactions can have datoms that describe them. EDB records a `:db/txInstant` for every transaction, so datoms can be joined to the recorded wall-clock instant of their transaction. Each transaction has one distinct instant, whose assertions can carry several explicitly supplied sources.
 - Transactions can have other attributes. For example, a system might record why a transaction corrects an earlier one. Each assertion or retraction independently records its source; transaction metadata does not substitute for that source.
 
 For example, imagine setting the count of an item in an inventory database in one transaction, then updating that count later. In addition to recording the item counts and their sources, EDB also records the transactions that made the changes, when the changes happened, plus any additional transaction metadata you choose to include. This might be used to, for example, record that a particular transaction corrects another transaction that was made in error.

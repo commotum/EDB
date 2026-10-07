@@ -6,7 +6,8 @@ Many databases need to represent a set of enumerated values. In EDB, it is
 idiomatic to represent enumerated values as entities with a `:db/ident` attribute.
 
 The examples attribute their facts to an existing contributor entity with ID
-`99`. The `"edb.tx"` map attributes the generated transaction time.
+`99`. The `[:db/txInstant 99]` form attributes the selected transaction instant
+to that entity.
 
 For example, the transaction below defines an `:artist/country` attribute, and
 two initial enumerated values, `:country/CA` and `:country/JP`, ISO alpha-2 country
@@ -14,7 +15,7 @@ codes for Canada and Japan. It also defines `:artist/name` for the example that
 follows:
 
 ```edn
-[{:db/id "edb.tx" :db/source 99}
+[[:db/txInstant 99]
  {:db/ident :artist/name
   :db/source 99
   :db/valueType :db.type/string
@@ -36,7 +37,7 @@ The transaction below creates an artist named *Leonard Cohen* with the country
 `:country/CA`. Submit it after the schema transaction:
 
 ```edn
-[{:db/id "edb.tx" :db/source 99}
+[[:db/txInstant 99]
  {:db/source 99
   :artist/name "Leonard Cohen"
   :artist/country :country/CA}]

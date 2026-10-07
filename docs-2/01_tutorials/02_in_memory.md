@@ -134,14 +134,14 @@ for it:
 
 You could choose to send each of these attributes to the database in individual
 transactions, but we'll batch them up into a single transaction. To do that,
-combine the three maps into a single vector of maps. Include a metadata-only
-map for `"edb.tx"` to explicitly supply the source of the generated
-`:db/txInstant` assertion; it does not supply a default for other maps. Let's
+combine the three maps into a single transaction vector. Include
+`[:db/txInstant :db.source/system]` to assert the transaction's selected instant
+with that source; it does not supply a default for other maps. Let's
 bind the EDN schema text to a variable called `movie_schema`:
 
 ```rust
     let movie_schema = r#"[
-        {:db/id "edb.tx" :db/source :db.source/system}
+        [:db/txInstant :db.source/system]
         {:db/source :db.source/system
          :db/ident :movie/title
          :db/valueType :db.type/string
@@ -169,7 +169,8 @@ using `with_edn`. This method takes two arguments:
 
 The receiver is the immutable database value to which the transaction applies.
 We use increasing example instants throughout this tutorial so that the history
-is reproducible. Transact the schema:
+is reproducible. The instant argument supplies the time, while the
+`:db/txInstant` form supplies its source. Transact the schema:
 
 ```rust
     let schema_report = empty.with_edn(movie_schema, 1_000)?;
@@ -218,7 +219,7 @@ schema. Start by defining your data, again storing it in a variable first:
 
 ```rust
     let first_movies = r#"[
-        {:db/id "edb.tx" :db/source :db.source/system}
+        [:db/txInstant :db.source/system]
         {:db/source :db.source/system
          :movie/title "The Goonies"
          :movie/genre "action/adventure"
@@ -489,7 +490,7 @@ looks like this:
 
 ```rust
     let update = format!(
-        r#"[{{:db/id "edb.tx" :db/source :db.source/system}}
+        r#"[[:db/txInstant :db.source/system]
             {{:db/id {commando_id} :db/source :db.source/system
               :movie/genre "future governor"}}]"#
     );

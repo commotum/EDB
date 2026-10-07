@@ -41,7 +41,8 @@ value        = (string | keyword | symbol | boolean | ref | instant | uuid
               | number | bytes | uri | tuple | function)
 ref          = tx-entid
 number       = (long | bigint | float | double | bigdec)
-builtin-form = ([':db/cas' tx-entid identifier (value | nil) value source]
+builtin-form = ([':db/txInstant' source]
+              | [':db/cas' tx-entid identifier (value | nil) value source]
               | [':db/retractEntity' tx-entid source]
               | [':db/ensure' tx-entid identifier])
 tx-fn        = [tx-fn-name tx-fn-arg*]
@@ -63,7 +64,7 @@ Three kinds of forms can appear in a transaction data list:
 
 - primitive list forms specify a single datom
 - map forms provide a concise representation for multiple assertions about the same entity
-- transaction functions allow functional expansions and validations of input data with reference to *db-before*, the database value at the start of the transaction; built-in forms provide compare-and-swap, entity retraction, and entity-spec checks
+- transaction functions allow functional expansions and validations of input data with reference to *db-before*, the database value at the start of the transaction; built-in forms provide transaction-instant assertions, compare-and-swap, entity retraction, and entity-spec checks
 
 Inside these forms, there are several ways to specify entities:
 
@@ -77,15 +78,15 @@ Each of these data forms is described in detail below. Schema attributes, idents
 
 Each assertion or retraction explicitly supplies a source entity identifier, resolved to an ordinary entity id in the datom. A transaction can contain forms from several sources. Source identifiers use the same entity resolution rules as other entity positions; they are not free-form labels.
 
-The examples below use `99` as an illustrative existing source entity id and show the forms relevant to each example. Each submitted transaction also includes an explicit source for its [transaction metadata](#reified-transactions), such as `{:db/id "edb.tx" :db/source 99}`. That declaration does not supply a default source for other forms.
+The examples below use `99` as an illustrative existing source entity id and show the forms relevant to each example. Each submitted transaction also includes a sourced assertion of its [transaction instant](#reified-transactions), such as `[:db/txInstant 99]`. That assertion does not supply a default source for other forms.
 
-The grammar describes the ordinary forms. EDN sets can also supply cardinality-many map values. Top-level partition directive maps are described in [Partitions](02_partitions.md). A transaction with no domain changes is valid and still requires a source declaration for its transaction metadata. EDN input is data, not evaluated Clojure: bare symbols do not substitute application variables.
+The grammar describes the ordinary forms. EDN sets can also supply cardinality-many map values. Top-level partition directive maps are described in [Partitions](02_partitions.md). A transaction with no domain changes is valid and still requires a sourced transaction-instant assertion. EDN input is data, not evaluated Clojure: bare symbols do not substitute application variables.
 
 ### Native Forms and Request Identity
 
 Rust callers can construct `TxOp` and `TxForm` values directly, including `EntityMap`, `MapValue`, and unresolved `EntityRef` values. `read_edn_transaction` reads EDN into transaction forms without resolving attributes or entities. For a fresh durable request, resolution uses the authoritative db-before; for `with_edn`, it uses the database value supplied by the caller. Both representations use the same map expansion and transaction assessment rules.
 
-`TxOp::Add`, `Retract`, and `Cas` carry a `source: EntityRef` field. `RetractEntity`, `InstallAttribute`, and `AlterAttribute` append an `EntityRef` source to their existing tuple arguments. `EntityMap` carries `source: Option<EntityRef>`; omission is allowed when a nested map inherits its parent's explicit source or when the map produces no datoms. `Ensure` and partition directives do not produce datoms and need no source. A native transaction-metadata declaration is an `EntityMap` with `id: Some(EntityRef::Tx)`, `source: Some(source)`, and empty attributes. Primitive-only `DatabaseValue::with` callers instead include a sourced `TxOp::Add` for `:db/txInstant`, matching the call's explicit instant.
+`TxOp::Add`, `Retract`, and `Cas` carry a `source: EntityRef` field. `RetractEntity`, `InstallAttribute`, and `AlterAttribute` append an `EntityRef` source to their existing tuple arguments. `EntityMap` carries `source: Option<EntityRef>`; omission is allowed when a nested map inherits its parent's explicit source or when the map produces no datoms. `Ensure` and partition directives do not produce datoms and need no source. `TxOp::TxInstant { source: EntityRef }` asserts the selected instant on the current transaction. Include `TxForm::Op(TxOp::TxInstant { source })` among native forms, or `TxOp::TxInstant { source }` in a primitive-only `DatabaseValue::with` call. A sourced `TxOp::Add` for `:db/txInstant`, matching the call's explicit instant, is also sufficient.
 
 Equivalent effects do not imply identical requests. EDN request identity ignores whitespace, comments, map-entry order, set-member order, and the order of the outer transaction forms. It retains sources, the order and list/vector representation inside each form, numeric type distinctions, and decimal scales. Replacing an EDN map with primitive additions, changing a nested vector's order, or rebuilding EDN as typed Rust forms can therefore change request identity even when the resulting facts are the same.
 
@@ -167,6 +168,8 @@ The map form is a shorthand for a set of additions. The map has an optional *:db
 ```
 
 The map form is equivalent to a set of primitive additions, where the entity-id is taken from the *:db/id* key in the map (if present) or assigned an (anonymous) temporary id. An explicit `:db/id nil` is treated like an omitted id. `:db/id` and `:db/source` are map syntax, not stored attributes. Each resulting assertion carries the map's source. To assert different attributes of one entity from different sources, use separate maps for the same entity or primitive forms.
+
+A source-only map such as `{:db/id "edb.tx" :db/source 99}` emits no datoms and does not declare a timestamp source. A populated `"edb.tx"` map asserts only its supplied attributes; map expansion never adds an implicit `:db/txInstant` assertion.
 
 Omitting `:db/id` does not guarantee a distinct new entity: a unique-identity assertion can resolve the anonymous tempid to an existing entity. Anonymous tempids do not collide with explicit tempid names in the submitted forms.
 
@@ -268,12 +271,13 @@ Function arguments may contain scalar values, `nil`, lists/vectors, and maps who
 The built-in forms are:
 
 ```edn
+[:db/txInstant source-id]
 [:db/cas entity attribute old-value new-value source-id]
 [:db/retractEntity entity source-id]
 [:db/ensure entity spec]
 ```
 
-`:db.fn/cas` and `:db.fn/retractEntity` are accepted aliases. Compare-and-swap requires a cardinality-one attribute and compares its distinct value against db-before; `nil` in the old-value position means absence. Its source applies to both the new assertion and any generated retraction. Entity retraction also retracts component descendants, attributing the retractions to its supplied source. `:db/ensure` requests checks defined by an entity spec; it is virtual transaction input rather than a stored fact.
+`:db/txInstant` asserts the current transaction's selected instant with its supplied source; see [Reified Transactions](#reified-transactions). `:db.fn/cas` and `:db.fn/retractEntity` are accepted aliases. Compare-and-swap requires a cardinality-one attribute and compares its distinct value against db-before; `nil` in the old-value position means absence. Its source applies to both the new assertion and any generated retraction. Entity retraction also retracts component descendants, attributing the retractions to its supplied source. `:db/ensure` requests checks defined by an entity spec; it is virtual transaction input rather than a stored fact.
 
 See [native computation](../07_peer_api/02_native_computation.md) for compiled callbacks and [persisted programs](01_persisted_programs.md) for durable program deployment. All function expansion runs against the transaction's immutable db-before and shares the transaction's resource limits. Functions return forms with explicit sources under the same rules as directly supplied forms; invoking a function does not implicitly attribute its results to the function or caller.
 
@@ -440,9 +444,13 @@ EDN does not coerce a long into a double merely because the attribute expects a 
 
 ## Reified Transactions
 
-When the transactor processes a transaction, it creates a transaction entity to represent it. By default, this entity has one attribute, *:db/txInstant*, whose value is the instant that the transaction was processed. In addition, every datom in a transaction refers to the transaction entity through its *:tx*.
+When the transactor processes a transaction, it creates a transaction entity to represent it. This entity has a *:db/txInstant* attribute whose value is the transaction's selected instant. For a durable submission without an explicit instant, EDB selects the later of the preceding transaction's instant and the server clock. In addition, every datom in a transaction refers to the transaction entity through its *:tx*.
 
-Each submission explicitly supplies the source of `:db/txInstant`, either through `{:db/id "edb.tx" :db/source source-id}` with no attribute entries or an explicit sourced addition of `:db/txInstant`. The metadata-only map declares the source for the generated instant without adding a domain attribute or providing a default for other transaction forms. A populated `"edb.tx"` map supplies the source of only its own assertions, allowing transaction annotations from several sources. Initial database bootstrap statements use the ordinary built-in source entity `:db.source/system`; application forms require their own explicit sources.
+Every submission requires at least one sourced assertion of `:db/txInstant`, either through `[:db/txInstant source-id]` or an explicit sourced addition of `:db/txInstant`. The dedicated form requests an ordinary assertion of the current transaction's selected instant. EDB selects that instant once; the form's position in tx-data does not affect it or trigger a separate clock read. It uses the same selected instant when an explicit time is supplied for a historical import.
+
+The source uses the ordinary `tx-entid` resolution rules, including [tempids](#tempids) established in entity position in the same transaction. EDB does not infer it from credentials, other facts, or transaction options. The dedicated form provides no default source for other forms. Initial database bootstrap statements use the ordinary built-in source entity `:db.source/system`; application forms require their own explicit sources.
+
+A transaction has one distinct instant, but several sources can contribute assertions of that instant. Different sources are retained; repeated assertions with the same resolved source are deduplicated normally.
 
 You can add additional attributes to a transaction entity to capture other useful information, such as the purpose of the transaction, the application that executed it, or the user who caused it to execute. These describe the transaction as a whole; each assertion or retraction separately identifies its source in the datom's source coordinate.
 
@@ -451,7 +459,7 @@ EDB will resolve the reserved [tempid](#tempids) "edb.tx" to the current transac
 The example below annotates a transaction imported from a file with a *:data/src* attribute to record the import URL. The source entity `99` identifies the source of the assertions, independently of that URL.
 
 ```
-[{:db/id "edb.tx" :db/source 99}
+[[:db/txInstant 99]
  {:db/id "edb.tx"
   :db/source 99
   :data/src "https://example.com/catalogs/catalog-2_29_2012.xml"}
@@ -475,6 +483,13 @@ Explicit additions of *:db/txInstant* must respect the monotonic ordering of wal
   :data/src "https://example.com/catalogs/catalog-2_29_2012.xml"}]
 ```
 
-Install the metadata attribute `:data/src` before transacting the example. An explicit instant must occur only once and only on the current transaction. Retraction and compare-and-swap of `:db/txInstant` are rejected. If both transaction data and transaction options specify an instant, they must agree.
+Install the metadata attribute `:data/src` before transacting the example. This sourced map is sufficient by itself; no dedicated timestamp form is required. An explicit sourced `:db/add` is also sufficient. It can be combined with a dedicated form from another source:
 
-A speculative `with_edn` call uses the fixed instant supplied by its caller. An explicit `:db/txInstant` in its data must match that fixed instant and cannot precede db-before. Durable submission additionally checks the transactor's clock. Transaction instants may be equal across adjacent transactions; `basis_t` provides their unambiguous logical ordering. See [Transactions, Reports and Exact Retries](00_transactions.md).
+```edn
+[[:db/add "edb.tx" :db/txInstant #inst "2026-09-26T12:00:00Z" 99]
+ [:db/txInstant 100]]
+```
+
+Assuming both source ids exist, this retains two assertions of the same selected instant, one from each source. Two explicit additions with the same instant and different sources are likewise retained. Different explicit instants fail the transaction. All `:db/txInstant` assertions must target the current transaction. Retraction and compare-and-swap of `:db/txInstant` are rejected. If both transaction data and transaction options specify an instant, they must agree.
+
+A speculative `with_edn` call uses the fixed instant supplied by its caller. An explicit `:db/txInstant` in its data must match that fixed instant and cannot precede db-before. A time override or fixed-time argument supplies only the value; the transaction still needs a dedicated form or an explicit sourced addition. Durable submission additionally checks the transactor's clock. Transaction instants may be equal across adjacent transactions; `basis_t` provides their unambiguous logical ordering. See [Transactions, Reports and Exact Retries](00_transactions.md).

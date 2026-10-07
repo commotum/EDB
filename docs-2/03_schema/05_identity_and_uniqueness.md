@@ -33,13 +33,13 @@ For example, after installing `:person/email`, this transaction requests an
 entity identified within the transaction as `"joe"`:
 
 ```edn
-[{:db/id "edb.tx" :db/source 99}
+[[:db/txInstant 99]
  {:db/id "joe" :db/source 99 :person/email "joe@example.com"}]
 ```
 
 The transaction examples assume entity 99 identifies the contributor. Each map
-declares its source; the metadata-only `"edb.tx"` map attributes the generated
-transaction instant.
+declares its source; `[:db/txInstant 99]` attributes the selected transaction
+instant to that entity.
 
 The transaction report's `tempids` map gives the actual id assigned to each
 named tempid. Reusing a tempid string in a later transaction does not identify
@@ -131,7 +131,7 @@ Unique identity is specified through an attribute with `:db/unique` set to
 unique:
 
 ```edn
-[{:db/id "edb.tx" :db/source 99}
+[[:db/txInstant 99]
  {:db/source 99
   :db/ident :inv/sku
   :db/valueType :db.type/string
@@ -263,7 +263,7 @@ You can also use lookup refs to refer to existing entities in transactions,
 avoiding extra lookup code:
 
 ```edn
-[{:db/id "edb.tx" :db/source 99}
+[[:db/txInstant 99]
  {:db/id [:person/email "joe@example.com"]
   :db/source 99
   :person/loves :pizza}]

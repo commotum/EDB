@@ -32,7 +32,7 @@ target/release/edb transactor --database edn-demo --endpoint /tmp/edb-edn-demo/w
 The supplied [schema](../../examples/edn/schema.edn) and
 [people](../../examples/edn/people.edn) are complete transaction inputs. Their
 maps explicitly use the built-in source entity `:db.source/system`, and each
-transaction includes `{:db/id "edb.tx" :db/source :db.source/system}` for its
+transaction includes `[:db/txInstant :db.source/system]` for its
 generated `:db/txInstant`. Applications can describe and use their own source
 entities.
 
@@ -63,23 +63,27 @@ delivery through the normal transport.
 ## Transactions and exact retries
 
 Map forms use `:db/source`; primitive additions and retractions take the source
-as their final argument. Sources resolve to ordinary entity ids. The metadata-only
-map supplies the source of `:db/txInstant`, not a default for other forms.
+as their final argument. Sources resolve to ordinary entity ids.
+`[:db/txInstant source]` asserts the selected transaction instant with that
+source. It supplies no default source for other forms. An explicit sourced
+`:db/txInstant` assertion can supply the time and source instead. A time option
+such as `--tx-instant` supplies only the value; the transaction still needs a
+sourced timestamp form or assertion.
 
 ```edn
 ;; No :db/id: assert facts about a new/upserted identity.
-[{:db/id "edb.tx" :db/source :db.source/system}
+[[:db/txInstant :db.source/system]
  {:db/source :db.source/system
   :person/name "Alice" :person/email "alice@example.com"}]
 
 ;; Existing identity: change only the facts explicitly asserted.
-[{:db/id "edb.tx" :db/source :db.source/system}
+[[:db/txInstant :db.source/system]
  {:db/id [:person/email "alice@example.com"]
   :db/source :db.source/system
   :person/name "Alicia"}]
 
 ;; Equivalent authoring with a primitive form.
-[{:db/id "edb.tx" :db/source :db.source/system}
+[[:db/txInstant :db.source/system]
  [:db/add [:person/email "alice@example.com"] :person/name "Alicia" :db.source/system]]
 ```
 
@@ -90,7 +94,7 @@ nested `:db/id`, including an existing numeric ID or lookup reference, identifie
 the child without requiring a component edge or a repeated unique attribute:
 
 ```edn
-[{:db/id "edb.tx" :db/source :db.source/system}
+[[:db/txInstant :db.source/system]
  {:db/id [:person/email "alice@example.com"]
   :db/source :db.source/system
   :person/friends [{:db/id [:person/email "bob@example.com"]
@@ -156,7 +160,7 @@ use edb_core::{Database, TransactionRequest};
 use edb_core::edn::{read_edn, write_edn};
 use edb_core::edn_query::{EdnQueryArgument, parse_query_edn};
 
-let data = read_edn(r#"[{:db/id "edb.tx" :db/source :db.source/system}
+let data = read_edn(r#"[[:db/txInstant :db.source/system]
                       {:db/source :db.source/system :person/name "Alice"}]"#)?;
 let text = write_edn(&data)?;
 let request = TransactionRequest::from_edn("create-alice", &text)?;

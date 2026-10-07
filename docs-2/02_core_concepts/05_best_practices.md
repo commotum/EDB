@@ -43,8 +43,8 @@
 Examples using artists, countries, accounts and purchases assume the named
 attributes have already been installed with appropriate types and cardinalities.
 Transaction examples use the existing source entity `99`. When submitting the
-standalone schema maps below, include `{:db/id "edb.tx" :db/source 99}` to attribute
-the generated `:db/txInstant`; this declaration does not supply a source for other forms.
+standalone schema maps below, include `[:db/txInstant 99]` to attribute
+the selected `:db/txInstant`; this form does not supply a source for other forms.
 Music-corpus results below illustrate result shapes; row order is unspecified.
 See the [schema reference](../03_schema/02_schema_reference.md),
 [transaction data](../04_transactions/04_transaction_data.md), and
@@ -83,7 +83,7 @@ Enumerated types should be represented by a reference pointing to an entity that
 A music-catalog schema demonstrates this with `:artist/country`. Note that transactions can use an ident directly as a reference value, eliding the indirection. The transaction data below creates a reference between an artist identified by a unique `:artist/name` and the entity whose ident is `:country/GB`:
 
 ```edn
-[{:db/id "edb.tx" :db/source 99}
+[[:db/txInstant 99]
  [:db/add [:artist/name "Example Artist"] :artist/country :country/GB 99]]
 ```
 
@@ -143,7 +143,7 @@ Instead of removing or reusing names, use aliases to allow multiple names to ref
 For example, to create an alias, `:user/primary-email` that refers to the same schema element as an existing ident (`:user/id`), transact the following assertion:
 
 ```edn
-[{:db/id "edb.tx" :db/source 99}
+[[:db/txInstant 99]
  [:db/add :user/id :db/ident :user/primary-email 99]]
 ```
 
@@ -162,7 +162,7 @@ First install `:schema/see-instead` as a cardinality-one reference attribute and
 ensure both email attributes exist. Then annotate the old schema entity:
 
 ```edn
-[{:db/id "edb.tx" :db/source 99}
+[[:db/txInstant 99]
  {:db/id :user/email
   :db/source 99
   :schema/see-instead :user2/email
@@ -173,14 +173,14 @@ ensure both email attributes exist. Then annotate the old schema entity:
 
 Most entities in a system model the "what" of your domain. Transactions provide a place to model "when", "who", "where", and "why" for the transaction as a whole. Each assertion or retraction separately carries its explicitly supplied source; one transaction can contain contributions from several sources.
 
-As a part of every transaction, EDB creates an entity to represent the transaction itself. This *reified transaction* automatically includes a "when" datom, `:db/txInstant`, which records the wall clock time that the transaction was recorded.
+As a part of every transaction, EDB creates an entity to represent the transaction itself. This *reified transaction* includes `:db/txInstant`, which records its selected wall clock time. Supply `[:db/txInstant source]` to assert that instant with an explicit source, or assert a sourced literal instant as shown in [imports](#set-txinstant-on-imports).
 
 Transactions are ordinary entities: you can create attributes that are about transactions and query them just like any other datoms in EDB.
 
 For example, install `:data/src` as a reference and `:source/url` as a string. The following transaction forms use `:data/src` to link the transaction to a source URL from an external system. This transaction annotation is distinct from the per-fact source `99` supplied on each assertion.
 
 ```edn
-[{:db/id "edb.tx" :db/source 99}
+[[:db/txInstant 99]
  [:db/add "edb.tx" :data/src "import-file" 99]
  [:db/add "import-file" :source/url "http://example.com/catalog-2_29_2012.xml" 99]]
 ```
@@ -202,7 +202,7 @@ So instead of:
  :where [?e :user/email "jdoe@example.com"]]
 
 ;; tx-data using e
-[{:db/id "edb.tx" :db/source 99}
+[[:db/txInstant 99]
  [:db/add e :db/doc "doc about John" 99]]
 ```
 
@@ -213,7 +213,7 @@ You can simply:
 
 ```edn
 ;; tx-data with a lookup ref, no query needed
-[{:db/id "edb.tx" :db/source 99}
+[[:db/txInstant 99]
  [:db/add
   [:user/email "jdoe@example.com"]
   :db/doc
@@ -228,8 +228,8 @@ Transactional systems can use optimistic or pessimistic concurrency controls to 
 The following example uses `TxOp::Cas` (EDN `:db/cas`) to add a deposit to an account. It retries with a newly read balance **only** when assessment returns `transaction/cas-failed`. Amounts are integer cents, and addition is checked. `account` and `source` are existing entity IDs, and `balance_attribute` is the installed cardinality-one long attribute ID. The replacement assertion and retraction carry the supplied source.
 
 ```rust
-use edb_core::{Connection, EntityMap, EntityRef, SemanticError, ServiceTransactionReport,
-               TransactionRequest, TxForm, TxOp, Value};
+use edb_core::{Connection, EntityRef, SemanticError, ServiceTransactionReport,
+               TransactionRequest, TxOp, Value};
 use std::time::Duration;
 
 #[derive(Debug)]
@@ -259,18 +259,17 @@ fn make_deposit(
                 SemanticError::incorrect("app/overflow", "balance overflow"))?;
             Ok(TransactionRequest::new(
                 format!("{operation_key}/cas-{attempt}"),
-                vec![TxOp::Cas {
-                    entity: EntityRef::Id(account),
-                    attribute: balance_attribute,
-                    old: Some(Value::Long(*balance).into()),
-                    new: Value::Long(next).into(),
-                    source: EntityRef::Id(source),
-                }],
-            ).with_forms([TxForm::EntityMap(EntityMap {
-                id: Some(EntityRef::Tx),
-                source: Some(EntityRef::Id(source)),
-                attributes: vec![],
-            })]))
+                vec![
+                    TxOp::TxInstant { source: EntityRef::Id(source) },
+                    TxOp::Cas {
+                        entity: EntityRef::Id(account),
+                        attribute: balance_attribute,
+                        old: Some(Value::Long(*balance).into()),
+                        new: Value::Long(next).into(),
+                        source: EntityRef::Id(source),
+                    },
+                ],
+            ))
         };
         let request = prepare().map_err(|error| DepositFailure {
             error, request: None,
@@ -313,7 +312,7 @@ use std::time::Duration;
 
 let request = TransactionRequest::from_edn(
     "deposit-123-example",
-    r#"[{:db/id "edb.tx" :db/source 99}
+    r#"[[:db/txInstant 99]
         [:db/cas [:account/number "123"] :account/balance 10000 95000 99]]"#,
 )?;
 // Retain request for exact retry if the outcome is unknown.
@@ -348,7 +347,7 @@ To set `:db/txInstant`, add a map with the special `:db/id` value `"edb.tx"` and
   :db/txInstant #inst "2014-02-28T00:00:00Z"}]
 ```
 
-This example requires a destination whose last instant is at or before that date. Native requests may instead use `TransactionRequest::with_tx_instant(milliseconds)`, with an explicit source declaration for the generated `:db/txInstant`. If both forms supply a timestamp, their values must agree. See [transaction data](../04_transactions/04_transaction_data.md).
+This example requires a destination whose last instant is at or before that date. Native requests may instead use `TransactionRequest::with_tx_instant(milliseconds)` together with `TxOp::TxInstant { source }` to assert the selected instant. The override supplies the value, and the operation supplies its source. If a sourced literal assertion also supplies a timestamp, its value must agree with the override. See [transaction data](../04_transactions/04_transaction_data.md).
 
 ## Pipeline Transactions for Higher Throughput
 

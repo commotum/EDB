@@ -57,7 +57,7 @@ use edb_core::edn_query::{EdnQueryArgument, parse_query_edn};
 use edb_core::edn_value::query_value_to_edn;
 
 let schema = r#"[
- {:db/id "edb.tx" :db/source :db.source/system}
+ [:db/txInstant :db.source/system]
  {:db/source :db.source/system
   :db/ident :item/id :db/valueType :db.type/string
   :db/cardinality :db.cardinality/one :db/unique :db.unique/identity}
@@ -73,30 +73,30 @@ let schema = r#"[
 ]"#;
 let installed = Database::bootstrap()?.with_edn(schema, 0)?.db_after;
 let first = installed.with_edn(
-    r#"[{:db/id "edb.tx" :db/source :db.source/system}
+    r#"[[:db/txInstant :db.source/system]
         {:db/id "crystals" :db/source :db.source/system :item/id "DLC-042"
          :item/description "Dilithium Crystals" :item/count 100}]"#,
     1385856000000,
 )?;
 let second = first.db_after.with_edn(
-    r#"[{:db/id "edb.tx" :db/source :db.source/system}
+    r#"[[:db/txInstant :db.source/system]
         {:db/id [:item/id "DLC-042"] :db/source :db.source/system :item/count 250}]"#,
     1387497600000,
 )?;
 let third = second.db_after.with_edn(
-    r#"[{:db/id "edb.tx" :db/source :db.source/system}
+    r#"[[:db/txInstant :db.source/system]
         {:db/id [:item/id "DLC-042"] :db/source :db.source/system :item/count 50}]"#,
     1393545600000,
 )?;
 let fourth = third.db_after.with_edn(
-    r#"[{:db/id "edb.tx" :db/source :db.source/system}
+    r#"[[:db/txInstant :db.source/system]
         {:db/id [:item/id "DLC-042"] :db/source :db.source/system :item/count 9999}
         {:db/id "edb.tx" :db/source :db.source/system :tx/error true}]"#,
     1396310400000,
 )?;
 let bad_tx = fourth.tx_data[0].tx;
 let fifth = fourth.db_after.with_edn(
-    r#"[{:db/id "edb.tx" :db/source :db.source/system}
+    r#"[[:db/txInstant :db.source/system]
         {:db/id [:item/id "DLC-042"] :db/source :db.source/system :item/count 100}]"#,
     1400112000000,
 )?;
@@ -108,9 +108,9 @@ let item = EntityIdentifier::Lookup {
 let wildcard = parse_pull_edn("[*]")?;
 ```
 
-Each metadata-only `edb.tx` map supplies the source for the generated
-`:db/txInstant`; the other maps supply sources for their own assertions and
-any resulting retractions.
+Each `[:db/txInstant :db.source/system]` form asserts the instant supplied to
+`with_edn` with that source. The maps supply sources for their own assertions
+and any resulting retractions.
 
 ## as-of
 
@@ -434,9 +434,9 @@ added by transactions with a confidence score higher than 90:
 Install `:source/confidence` as a cardinality-one Long and `:story/title` as a
 cardinality-one String. A transaction can assert both a story title and
 `{:db/id "edb.tx" :db/source :db.source/system :source/confidence 95}`,
-with an explicit source on the story assertion and the metadata-only `edb.tx`
-map for `:db/txInstant`. The threshold check does not itself enforce the
-application's 0–100 range.
+with an explicit source on the story assertion and
+`[:db/txInstant :db.source/system]` for the transaction instant. The threshold
+check does not itself enforce the application's 0–100 range.
 
 ## Usage Considerations
 

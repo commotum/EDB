@@ -160,7 +160,7 @@ submit a small transaction using the built-in `:db/doc` attribute:
 target/debug/edb transact --database transactor-demo \
   --endpoint "$endpoint_dir/transactor.sock" \
   --request-key transactor-reference-hello --file - <<'EDN'
-[{:db/id "edb.tx" :db/source :db.source/system}
+[[:db/txInstant :db.source/system]
  {:db/id "hello" :db/source :db.source/system :db/doc "Hello world"}]
 EDN
 ```

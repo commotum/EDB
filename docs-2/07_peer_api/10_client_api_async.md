@@ -528,9 +528,11 @@ Submits a transaction through the attached writer. Construct a request with
 `TransactionRequest::new(request_key, operations)`, `from_forms(request_key,
 forms)` or `from_edn(request_key, text)`. EDN transaction data is a collection
 of operation vectors, entity maps and transaction calls. Each assertion and
-retraction carries an explicitly supplied source entity ID. A metadata-only
-`{:db/id "edb.tx" :db/source S}` map supplies the source for the generated
-transaction instant, without supplying a default for other forms; see
+retraction carries an explicitly supplied source entity ID. The dedicated
+`[:db/txInstant S]` form asserts the selected transaction instant with source
+`S`; its native equivalent is `TxOp::TxInstant { source }`. It supplies no
+default source for other forms. Each transaction needs this form or an
+explicit sourced assertion of `:db/txInstant`; see
 [transaction data](../04_transactions/04_transaction_data.md).
 
 The admission result is a waiter, not proof of durability. Awaiting it yields
@@ -552,7 +554,7 @@ and entity `99` identifies the contributor:
 ```rust,ignore
 let request = edb_core::TransactionRequest::from_edn(
     "add-goonies",
-    r#"[{:db/id "edb.tx" :db/source 99}
+    r#"[[:db/txInstant 99]
         {:db/id "goonies" :db/source 99 :movie/title "The Goonies"}]"#,
 )?;
 let report = client.transact(request, std::time::Duration::from_secs(30))?.await?;
@@ -626,6 +628,8 @@ in a transaction, leaving the durable database unaffected. The report has
 There is no async speculative transaction method. Use the native method on a
 blocking worker for storage-backed values. Data forms use the same transaction
 semantics, but need an explicit Unix-millisecond instant and no request key.
+The instant argument selects the value; the transaction data must still
+include `TxOp::TxInstant { source }` or an explicit sourced timestamp assertion.
 History is rejected. Temporal/custom read filters apply to the resulting view,
 not transaction generation or invariant checking. Speculation does not advance
 the connection or reserve durable IDs. Its `db_after` can be queried through

@@ -54,15 +54,15 @@ passing an attribute ref/ident and the threshold. Deploying the same artifact
 can use `PostgresOperator::install_program(&client, request_key, ident, &program,
 &dependencies, source, timeout)`. This stages the complete immutable closure and
 submits ordinary `:db/ident` / `:db/fn` assertions. The `source: EntityRef`
-attributes those assertions and generated `:db/txInstant`. Dependencies may be
-supplied in any order; an exact retry, including the same source, resolves its
-durable receipt before inspecting them.
+attributes those assertions and supplies the source in a `[:db/txInstant source]`
+form. Dependencies may be supplied in any order; an exact retry, including the
+same source, resolves its durable receipt before inspecting them.
 
 For applications composing their own binding transaction,
 `PostgresOperator::deploy_program(&program)` returns a `ProgramHash`. Fixed
 dependencies must already be present. The binding transaction supplies sources
-on its assertions and an explicit source declaration for its generated
-`:db/txInstant`, as described in [transaction data](04_transaction_data.md).
+on its assertions and includes `[:db/txInstant source]` or an explicit sourced
+`:db/txInstant` assertion, as described in [transaction data](04_transaction_data.md).
 Staged code is protected for the GC grace period; no application-owned deployment
 handle or release call is necessary.
 Committed database roots retain bound code. Collection removes expired unbound
@@ -81,8 +81,12 @@ The write instructions consume these stack operands, listed bottom to top:
 | `EmitRetractAll(attribute)` | `[entity, source]` |
 | `EmitCas(attribute)` | `[entity, old, new, source]` |
 | `EmitRetractEntity` | `[entity, source]` |
+| `EmitTxInstant` | `[source]` |
 
 A source can be passed as an ordinary program argument and pushed last.
+`EmitTxInstant` emits `TxOp::TxInstant { source }`, requesting an assertion of
+the current transaction's selected instant. It does not read the clock during
+program expansion.
 `EmitEntityMap` uses `:db/source` metadata on each emitted top-level map; nested
 maps inherit that source unless they override it. `EmitCall` passes any source
 needed by the called program as an ordinary argument. The function binding's

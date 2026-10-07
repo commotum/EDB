@@ -211,7 +211,7 @@ fn main() -> Result<(), SemanticError> {
 
     let request = TransactionRequest::from_edn(
         "example/name-schema-v1",
-        r#"[{:db/id "edb.tx" :db/source :db.source/system}
+        r#"[[:db/txInstant :db.source/system]
             {:db/source :db.source/system
              :db/ident :example/name
              :db/valueType :db.type/string

@@ -21,7 +21,7 @@ allocations do not prevent a match. Consider the following example.
         :db/ident :some-bytes
         :db/valueType :db.type/bytes
         :db/cardinality :db.cardinality/one}
-       {:db/id "edb.tx" :db/source :db.source/system}]
+       [:db/txInstant :db.source/system]]
   "#, 10)?;
   ```
 
@@ -35,7 +35,7 @@ allocations do not prevent a match. Consider the following example.
         :some-bytes #edb/bytes "010203"}
        {:db/id "second" :db/source :db.source/system
         :some-bytes #edb/bytes "010203"}
-       {:db/id "edb.tx" :db/source :db.source/system}]
+       [:db/txInstant :db.source/system]]
   "#, 20)?;
   let db = report.db_after.database_value();
   ```

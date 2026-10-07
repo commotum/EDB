@@ -76,17 +76,14 @@ with no domain changes still explicitly attributes its transaction metadata:
 ```rust
 use edb_core::{
     Database, EntityRef, Keyword, OperationContext, OperationKind, Schema,
-    SemanticError, TxOp, Value, DB_TX_INSTANT,
+    SemanticError, TxOp,
 };
 
 fn main() -> Result<(), SemanticError> {
     let db = Database::new(Schema::default())?;
     let source = db.entid(&Keyword::new("db.source", "system")).unwrap();
     let instant = 1_700_000_000_000;
-    let operations = [TxOp::Add {
-        entity: EntityRef::Tx,
-        attribute: DB_TX_INSTANT as u32,
-        value: Value::Instant(instant).into(),
+    let operations = [TxOp::TxInstant {
         source: EntityRef::Id(source),
     }];
     let context = OperationContext::diagnostic(OperationKind::Transaction);
@@ -167,7 +164,7 @@ excerpt; other envelope and metric fields are omitted:
   "operation_elapsed_nanos": 5000000,
   "metrics": {
     "transaction.assessments": 1,
-    "transaction.input_operations": 0,
+    "transaction.input_operations": 1,
     "transaction.identity_claims": 0,
     "transaction.identity_lookups": 0,
     "transaction.upsert_resolutions": 0,
@@ -205,7 +202,7 @@ durable receipt hashes/bytes or the native wire receipt format. Reconstructed
 remote/historical reports therefore have `diagnostics: None`; they cannot
 recreate past execution costs honestly.
 
-An exact retry includes the same source declarations and resolves its receipt
+An exact retry includes the same forms and explicit sources and resolves its receipt
 before current functions or schema are assessed. A separately submitted retry has
 `replayed: true` and zero fresh semantic work, although reconstructing its values
 can perform reads. Shared receipt clones retain one `Arc` to their diagnostic

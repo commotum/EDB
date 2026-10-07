@@ -46,8 +46,8 @@ This setup creates those facts, together with a street and email address, in an
 in-memory database. It groups all the data assertions into one transaction
 instead of the two illustrated above. The database allocates entity IDs; the
 examples retain Jane's ID as `jane_id`. Each map explicitly attributes its facts
-to `:db.source/system`. The metadata-only `"edb.tx"` maps attribute the generated
-transaction instants.
+to `:db.source/system`. The `[:db/txInstant :db.source/system]` forms attribute
+the selected transaction instants to the same source.
 
 ```rust
 use edb_core::{
@@ -56,7 +56,7 @@ use edb_core::{
 };
 
 let installed = Database::bootstrap()?.with_edn(r#"[
-  {:db/id "edb.tx" :db/source :db.source/system}
+  [:db/txInstant :db.source/system]
   {:db/source :db.source/system :db/ident :person/firstName :db/valueType :db.type/string
    :db/cardinality :db.cardinality/one}
   {:db/source :db.source/system :db/ident :person/lastName :db/valueType :db.type/string
@@ -74,7 +74,7 @@ let installed = Database::bootstrap()?.with_edn(r#"[
 ]"#, 0)?.db_after;
 
 let report = installed.with_edn(r#"[
-  {:db/id "edb.tx" :db/source :db.source/system}
+  [:db/txInstant :db.source/system]
   {:db/id "address" :db/source :db.source/system
    :address/street "123 Main Street" :address/state "NC"}
   {:db/id "jane" :db/source :db.source/system

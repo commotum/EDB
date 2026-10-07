@@ -96,7 +96,7 @@ use edb_core::{
 fn example() -> Result<(), SemanticError> {
     let initial = Database::bootstrap()?.database_value();
     let report = initial.with_edn(r#"[
-      {:db/id "edb.tx" :db/source :db.source/system}
+      [:db/txInstant :db.source/system]
       {:db/ident :person/email
        :db/source :db.source/system
        :db/valueType :db.type/string

@@ -947,7 +947,9 @@ wait error is available. Construct requests from primitive operations, forms,
 or EDN using `TransactionRequest::new`, `from_forms`, or `from_edn`. Every durable
 request includes a request key for exact retry handling. Each assertion and
 retraction supplies a source entity ID in its transaction form; a single request
-can include several sources.
+can include several sources. Supply `TxOp::TxInstant { source }` (or
+`[:db/txInstant source]` in EDN) to attribute the selected transaction instant,
+or assert `:db/txInstant` explicitly with a source.
 
 A successful report includes `db_before`, `db_after`, `tx_data`, and `tempids`,
 plus `basis_t`, `tx_hash`, `replayed`, and optional diagnostics. These database
@@ -1071,11 +1073,18 @@ Transaction data is semantically an unordered set of information. Syntactically,
 `with` accepts primitive operations; `with_forms` also accepts entity maps and
 transaction calls; `with_edn` parses the EDN representation. Each assertion and
 retraction carries an explicit source. Both durable and speculative transactions
-also supply attribution for `:db/txInstant`: use a metadata-only entity map with
-`id: Some(EntityRef::Tx)`, `source: Some(source)`, and empty `attributes`, or an
-explicit sourced `TxOp::Add` of the transaction instant when using primitive
-operations. The EDN metadata declaration is shown below; it supplies no default
-source for other forms. If the data is valid, the report contains:
+also supply attribution for `:db/txInstant`: use `TxOp::TxInstant { source }`,
+where `source` is an `EntityRef`, or an explicit sourced `TxOp::Add` of the
+transaction instant. Wrap the operation in `TxForm::Op` when supplying forms.
+The EDN form `[:db/txInstant source]` is shown below. It asserts the selected
+instant and supplies no default source for other forms. A source-only entity
+map emits no assertion.
+
+Each transaction has one distinct instant. Contributions from different sources
+at that instant are retained; assertions of different instants are rejected.
+The `tx_instant` argument supplies the value, so the transaction data must still
+supply a source through the dedicated form or an explicit timestamp assertion.
+If the data is valid, the report contains:
 
 | Field | Meaning |
 | --- | --- |
@@ -1104,14 +1113,14 @@ use edb_core::{Database, Keyword, SemanticError};
 fn example() -> Result<(), SemanticError> {
     let initial = Database::bootstrap()?.database_value();
     let schema = initial.with_edn(r#"[
-      {:db/id "edb.tx" :db/source :db.source/system}
+      [:db/txInstant :db.source/system]
       {:db/ident :person/name
        :db/source :db.source/system
        :db/valueType :db.type/string
        :db/cardinality :db.cardinality/one}
     ]"#, 1_000)?;
     let report = schema.db_after.with_edn(r#"[
-      {:db/id "edb.tx" :db/source :db.source/system}
+      [:db/txInstant :db.source/system]
       {:db/id "person" :db/source :db.source/system :person/name "Ada"}
     ]"#, 2_000)?;
     let id = report.tempids["person"];

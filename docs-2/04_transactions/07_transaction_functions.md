@@ -120,9 +120,10 @@ the transaction service. See [native application computation](../07_peer_api/02_
 ## Invoking Transaction Functions
 
 The transaction excerpts below assume that entity `99` identifies the contributor.
-When submitting them, include the metadata-only map
-`{:db/id "edb.tx" :db/source 99}` to attribute the generated `:db/txInstant`.
-This declaration does not supply a default source for the other forms.
+When submitting them, include `[:db/txInstant 99]` to assert the transaction's
+selected instant with that source, unless another form already asserts a sourced
+`:db/txInstant`. This operation does not supply a default source for the other
+forms.
 
 EDB recognizes built-in operations in transaction list/vector forms and treats
 other callable heads as function references. For example, the following
@@ -320,6 +321,12 @@ write a custom transaction function, adhering to the following rules:
    becomes `RuntimeValue::Null`, and `#edb/ref` carries an entity reference.
    There is no JVM collection or closure serialization boundary.
 
+Stored programs can emit a timestamp assertion with `Instruction::EmitTxInstant`,
+which consumes `[source]` from the stack and emits `TxOp::TxInstant { source }`.
+Native callbacks can return that operation in a `TxForm::Op`. The operation uses
+the transaction's selected instant; neither callback nor VM expansion reads the
+clock to produce it.
+
 Stored programs have at most 10 arguments, 4,096 instructions, and 32 levels of
 instruction-block nesting. Nested transaction-function expansion has a separate
 32-level depth check. Sibling and nested calls share execution limits rather than
@@ -429,7 +436,7 @@ let options = TransactionExecutionOptions {
     ..Default::default()
 };
 let forms = read_edn_transaction(
-    &format!(r#"[{{:db/id "edb.tx" :db/source {source}}}
+    &format!(r#"[[:db/txInstant {source}]
                  [my.fns/add-doc "foo" "this is foo's doc" #edb/ref {source}]]"#),
 )?;
 let report = db.with_forms_with_execution_options(
@@ -457,9 +464,10 @@ name, and optionally a `:db/doc` string. The function value is a `Value::Functio
 containing a program hash; retrieving it does not return a compiled Rust closure.
 
 `PostgresOperator::install_program` stages the complete immutable program closure
-and submits ordinary `:db/ident` and `:db/fn` assertions. Given a configured
-operator and running service, install the earlier program with contributor `99`
-as the source of the binding assertions and generated `:db/txInstant`:
+and submits ordinary `:db/ident` and `:db/fn` assertions together with a
+`TxOp::TxInstant` operation. Given a configured operator and running service,
+install the earlier program with contributor `99` as the source of the binding
+assertions and the transaction's selected `:db/txInstant`:
 
 ```rust
 operator.install_program(

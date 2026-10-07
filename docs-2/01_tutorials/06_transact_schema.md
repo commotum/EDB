@@ -63,14 +63,14 @@ tutorial, we'll use the built-in source entity `:db.source/system`.
 
 You could choose to send each of these attributes to the database in individual
 transactions. We'll batch them up into a single transaction and combine the
-three maps into a single vector of maps. We'll also include a metadata-only
-`"edb.tx"` map to attribute the generated `:db/txInstant`; this does not supply
-a default source for the other maps. Let's save our schema
+three maps into a single vector. We'll also include
+`[:db/txInstant :db.source/system]` to attribute the selected transaction instant;
+each map still supplies its own source. Let's save our schema
 vector in a file called `movie-schema.edn`:
 
 ```sh
 cat > movie-schema.edn <<'EDN'
-[{:db/id "edb.tx" :db/source :db.source/system}
+[[:db/txInstant :db.source/system]
  {:db/ident :movie/title
   :db/source :db.source/system
   :db/valueType :db.type/string

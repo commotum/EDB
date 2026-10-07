@@ -204,14 +204,14 @@ existing source entity `99`:
 
 ```edn
 ;; Explicit composite value selects the existing entity before derivation.
-[{:db/id "edb.tx" :db/source 99}
+[[:db/txInstant 99]
  {:db/id "semester" :db/source 99
   :item/year-season [2026 "fall"]
   :item/label "Updated"}]
 ```
 
-The `edb.tx` map attributes the generated transaction instant; the `semester`
-map attributes its own assertions.
+The `[:db/txInstant 99]` form attributes the selected transaction instant to
+source `99`; the `semester` map attributes its own assertions.
 
 The composite assertion is an **upsert hint**, not a direct stored write. The
 constituents still determine the actual tuple. Supplying a nonexistent composite

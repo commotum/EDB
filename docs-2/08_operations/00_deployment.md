@@ -135,10 +135,10 @@ startup options.
 SQL cancellation (`57014`) is Interrupted; lock timeout (`55P03`) is Busy.
 These are not transport-loss claims. A delivery timeout or connection loss
 after attempted submission can still be `UnknownOutcome`: reconcile/retry the
-identical request key and content. Do not submit under a new key to resolve an
-unknown result. A known commit remains committed if opening its local report
-fails; the native socket result separates those facts. Report observation
-failure is likewise separate from transaction success.
+identical request key and content, including the supplied source. Do not submit
+under a new key to resolve an unknown result. A known commit remains committed
+if opening its local report fails; the native socket result separates those
+facts. Report observation failure is likewise separate from transaction success.
 
 Do not log credentials, plaintext request keys or subject data. Use structured
 categories and lineage-bound request digests for diagnostics. Configure process
@@ -292,11 +292,12 @@ entity and attribute selection, cutoffs, component traversal and examples.
 
 Excision is rare privacy/retention work, not correction; ordinary retraction
 preserves the history needed to explain past decisions. Submit an ordinary
-`:db/excise` request with optional selected attributes and one strict cutoff,
-then establish completion with `sync_excise` or the connection's corresponding
-synchronization. The stock service automatically schedules committed requests
-with indexing and resumes interrupted jobs; a committed request is not itself
-proof of completed removal. `PostgresOperator::process_excision_requests` remains
+`:db/excise` request with one transaction source, optional selected attributes
+and one strict cutoff, then establish completion with `sync_excise` or the
+connection's corresponding synchronization. The stock service automatically
+schedules committed requests with indexing and resumes interrupted jobs; a
+committed request is not itself proof of completed removal.
+`PostgresOperator::process_excision_requests` remains
 an explicit administrative driver for the same rewrite algorithm. It claims a
 normal writer lease and reports Busy when a running service owns that lease;
 let the service finish or stop it before administrative processing. Operator

@@ -224,7 +224,7 @@ cache, not a persisted compiled-query or JVM compatibility format.
 Shared-key input relations and raw tuple patterns can use hash joins. Their
 candidate comparisons still verify full logical equality. Native database
 patterns group identical resolved probes within bounded batches and retain
-selective EAVT/AEVT/AVET/VAET access; they do not replace selective seeks with
+selective index access; they do not replace selective seeks with
 whole-database scans. Existing demand-driven recursive-rule evaluation remains
 in use.
 

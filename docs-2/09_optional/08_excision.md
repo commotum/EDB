@@ -54,13 +54,12 @@ When the target of excision is an entity, and a selected reference attribute has
 
 ## Excising Specific Entities
 
-The examples assume source entity `99` identifies the contributor requesting excision. Each request map supplies `:db/source`, and `[:db/txInstant 99]` attributes the selected transaction instant to the same source.
+The examples assume source entity `99` identifies the contributor requesting excision. Supply it once for each transaction through the request or `edb transact --source 99`. EDB automatically records the transaction instant with that source.
 
 To excise a specific entity, manufacture a new entity with a *:db/excise* attribute pointing to that entity's id. For example, if user `17592186044458` requests that their personal data be removed from the system, the transaction data would be:
 
 ```edn
-[[:db/txInstant 99]
- {:db/source 99 :db/excise 17592186044458}]
+[{:db/excise 17592186044458}]
 ```
 
 Since *:db.excise/attrs* is not specified in the transaction above, *all* eligible datoms about the entity will be excised. The example ID is in EDB's user partition; substitute the entity ID returned by your application's transaction or query. Small ID `42` belongs to the protected database partition and would not serve this example.
@@ -69,51 +68,47 @@ These are ordinary [transaction data](../04_transactions/04_transaction_data.md)
 
 ## Excising Specific Attributes of an Entity
 
-To excise only specific attributes of an entity, create a transaction as in the previous step, but also specify a collection of *:db.excise/attrs*. For example, you might excise attributes that contain personally identifying information, such as usernames and email addresses, while leaving untouched other attributes that might be valuable for aggregate queries.
+To excise only specific attributes of an entity, create a transaction as in the previous step, but also specify a collection of *:db.excise/attrs*. For example, you might excise attributes that contain personally identifying information, such as usernames and email addresses, while leaving untouched other attributes that might be valuable for aggregate queries. Submit this transaction with source `99`.
 
 ```edn
-[[:db/txInstant 99]
- {:db/source 99 :db/excise 17592186044458
+[{:db/excise 17592186044458
   :db.excise/attrs [:person/name :person/email]}]
 ```
 
 ## Excising Old Values of an Attribute
 
-To excise old values of a particular attribute, you can create an excision for the attribute you want to eliminate, and then limit the excision using either *before* or *beforeT*. Imagine tracking application events that have users, categories, and details. Each attribute requires its own excise request. There are lots of events, and you don't need them after a certain time window, so you can get rid of the attribute datoms transacted before 2012:
+To excise old values of a particular attribute, you can create an excision for the attribute you want to eliminate, and then limit the excision using either *before* or *beforeT*. Imagine tracking application events that have users, categories, and details. Each attribute requires its own excise request. There are lots of events, and you don't need them after a certain time window, so you can get rid of the attribute datoms transacted before 2012. Submit the following transaction with source `99`:
 
 ```edn
-[[:db/txInstant 99]
- {:db/source 99 :db/excise :event/user
+[{:db/excise :event/user
   :db.excise/before #inst "2012-01-01T00:00:00Z"}
- {:db/source 99 :db/excise :event/category
+ {:db/excise :event/category
   :db.excise/before #inst "2012-01-01T00:00:00Z"}
- {:db/source 99 :db/excise :event/description
+ {:db/excise :event/description
   :db.excise/before #inst "2012-01-01T00:00:00Z"}]
 ```
 
 The cutoff uses transaction time, not an event's application timestamp. This is removal of matching attribute datoms; it does not select whole events by their creation date.
 
-The use of *beforeT* is similar, but specifies the excision boundary in terms of database t. The example below will excise eligible event-related datoms before t 1100, provided the excision requests are transacted at or after that boundary:
+The use of *beforeT* is similar, but specifies the excision boundary in terms of database t. The example below will excise eligible event-related datoms before t 1100, provided the excision requests are transacted at or after that boundary. Submit this transaction with source `99`:
 
 ```edn
-[[:db/txInstant 99]
- {:db/source 99 :db/excise :event/user
+[{:db/excise :event/user
   :db.excise/beforeT 1100}
- {:db/source 99 :db/excise :event/category
+ {:db/excise :event/category
   :db.excise/beforeT 1100}
- {:db/source 99 :db/excise :event/description
+ {:db/excise :event/description
   :db.excise/beforeT 1100}]
 ```
 
 ## Excising All Values of an Attribute
 
-**Excising by attribute is very dangerous**. If you leave out the *before* limitations from the previous examples, then you will remove **all** eligible values of the various *:event* attributes before the excision request transactions, effectively removing those event facts from the database:
+**Excising by attribute is very dangerous**. If you leave out the *before* limitations from the previous examples, then you will remove **all** eligible values of the various *:event* attributes before the excision request transactions, effectively removing those event facts from the database. Submit this transaction with source `99`:
 
 ```edn
-[[:db/txInstant 99]
- {:db/source 99 :db/excise :event/user}
- {:db/source 99 :db/excise :event/category}
- {:db/source 99 :db/excise :event/description}]
+[{:db/excise :event/user}
+ {:db/excise :event/category}
+ {:db/excise :event/description}]
 ```
 
 Attribute excision removes values, not the attribute's schema definition. Writes at or after the request transaction remain eligible to use that attribute.

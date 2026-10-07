@@ -231,30 +231,31 @@ fn transact(
 
 Submits a [transaction](../../04_transactions/00_transactions.md), blocking until
 a result or wait error is available. Requires an attached transaction endpoint.
-Construct a `TransactionRequest` with `new(request_key, operations)`,
-`from_forms(request_key, forms)`, or `from_edn(request_key, text)`.
-The request key identifies the submission for exact retries.
+Construct a `TransactionRequest` with `new(request_key, operations, source)`,
+`from_forms(request_key, forms, source)`, or `from_edn(request_key, text, source)`.
+The required `source: EntityRef` identifies the contributor for every assertion
+and retraction produced by the transaction. The request key identifies the
+submission for exact retries; source is part of the request identity.
 
 Transaction data can contain any combination of assertions, retractions,
 transaction functions, entity maps, or forms for the transaction instant. These
 EDN examples assume the named attributes and transaction function have been
-installed, and source entity `99` identifies the contributor. The function
-accepts a source argument for its emitted assertions and retractions:
+installed. Submit them with `EntityRef::Id(99)` as the request source:
 
 | Type | Example |
 | --- | --- |
-| Assertion | `[:db/add 1001 :some-attr/name "Some attr value" 99]` |
-| Retraction | `[:db/retract 1001 :some-attr/name "Some attr value" 99]` |
-| Transaction instant | `[:db/txInstant 99]` |
-| Transaction function | `[:some/fn-name "argument" 99]` |
-| Entity map | `{:db/id "new-entity" :db/source 99 :some-attr/name "some value" :another-attr/name 42}` |
+| Assertion | `[:db/add 1001 :some-attr/name "Some attr value"]` |
+| Retraction | `[:db/retract 1001 :some-attr/name "Some attr value"]` |
+| Explicit transaction instant | `[:db/add "edb.tx" :db/txInstant #inst "2026-10-01T12:00:00Z"]` |
+| Transaction function | `[:some/fn-name "argument"]` |
+| Entity map | `{:db/id "new-entity" :some-attr/name "some value" :another-attr/name 42}` |
 
-Wrap forms in an outer vector for `from_edn` and include
-`[:db/txInstant 99]` to assert the selected transaction instant with source `99`,
-or supply an explicit sourced `:db/txInstant` assertion. The native form is
-`TxOp::TxInstant { source: EntityRef::Id(99) }`.
-The form does not supply a default source for the other forms; each
-assertion and retraction carries its own source. See
+Wrap forms in an outer vector for `from_edn`. EDB automatically records exactly
+one transaction instant with the request source, including for empty transaction
+data. Function results and generated changes receive that same source. An
+explicit `:db/txInstant` value must apply to the current transaction, not precede
+the previous instant or exceed the writer's clock, and agree with any
+request-level time override. See
 [transaction data](../../04_transactions/04_transaction_data.md) and
 [transaction functions](../../04_transactions/07_transaction_functions.md).
 
@@ -269,8 +270,8 @@ Use `report.db_after` for reads at the exact committed result; a subsequent
 If execution rejects the transaction, the result is a `SemanticError`. A ticket
 wait timeout or worker disconnection after admission returns category
 `UnknownOutcome`, code `service/unknown-outcome`. This does not establish that
-the transaction aborted. Retain the same request key and transaction data when
-retrying an unknown outcome. See
+the transaction aborted. Retain the same request key, transaction data, source,
+and request options when retrying an unknown outcome. See
 [transaction diagnostics](../../04_transactions/03_diagnostics.md).
 
 The timeout is explicit; there is no global default transaction timeout. It

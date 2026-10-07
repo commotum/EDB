@@ -53,17 +53,20 @@ representations. Use `tx_to_t(datom.tx)?` to recover T, and `t_to_tx(t)?` to
 construct a transaction entity ID from T. Both functions return
 `Result<u64, SemanticError>`. A database's `basis_t()` returns logical T; compare
 it with the converted value rather than the raw `tx` field. The transaction's
-wall-clock time is a separate `:db/txInstant` fact.
+wall-clock time is a separate `:db/txInstant` fact, automatically asserted with
+the transaction's source.
 
 ### `source`
 
-The entity ID explicitly supplied by the application for the source of this
-assertion or retraction. The source is an ordinary entity described by ordinary
-facts. Datoms in one transaction can have different sources.
+The source entity ID resolved from the reference explicitly supplied by the
+application once for the transaction. The source is an ordinary entity described
+by ordinary facts. All assertions and retractions produced by one transaction
+carry that source, including generated changes and its automatic timestamp.
 
 A retraction carries the retracting source's ID; it does not change the source
-of the earlier assertion. Assertions with the same entity, attribute, and value
-but different sources retain their distinct attribution.
+of the earlier assertion. Assertions from different transactions with the same
+entity, attribute, and value but different sources retain their distinct
+attribution.
 
 ### `added`
 
@@ -104,16 +107,20 @@ or `PartialOrd`; choose the desired order explicitly with `cmp_in`.
 | `Aevt` | Attribute, entity, value |
 | `Avet` | Attribute, value, entity |
 | `Vaet` | Value, attribute, entity |
+| `Saevt` | Source, attribute, entity, value |
+| `Savet` | Source, attribute, value, entity |
 
 Values use `Value::index_cmp`. After the leading components compare equal,
-transactions sort in descending order, then sources in ascending order, then
-assertions (`added == true`) before retractions. Finally, `Value::stored_cmp`
+transactions sort in descending order. The four original orders then compare
+sources in ascending order; the source-first orders already compared source.
+Assertions (`added == true`) sort before retractions. Finally, `Value::stored_cmp`
 breaks remaining ties; it distinguishes the scale of top-level decimal values.
 Consequently, two datoms can be equal under `==` yet compare differently under
 `cmp_in` when their top-level decimal scales differ.
 
 Choosing an order for comparison does not determine which datoms belong in an
-index. AVET includes eligible attributes with ready projections; VAET includes
+index. EAVT, AEVT and SAEVT cover all attributes. AVET and SAVET include the
+same eligible attributes with ready projections; VAET includes
 reference attributes. See the [index model](../../06_indexes/01_index_model.md)
 and [index APIs](../../06_indexes/04_index_apis.md).
 

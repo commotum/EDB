@@ -23,7 +23,7 @@ The stock executable accepts the same EDN commands without PostgreSQL credential
 ```sh
 edb query --repository /private/backups/customers --file query.edn
 edb pull --repository /private/backups/customers --file pattern.edn --entity 12345
-edb with --repository /private/backups/customers --file transaction.edn
+edb with --repository /private/backups/customers --file transaction.edn --source 99
 ```
 
 Use `--backup-basis N --backup-generation N` together to select a listed point.

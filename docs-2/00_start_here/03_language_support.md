@@ -72,7 +72,7 @@ printf '%s\n' '[:find ?e :where [?e :db/doc]]' |
   target/release/edb query --database edn-demo --file -
 ```
 
-`--file -` reads standard input; results are written to standard output. Queries execute in the CLI process. Durable transactions require a configured transactor and a caller-supplied `--request-key`. See the [application workflow](../01_tutorials/01_application_workflow.md) for starting the transactor and configuring access, and the [EDN workflow](../01_tutorials/00_edn_workflow.md) for data command options and exact retries.
+`--file -` reads standard input; results are written to standard output. Queries execute in the CLI process. Durable transactions require a configured transactor and caller-supplied `--request-key` and `--source` options. The source applies to every fact produced by the transaction, including its automatic timestamp. See the [application workflow](../01_tutorials/01_application_workflow.md) for starting the transactor and configuring access, and the [EDN workflow](../01_tutorials/00_edn_workflow.md) for data command options and exact retries.
 
 ### EDN
 

@@ -106,11 +106,10 @@ The attribute must be installed in the database supplied to the query. See the [
 
 ## Transaction EDN Example
 
-Below is an example of a transaction written in EDN notation. Assuming the attributes are installed, entity `99` identifies the contributor, and no identity-unique value resolves to an existing entity, this transaction creates a new entity with two attributes: `:person/name` and `:person/email`.
+Below is an example of transaction data written in EDN notation, submitted with source `99` through the request or CLI's `--source 99` option. Assuming the attributes are installed, entity `99` identifies the contributor, and no identity-unique value resolves to an existing entity, this transaction creates a new entity with two attributes: `:person/name` and `:person/email`.
 
 ```edn
-[[:db/txInstant 99]
- {:db/source 99 :person/name "Anna" :person/email "anna@example.com"}]
+[{:person/name "Anna" :person/email "anna@example.com"}]
 ```
 
 In the transaction above:
@@ -118,9 +117,9 @@ In the transaction above:
 - `:person/name` and `:person/email` are namespaced keywords denoting the idents of attributes the new entity will possess.
 - `"Anna"` is a string denoting the value of the `:person/name` attribute.
 - `"anna@example.com"` is a string denoting the value of the `:person/email` attribute.
-- `:db/source` supplies the source entity ID for each map's assertions; it is transaction syntax, not a stored attribute.
-- `[:db/txInstant 99]` asserts the transaction's selected instant with source `99`. It does not supply a default source for the map's assertions.
-- The entire transaction is a vector containing a `:db/txInstant` form and an entity map.
+- The request supplies one source for the entire transaction. Every assertion and retraction it produces carries source `99`, including generated facts; maps and operations do not override it.
+- EDB automatically asserts one `:db/txInstant` value on the transaction entity with source `99`.
+- The transaction data is a vector containing an entity map.
 
 Check [transaction structure](../04_transactions/04_transaction_data.md) for more information about how transactions are structured, including implicit temporary IDs and upserts.
 
@@ -146,7 +145,7 @@ assert_eq!(read_edn(&write_edn(&constructed)?)?, constructed);
 
 Reading is data-only: symbols and lists never execute. `read_edn` reads exactly one value and rejects trailing forms; `EdnReader` iterates a stream of values. Unknown tags are preserved by default. `EdnReadOptions` can reject them or supply explicit native tag handlers. Clojure reader macros, such as quoting and auto-resolved keywords, are not EDN syntax.
 
-Use `parse_query_edn` or `query_from_edn` to prepare query data, `TransactionRequest::from_edn` to construct a submission, and `DatabaseValue::with_edn` to apply a speculative transaction to an immutable database value. The typed `Query`, `TxForm`, and `Value` APIs provide programmatic construction without a text round trip. The [native library example](../01_tutorials/00_edn_workflow.md#native-library) shows parsing, binding, execution, and result printing together.
+Use `parse_query_edn` or `query_from_edn` to prepare query data, `TransactionRequest::from_edn(key, text, source)` to construct a submission, and `DatabaseValue::with_edn(text, tx_instant, source)` to apply a speculative transaction to an immutable database value. Both transaction APIs require one `source: EntityRef` alongside the ordinary transaction data. The typed `Query`, `TxForm`, and `Value` APIs provide programmatic construction without a text round trip. The [native library example](../01_tutorials/00_edn_workflow.md#native-library) shows parsing, binding, execution, and result printing together.
 
 Reading and printing enforce resource limits. Default limits include 16 MiB of input/output, depth 64, one million nodes, numeric tokens up to 64 KiB, and cumulative format work up to 64 MiB. Conversion to stored or query values and transaction/query execution have their own admission limits. See [limits and errors](../01_tutorials/00_edn_workflow.md#limits-errors-and-evidence) for details.
 

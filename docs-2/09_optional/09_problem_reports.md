@@ -46,9 +46,10 @@ For EDB, make the environment and evidence concrete:
   placeholders. Keep enough configuration to reproduce the behavior without
   sharing passwords, tokens, or private keys.
 - Include complete schema, transaction, query, Pull, rule, and input data needed
-  by the reproducer. Record transaction order, explicit transaction times when
-  relevant, database basis T, and any `as_of`, `since`, or history views. A
-  database name alone does not specify a database value.
+  by the reproducer. Record transaction order, the one source supplied for each
+  transaction, selected and explicit transaction times when relevant, database
+  basis T, and any `as_of`, `since`, or history views. A database name alone does
+  not specify a database value.
 - Preserve command lines, stdout, stderr, and exit status. Native failures carry
   `SemanticError` fields `category`, `code`, `message`, `details`, and optional
   `anomaly`. Its `Display` output includes only the code and message. The CLI
@@ -180,7 +181,9 @@ and precise.
   substitutes for the durable writer when the problem concerns storage,
   idempotency, fencing, or transport.
 - For transaction problems, record the request key, exact submitted data,
-  basis precondition, time override, and the result observed at each boundary.
+  required transaction source (including for empty data), basis precondition,
+  time override, and the result observed at each boundary. EDB automatically
+  records one transaction instant with that source.
   A timeout does not establish that a transaction failed to commit. See
   [processing transactions](../04_transactions/06_processing_transactions.md)
   for unknown outcomes and exact retries.

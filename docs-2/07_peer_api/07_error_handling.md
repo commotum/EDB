@@ -64,7 +64,7 @@ returns `service/unknown-outcome`. Transport failures once a request write has
 been attempted can likewise leave its outcome unknown. A timeout does not
 mean rollback.
 
-Keep the same database identity, request key, transaction forms, basis
+Keep the same database identity, request key, transaction source, forms, basis
 precondition, and transaction-time override when explicitly retrying an unknown
 outcome. A matching retained receipt returns the original committed result with
 `replayed: true`. Reusing that key with different data returns

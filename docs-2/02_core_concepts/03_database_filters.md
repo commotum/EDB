@@ -16,9 +16,9 @@ value before deriving a view when you also need the original.
 All the inventory examples below use an entity that tracks the quantity of
 dilithium crystals on hand at a given point in time. The subset of the data
 relevant to the examples is shown below. `item` is the inventory entity, and
-`tx1` through `tx5` are the five transaction entity IDs. This setup explicitly
-attributes each statement to the built-in source entity `:db.source/system`,
-abbreviated `system` in the table. All dates are UTC.
+`tx1` through `tx5` are the five transaction entity IDs. This setup supplies the
+built-in source entity `:db.source/system` once for each transaction, abbreviated
+`system` in the table. All dates are UTC.
 
 | e | a | v | tx | s | added |
 | --- | --- | --- | --- | --- | --- |
@@ -48,7 +48,7 @@ application, capture `db` from your connection instead. See
 
 ```rust
 use edb_core::{
-    AttributeName, Database, DatabaseValue, EntityIdentifier, Keyword,
+    AttributeName, Database, DatabaseValue, EntityIdentifier, EntityRef, Keyword,
     QueryControl, QuerySourceValue, TimePoint, Value,
 };
 use edb_core::edn::{read_edn, write_edn};
@@ -56,49 +56,45 @@ use edb_core::edn_pull::parse_pull_edn;
 use edb_core::edn_query::{EdnQueryArgument, parse_query_edn};
 use edb_core::edn_value::query_value_to_edn;
 
+let source = EntityRef::Ident(Keyword::new("db.source", "system"));
 let schema = r#"[
- [:db/txInstant :db.source/system]
- {:db/source :db.source/system
-  :db/ident :item/id :db/valueType :db.type/string
+ {:db/ident :item/id :db/valueType :db.type/string
   :db/cardinality :db.cardinality/one :db/unique :db.unique/identity}
- {:db/source :db.source/system
-  :db/ident :item/description :db/valueType :db.type/string
+ {:db/ident :item/description :db/valueType :db.type/string
   :db/cardinality :db.cardinality/one}
- {:db/source :db.source/system
-  :db/ident :item/count :db/valueType :db.type/long
+ {:db/ident :item/count :db/valueType :db.type/long
   :db/cardinality :db.cardinality/one}
- {:db/source :db.source/system
-  :db/ident :tx/error :db/valueType :db.type/boolean
+ {:db/ident :tx/error :db/valueType :db.type/boolean
   :db/cardinality :db.cardinality/one}
 ]"#;
-let installed = Database::bootstrap()?.with_edn(schema, 0)?.db_after;
+let installed = Database::bootstrap()?.with_edn(schema, 0, source.clone())?.db_after;
 let first = installed.with_edn(
-    r#"[[:db/txInstant :db.source/system]
-        {:db/id "crystals" :db/source :db.source/system :item/id "DLC-042"
+    r#"[{:db/id "crystals" :item/id "DLC-042"
          :item/description "Dilithium Crystals" :item/count 100}]"#,
     1385856000000,
+    source.clone(),
 )?;
 let second = first.db_after.with_edn(
-    r#"[[:db/txInstant :db.source/system]
-        {:db/id [:item/id "DLC-042"] :db/source :db.source/system :item/count 250}]"#,
+    r#"[{:db/id [:item/id "DLC-042"] :item/count 250}]"#,
     1387497600000,
+    source.clone(),
 )?;
 let third = second.db_after.with_edn(
-    r#"[[:db/txInstant :db.source/system]
-        {:db/id [:item/id "DLC-042"] :db/source :db.source/system :item/count 50}]"#,
+    r#"[{:db/id [:item/id "DLC-042"] :item/count 50}]"#,
     1393545600000,
+    source.clone(),
 )?;
 let fourth = third.db_after.with_edn(
-    r#"[[:db/txInstant :db.source/system]
-        {:db/id [:item/id "DLC-042"] :db/source :db.source/system :item/count 9999}
-        {:db/id "edb.tx" :db/source :db.source/system :tx/error true}]"#,
+    r#"[{:db/id [:item/id "DLC-042"] :item/count 9999}
+        {:db/id "edb.tx" :tx/error true}]"#,
     1396310400000,
+    source.clone(),
 )?;
 let bad_tx = fourth.tx_data[0].tx;
 let fifth = fourth.db_after.with_edn(
-    r#"[[:db/txInstant :db.source/system]
-        {:db/id [:item/id "DLC-042"] :db/source :db.source/system :item/count 100}]"#,
+    r#"[{:db/id [:item/id "DLC-042"] :item/count 100}]"#,
     1400112000000,
+    source.clone(),
 )?;
 let db = fifth.db_after.database_value();
 let item = EntityIdentifier::Lookup {
@@ -108,9 +104,9 @@ let item = EntityIdentifier::Lookup {
 let wildcard = parse_pull_edn("[*]")?;
 ```
 
-Each `[:db/txInstant :db.source/system]` form asserts the instant supplied to
-`with_edn` with that source. The maps supply sources for their own assertions
-and any resulting retractions.
+Each `with_edn` call supplies one source for all its assertions and resulting
+retractions. EDB automatically asserts the instant supplied to `with_edn` on
+the transaction entity with that same source.
 
 ## as-of
 
@@ -142,8 +138,8 @@ not use the `as_of` predecessor rule. See
 
 Because the `:item/count` of dilithium crystals changes over time, different
 `as_of` views show different counts. Pull and entity navigation project distinct
-values: two sources asserting the same count still produce one count value,
-while history retains the separate contributions.
+values: two sources asserting the same count in separate transactions still
+produce one count value, while history retains the separate contributions.
 
 ```rust
 let current = db.pull(&wildcard, item.clone())?;
@@ -389,8 +385,8 @@ Filters can do more than look at single datoms. They can also consider datoms in
 the context of the database. For example, imagine that you mark the transactions
 in your system with a `:source/confidence` field that indicates your confidence
 in that transaction's contributions, on a scale from 0 to 100. This is transaction
-metadata; the individual datoms retain their own sources. You could then filter
-a point-in-time database as follows:
+metadata; all datoms produced by each transaction carry its supplied source.
+You could then filter a point-in-time database as follows:
 
 ```rust
 fn filter_by_confidence(db: DatabaseValue, conf: i64) -> DatabaseValue {
@@ -433,10 +429,10 @@ added by transactions with a confidence score higher than 90:
 
 Install `:source/confidence` as a cardinality-one Long and `:story/title` as a
 cardinality-one String. A transaction can assert both a story title and
-`{:db/id "edb.tx" :db/source :db.source/system :source/confidence 95}`,
-with an explicit source on the story assertion and
-`[:db/txInstant :db.source/system]` for the transaction instant. The threshold
-check does not itself enforce the application's 0–100 range.
+`{:db/id "edb.tx" :source/confidence 95}`. Supply one explicit source for the
+transaction; the title, confidence annotation, and automatic transaction instant
+all carry that source. The threshold check does not itself enforce the
+application's 0–100 range.
 
 ## Usage Considerations
 

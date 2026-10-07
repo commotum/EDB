@@ -382,7 +382,7 @@ continues through the rest of the index, so the loop stops at the attribute or
 value boundary. For an exact match use `prefix_cursor` with an `IndexPrefix`.
 Index results are datoms in index order, suitable for displaying or consuming
 directly. See [index APIs](../06_indexes/04_index_apis.md) for EAVT, AEVT, AVET,
-VAET, prefixes, reverse seeks, and cursor limits.
+VAET, SAEVT, SAVET, prefixes, reverse seeks, and cursor limits.
 
 For the illustrative music schema above, select AVET and supply the leading
 components A = `:artist/name` and V = `"Foo Fighters"` to retrieve matching

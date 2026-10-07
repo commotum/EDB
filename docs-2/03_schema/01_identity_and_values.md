@@ -22,8 +22,8 @@ A datom has six fields: entity (`entity`), attribute (`attribute`), value
 immutable database values. A previously captured value keeps its own view of
 those facts.
 
-Source is an ordinary entity ID supplied explicitly for each assertion or
-retraction. One transaction can contain statements from several sources.
+Source is an ordinary entity ID supplied explicitly once for each transaction.
+Every assertion and retraction it produces carries that source.
 Datom equality includes all six fields; asserting the same EAV from a different
 source preserves a distinct contribution. A retraction changes the current fact
 regardless of its original source and records the retracting source, leaving the
@@ -33,7 +33,8 @@ Logical transaction time and the transaction entity ID are distinct coordinates.
 `Datom::tx` is the transaction entity ID. `t_to_tx(t)` constructs that ID in the
 transaction partition, and `tx_to_t(tx)` recovers logical time, rejecting IDs
 outside that partition. Neither coordinate is a wall-clock timestamp; transaction
-time in milliseconds is represented by the transaction's `:db/txInstant` fact.
+time in milliseconds is represented by the transaction's `:db/txInstant` fact,
+automatically asserted with the transaction's source.
 
 Permanent entity IDs encode a partition and a nonnegative entity index.
 `eid_to_part` returns the raw partition bits, `eid_to_eidx` returns the entity
@@ -104,7 +105,7 @@ and escaped/unescaped characters remain distinct. An equivalent reassertion from
 the same source is redundant; a retraction may record the alias spelling supplied
 with that new fact.
 Previously captured values remain unchanged. Exact retry digests distinguish the
-submitted spellings and source declarations even when they identify the same
+submitted spellings and transaction source even when they identify the same
 logical URI.
 
 For native ordered indexes, absent authority sorts before server authority,
@@ -175,7 +176,8 @@ schema of the value from which they were created. See
 
 An explicit `:db/index` fact is distinct from the AVET membership implied by
 uniqueness. Both request value indexing, but installed schema does not make
-background physical index work synchronous.
+background physical index work synchronous. SAVET shares AVET eligibility
+and readiness.
 
 `DatabaseValue::has_avet` reports readiness at that exact captured value. It
 does not wait for an index build or refresh the value. An eager database value
@@ -199,19 +201,18 @@ A composite tuple is derived from its constituent attributes. Declaring the tupl
 `Unique::Identity` makes that derived key unique; it does not make a fresh tempid
 implicitly resolve from constituent-only assertions.
 
-For an existing entity with `:item/year` 2026 and `:item/season` `"fall"`, and an
-existing source entity `99`:
+For an existing entity with `:item/year` 2026 and `:item/season` `"fall"`, submit
+this transaction with existing source entity `99`:
 
 ```edn
 ;; Explicit composite value selects the existing entity before derivation.
-[[:db/txInstant 99]
- {:db/id "semester" :db/source 99
+[{:db/id "semester"
   :item/year-season [2026 "fall"]
   :item/label "Updated"}]
 ```
 
-The `[:db/txInstant 99]` form attributes the selected transaction instant to
-source `99`; the `semester` map attributes its own assertions.
+The map's assertions, derived composite changes, and automatic transaction
+instant all carry source `99`.
 
 The composite assertion is an **upsert hint**, not a direct stored write. The
 constituents still determine the actual tuple. Supplying a nonexistent composite
@@ -229,7 +230,7 @@ composite hint); the engine then derives the new key and enforces its uniqueness
 For a nonunique cardinality-one `Float` or `Double`, asserting a finite value over
 NaN works in one transaction. The report/history contains both the NaN retraction
 and finite assertion at that transaction, both attributed to the replacing
-assertion's source. Retained earlier database values still show NaN. Replacing a
+transaction's source. Retained earlier database values still show NaN. Replacing a
 finite value with NaN works the same way.
 
 EDB gives NaN stable logical equality for indexing and redundancy: reasserting

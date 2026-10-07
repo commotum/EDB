@@ -1,9 +1,9 @@
 # Changing schema
 
 Changing an existing schema attribute is similar to defining a new schema
-attribute: you submit a transaction with the new facts, including the `:db/id`,
-`:db/source`, and the new value(s) of the attribute(s). See
-[schema as database data](00_schema.md) for installation and the
+attribute: you submit a transaction with the new facts, including the `:db/id`
+and the new value(s) of the attribute(s), and supply one source for the
+transaction. See [schema as database data](00_schema.md) for installation and the
 [schema data reference](02_schema_reference.md) for
 individual properties and value types.
 
@@ -34,10 +34,10 @@ before submitting data that relies on its new transaction behavior.
 
 The examples below assume the named attributes already exist with the
 appropriate value types and source entity `99` identifies the contributor.
-Submit each vector as ordinary EDN transaction data, including
-`[:db/txInstant 99]` to attribute the selected transaction instant.
-This form is omitted from the excerpts and supplies no default
-source to other forms.
+Submit each vector as ordinary EDN transaction data with source `99` supplied
+once through the transaction request or CLI `--source 99`. Every explicit and
+generated change carries that source, including the automatic transaction
+timestamp.
 
 ## Changing `:db/ident`
 
@@ -45,7 +45,6 @@ This example changes the `:db/ident` of `:person/name` to `:person/full-name`:
 
 ```edn
 [{:db/id     :person/name
-  :db/source 99
   :db/ident  :person/full-name}]
 ```
 
@@ -72,10 +71,8 @@ the cardinality of `:person/email` to one:
 
 ```edn
 [{:db/id          :person/favorite-food
-  :db/source      99
   :db/cardinality :db.cardinality/many}
  {:db/id          :person/email
-  :db/source      99
   :db/cardinality :db.cardinality/one}]
 ```
 
@@ -106,16 +103,14 @@ The example below changes `:order/line-items` to be a component, and
 
 ```edn
 [{:db/id          :order/line-items
-  :db/source      99
   :db/isComponent true}
  {:db/id          :customer/orders
-  :db/source      99
   :db/isComponent false}]
 ```
 
 Changing `:db/isComponent` causes subsequent transactions and reads of the new
 database value to use the new component semantics. For example, when it is true,
-`[:db/retractEntity parent-id 99]` recursively retracts the referenced component
+`[:db/retractEntity parent-id]` recursively retracts the referenced component
 entities, attributing each retraction to source `99`. `:db.fn/retractEntity` is
 also accepted. Component navigation and Pull use the flag from their supplied
 database value.
@@ -134,10 +129,8 @@ history, and changes `:person/address` to retain history going forward:
 
 ```edn
 [{:db/id :person/encrypted-password
-  :db/source 99
   :db/noHistory true}
  {:db/id :person/address
-  :db/source 99
   :db/noHistory false}]
 ```
 
@@ -164,7 +157,6 @@ The example below requests an AVET index for `:person/external-id`:
 
 ```edn
 [{:db/id :person/external-id
-  :db/source 99
   :db/index true}]
 ```
 
@@ -190,8 +182,8 @@ AVET membership. The example below retracts the unique identity constraint and
 the explicit index flag for `:person/external-id`:
 
 ```edn
-[[:db/retract :person/external-id :db/unique :db.unique/identity 99]
- [:db/retract :person/external-id :db/index true 99]]
+[[:db/retract :person/external-id :db/unique :db.unique/identity]
+ [:db/retract :person/external-id :db/index true]]
 ```
 
 Retract the actual unique mode if the attribute instead uses `:db.unique/value`.
@@ -200,7 +192,7 @@ uniqueness leaves AVET required by an explicit true index flag.
 
 EDB synthesizes attribute alteration hooks for changed schema properties;
 ordinary EDN changes do not need an additional
-`[:db/add :db.part/db :db.alter/attribute :person/external-id 99]` form. Explicit
+`[:db/add :db.part/db :db.alter/attribute :person/external-id]` form. Explicit
 install or alter hooks, when supplied, must be assertions on `:db.part/db` and
 must match whether the attribute was installed in db-before.
 
@@ -216,7 +208,6 @@ This example changes the attribute `:person/external-id` to a unique identity:
 
 ```edn
 [{:db/id :person/external-id
-  :db/source 99
   :db/unique :db.unique/identity}]
 ```
 
@@ -249,7 +240,7 @@ for composite identities, URI equality, and NaN.
 This example retracts the unique identity constraint going forward:
 
 ```edn
-[[:db/retract :person/external-id :db/unique :db.unique/identity 99]]
+[[:db/retract :person/external-id :db/unique :db.unique/identity]]
 ```
 
 The successor schema no longer enforces that constraint. Input resolution in the
@@ -267,7 +258,7 @@ An unused attribute can remain installed while applications stop writing it.
 You can permanently discontinue an installed composite tuple:
 
 ```edn
-[[:db/add :semester/year+season :db.tuple/discontinued true 99]]
+[[:db/add :semester/year+season :db.tuple/discontinued true]]
 ```
 
 Subsequent transactions stop deriving its values when constituents change.
@@ -279,11 +270,12 @@ setting false or retracting true. Create a new composite attribute if automatic
 derivation is needed again.
 
 Installing a new composite does not populate every existing entity. After
-installation, reassert a constituent value with an explicit source on each target
-entity to derive its tuple, even when a same-source assertion is otherwise
-redundant. Derived assertions and retractions carry the triggering contribution's
-source; contributions from several sources remain distinct. Process large
-populations in bounded transactions and handle any derived uniqueness conflicts.
+installation, reassert a constituent value on each target entity to derive its
+tuple, even when a same-source assertion is otherwise redundant. Supply the
+source once for each transaction; derived assertions and retractions carry that
+source. Contributions from different sources in separate transactions remain
+distinct. Process large populations in bounded transactions and handle any
+derived uniqueness conflicts.
 See [schema data reference](02_schema_reference.md) for composite declarations
 and slot rules.
 

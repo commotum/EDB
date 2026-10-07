@@ -197,7 +197,7 @@ Open the database and create a routed writer from that connection:
 
 ```rust
 use edb_core::{
-    Connection, SemanticError, TransactionRequest,
+    Connection, EntityRef, Keyword, SemanticError, TransactionRequest,
     postgres_config_from_env, remote_client_config_from_env,
 };
 use std::time::Duration;
@@ -211,11 +211,10 @@ fn main() -> Result<(), SemanticError> {
 
     let request = TransactionRequest::from_edn(
         "example/name-schema-v1",
-        r#"[[:db/txInstant :db.source/system]
-            {:db/source :db.source/system
-             :db/ident :example/name
+        r#"[{:db/ident :example/name
              :db/valueType :db.type/string
              :db/cardinality :db.cardinality/one}]"#,
+        EntityRef::Ident(Keyword::new("db.source", "system")),
     )?;
     let committed = writer.transact(request, Duration::from_secs(30))?;
     println!("committed basis: {}", committed.basis_t);
@@ -226,6 +225,10 @@ fn main() -> Result<(), SemanticError> {
     Ok(())
 }
 ```
+
+The request supplies one source for every fact it produces, including the
+automatically recorded transaction instant. The EDN contains ordinary
+transaction forms.
 
 `remote_writer` captures the connection's stable database identity and performs
 no I/O at construction. Its first submission discovers the writer through
@@ -242,6 +245,7 @@ target/debug/edb transact \
   --remote \
   --file transaction.edn \
   --request-key application-change-001 \
+  --source ':db.source/system' \
   --timeout-ms 30000
 ```
 
@@ -284,7 +288,7 @@ writes across arbitrary transactors.
 `RemoteWriter` can rediscover and try a replacement endpoint once when a stale
 or unavailable route is detected before the transaction request is written.
 It never automatically resubmits an ambiguous transaction. After an unknown
-outcome, retry explicitly with the same request key, transaction data, and
+outcome, retry explicitly with the same request key, transaction data, source, and
 options. A timeout is not proof of rollback. A confirmed commit remains
 confirmed even if opening its local report fails, as handled in the Rust
 example. See [error handling](../07_peer_api/07_error_handling.md).

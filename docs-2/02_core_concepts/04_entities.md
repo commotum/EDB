@@ -45,44 +45,42 @@ flowchart LR
 This setup creates those facts, together with a street and email address, in an
 in-memory database. It groups all the data assertions into one transaction
 instead of the two illustrated above. The database allocates entity IDs; the
-examples retain Jane's ID as `jane_id`. Each map explicitly attributes its facts
-to `:db.source/system`. The `[:db/txInstant :db.source/system]` forms attribute
-the selected transaction instants to the same source.
+examples retain Jane's ID as `jane_id`. Each call supplies `:db.source/system`
+once as the transaction source. All facts it produces, including the automatic
+transaction timestamp, carry that source.
 
 ```rust
 use edb_core::{
-    AttributeName, Database, EntityIdentifier, EntityValue, Keyword,
+    AttributeName, Database, EntityIdentifier, EntityRef, EntityValue, Keyword,
     PullDirection, Value,
 };
 
 let installed = Database::bootstrap()?.with_edn(r#"[
-  [:db/txInstant :db.source/system]
-  {:db/source :db.source/system :db/ident :person/firstName :db/valueType :db.type/string
+  {:db/ident :person/firstName :db/valueType :db.type/string
    :db/cardinality :db.cardinality/one}
-  {:db/source :db.source/system :db/ident :person/lastName :db/valueType :db.type/string
+  {:db/ident :person/lastName :db/valueType :db.type/string
    :db/cardinality :db.cardinality/one}
-  {:db/source :db.source/system :db/ident :person/email :db/valueType :db.type/string
+  {:db/ident :person/email :db/valueType :db.type/string
    :db/cardinality :db.cardinality/one :db/unique :db.unique/identity}
-  {:db/source :db.source/system :db/ident :person/address :db/valueType :db.type/ref
+  {:db/ident :person/address :db/valueType :db.type/ref
    :db/cardinality :db.cardinality/one}
-  {:db/source :db.source/system :db/ident :person/likes :db/valueType :db.type/ref
+  {:db/ident :person/likes :db/valueType :db.type/ref
    :db/cardinality :db.cardinality/many}
-  {:db/source :db.source/system :db/ident :address/street :db/valueType :db.type/string
+  {:db/ident :address/street :db/valueType :db.type/string
    :db/cardinality :db.cardinality/one}
-  {:db/source :db.source/system :db/ident :address/state :db/valueType :db.type/string
+  {:db/ident :address/state :db/valueType :db.type/string
    :db/cardinality :db.cardinality/one}
-]"#, 0)?.db_after;
+]"#, 0, EntityRef::Ident(Keyword::new("db.source", "system")))?.db_after;
 
 let report = installed.with_edn(r#"[
-  [:db/txInstant :db.source/system]
-  {:db/id "address" :db/source :db.source/system
+  {:db/id "address"
    :address/street "123 Main Street" :address/state "NC"}
-  {:db/id "jane" :db/source :db.source/system
+  {:db/id "jane"
    :person/firstName "Jane" :person/lastName "Doe"
    :person/email "jane@example.com" :person/address "address"}
-  {:db/id "john" :db/source :db.source/system
+  {:db/id "john"
    :person/firstName "John" :person/likes ["jane"]}
-]"#, 1)?;
+]"#, 1, EntityRef::Ident(Keyword::new("db.source", "system")))?;
 let jane_id = report.tempids["jane"];
 let john_id = report.tempids["john"];
 let db = report.db_after.database_value();

@@ -145,9 +145,10 @@ Two practices help make imports efficient: pipelining and batching.
   each request's key and content until its outcome is resolved.
 - If the groupings of datoms into transactions during an import do not have
   semantic significance for your data, batch data into transaction sizes that
-  fit your workload. An atomic unit must still fit transaction, read, program
-  and transport limits. Large values and function expansion make a datom count
-  alone an inadequate size budget.
+  fit your workload. Supply one source per batch; keep statements from different
+  sources in separate transactions. An atomic unit must still fit transaction,
+  read, program and transport limits. Large values and function expansion make
+  a datom count alone an inadequate size budget.
 
 The stock service defaults to 64 queued requests and four in-flight transport
 workers. `--max-in-flight` accepts 1–256; `--queue-capacity` must be positive.
@@ -526,12 +527,12 @@ payload is small.
 Plan for datoms to be represented in several structures:
 
 - The canonical transaction log records assertions and retractions.
-- EAVT and AEVT contain all datoms in their selected views.
+- EAVT, AEVT and SAEVT contain all datoms in their selected views.
 - VAET additionally contains datoms of reference type.
-- AVET additionally contains attributes with index or unique properties once
-  their projection is ready.
+- AVET and SAVET additionally contain the same attributes with index or unique
+  properties once their projection is ready.
 
-Current and history trees are distinct projections of these four orders. A
+Current and history trees are distinct projections of these six orders. A
 current assertion can therefore participate in both views; a superseded fact
 need not remain in the current view. `noHistory` changes retained-history
 coverage. Fulltext attachments, metadata, receipts and ownership information

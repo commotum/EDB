@@ -129,8 +129,7 @@ explicit top-k truncation (`stats.truncated`); work/byte/parser budgets fail wit
 an error instead of silently returning partial results. Limit zero returns no
 hits and reports truncation when matches exist.
 Visible hits are deduplicated by entity, original value and assertion transaction
-before ranking and truncation, even when several sources supplied the same fact
-in that transaction. Datom/history queries expose their distinct attribution.
+before ranking and truncation.
 Hidden candidates therefore do not consume the
 result limit. The limit bounds returned hits, not candidate discovery or
 validation work. Cooperative cancellation cannot interrupt an application filter

@@ -42,9 +42,10 @@
 
 Examples using artists, countries, accounts and purchases assume the named
 attributes have already been installed with appropriate types and cardinalities.
-Transaction examples use the existing source entity `99`. When submitting the
-standalone schema maps below, include `[:db/txInstant 99]` to attribute
-the selected `:db/txInstant`; this form does not supply a source for other forms.
+For each transaction example below, supply the existing source entity `99` once
+through the request or CLI `--source 99`, including when submitting standalone
+schema maps. Every resulting assertion and retraction, including the automatic
+`:db/txInstant`, receives that source.
 Music-corpus results below illustrate result shapes; row order is unspecified.
 See the [schema reference](../03_schema/02_schema_reference.md),
 [transaction data](../04_transactions/04_transaction_data.md), and
@@ -80,22 +81,20 @@ For example, a music-catalog schema connects artists and releases via the `:rele
 
 Enumerated types should be represented by a reference pointing to an entity that has an ident. Application datoms store the numeric entity reference rather than repeating the ident keyword in every reference value.
 
-A music-catalog schema demonstrates this with `:artist/country`. Note that transactions can use an ident directly as a reference value, eliding the indirection. The transaction data below creates a reference between an artist identified by a unique `:artist/name` and the entity whose ident is `:country/GB`:
+A music-catalog schema demonstrates this with `:artist/country`. Note that transactions can use an ident directly as a reference value, eliding the indirection. The transaction data below creates a reference between an artist identified by a unique `:artist/name` and the entity whose ident is `:country/GB`. Submit it with source `99`:
 
 ```edn
-[[:db/txInstant 99]
- [:db/add [:artist/name "Example Artist"] :artist/country :country/GB 99]]
+[[:db/add [:artist/name "Example Artist"] :artist/country :country/GB]]
 ```
 
 ## Use Unique Identities for External Keys
 
 If an attribute is used as an external key, set that attribute to be `:db/unique` `:db.unique/identity`. Unique identities can be domain-specific identifiers, such as an account number or an email address.
 
-For example, you could represent an ISO 3166-1 compliant country code external key with the following attribute definition:
+For example, you could represent an ISO 3166-1 compliant country code external key with the following attribute definition, submitted with source `99`:
 
 ```edn
-{:db/source 99
- :db/ident :country/code
+{:db/ident :country/code
  :db/valueType :db.type/string
  :db/cardinality :db.cardinality/one
  :db/unique :db.unique/identity
@@ -114,18 +113,16 @@ Growth migrations are suitable for production, and breakage migrations are, at b
 
 Further details on *growth* vs. *breakage* can be found in Rich Hickey's 2016 Clojure/conj keynote, [Spec-ulation](https://www.youtube.com/watch?v=oyLBGkS5ICk).
 
-EDB provides lightweight, flexible schema that can be *grown* as necessary to support new information about your system or domain. *Growth* is always additive, i.e. adding new attributes, adding new 'types', adding relationships between 'types':
+EDB provides lightweight, flexible schema that can be *grown* as necessary to support new information about your system or domain. *Growth* is always additive, i.e. adding new attributes, adding new 'types', adding relationships between 'types'. Submit each schema map below with source `99`:
 
 ```edn
 ;; Given some initial schema
-{:db/source 99
- :db/ident :user/id
+{:db/ident :user/id
  :db/valueType :db.type/string
  :db/cardinality :db.cardinality/one}
 
 ;; Grow system by adding schema:
-{:db/source 99
- :db/ident :user/name
+{:db/ident :user/name
  :db/valueType :db.type/string
  :db/cardinality :db.cardinality/one}
 ```
@@ -140,11 +137,10 @@ The meaning of a name is established when the name is first introduced. Removing
 
 Instead of removing or reusing names, use aliases to allow multiple names to refer to a single schema element. EDB retains old ident names as aliases when an entity is renamed. The current `:db/ident` fact is cardinality-one; both old and new names resolve to the same entity ID. See [changing idents](../03_schema/03_changing_schema.md#changing-dbident).
 
-For example, to create an alias, `:user/primary-email` that refers to the same schema element as an existing ident (`:user/id`), transact the following assertion:
+For example, to create an alias, `:user/primary-email` that refers to the same schema element as an existing ident (`:user/id`), transact the following assertion with source `99`:
 
 ```edn
-[[:db/txInstant 99]
- [:db/add :user/id :db/ident :user/primary-email 99]]
+[[:db/add :user/id :db/ident :user/primary-email]]
 ```
 
 This new alias allows new programs to use the new `:user/primary-email` name, while adhering to the [prior section](#never-remove-or-reuse-names) ensures that old programs that require `:user/id` will continue to function.
@@ -159,30 +155,27 @@ Because EDB schema is stored as data, you can and should annotate your schema el
 For example, in the case of a [preferred newer schema option](#grow-schema-and-never-break-it), you could add a `:schema/see-instead` reference and a `:db/doc` on the older schema element to point users at the new convention:
 
 First install `:schema/see-instead` as a cardinality-one reference attribute and
-ensure both email attributes exist. Then annotate the old schema entity:
+ensure both email attributes exist. Then annotate the old schema entity with transaction source `99`:
 
 ```edn
-[[:db/txInstant 99]
- {:db/id :user/email
-  :db/source 99
+[{:db/id :user/email
   :schema/see-instead :user2/email
   :db/doc "prefer the user2 namespace for new development"}]
 ```
 
 ## Add Facts About the Transaction Entity
 
-Most entities in a system model the "what" of your domain. Transactions provide a place to model "when", "who", "where", and "why" for the transaction as a whole. Each assertion or retraction separately carries its explicitly supplied source; one transaction can contain contributions from several sources.
+Most entities in a system model the "what" of your domain. Transactions provide a place to model "when", "who", "where", and "why" for the transaction as a whole. Supply one source for the transaction; every assertion and retraction it produces carries that source.
 
-As a part of every transaction, EDB creates an entity to represent the transaction itself. This *reified transaction* includes `:db/txInstant`, which records its selected wall clock time. Supply `[:db/txInstant source]` to assert that instant with an explicit source, or assert a sourced literal instant as shown in [imports](#set-txinstant-on-imports).
+As a part of every transaction, EDB creates an entity to represent the transaction itself. This *reified transaction* includes `:db/txInstant`, which records its selected wall clock time. EDB automatically asserts this instant with the transaction's source. You can supply an explicit instant value as shown in [imports](#set-txinstant-on-imports).
 
 Transactions are ordinary entities: you can create attributes that are about transactions and query them just like any other datoms in EDB.
 
-For example, install `:data/src` as a reference and `:source/url` as a string. The following transaction forms use `:data/src` to link the transaction to a source URL from an external system. This transaction annotation is distinct from the per-fact source `99` supplied on each assertion.
+For example, install `:data/src` as a reference and `:source/url` as a string. The following transaction forms use `:data/src` to link the transaction to a source URL from an external system. This transaction annotation describes the import file; submit these forms with transaction source `99` to identify the contributor of the database statements.
 
 ```edn
-[[:db/txInstant 99]
- [:db/add "edb.tx" :data/src "import-file" 99]
- [:db/add "import-file" :source/url "http://example.com/catalog-2_29_2012.xml" 99]]
+[[:db/add "edb.tx" :data/src "import-file"]
+ [:db/add "import-file" :source/url "http://example.com/catalog-2_29_2012.xml"]]
 ```
 
 ## Use Lookup Refs to Specify Existing Entities
@@ -194,7 +187,7 @@ Database updates often have a two-step structure:
 
 Lookup refs flatten this into a single step. With a lookup ref, you can specify an entity directly via an external identifier.
 
-So instead of:
+So instead of querying first and submitting the transaction with source `99`:
 
 ```edn
 ;; query for e
@@ -202,23 +195,20 @@ So instead of:
  :where [?e :user/email "jdoe@example.com"]]
 
 ;; tx-data using e
-[[:db/txInstant 99]
- [:db/add e :db/doc "doc about John" 99]]
+[[:db/add e :db/doc "doc about John"]]
 ```
 
 Here `e` denotes the returned entity ID; substitute that ID when constructing
 the transaction data. EDN does not evaluate an application variable named `e`.
 
-You can simply:
+You can simply submit this transaction with source `99`:
 
 ```edn
 ;; tx-data with a lookup ref, no query needed
-[[:db/txInstant 99]
- [:db/add
+[[:db/add
   [:user/email "jdoe@example.com"]
   :db/doc
-  "doc about John"
-  99]]
+  "doc about John"]]
 ```
 
 ## Use CAS for Optimistic Concurrency
@@ -260,15 +250,14 @@ fn make_deposit(
             Ok(TransactionRequest::new(
                 format!("{operation_key}/cas-{attempt}"),
                 vec![
-                    TxOp::TxInstant { source: EntityRef::Id(source) },
                     TxOp::Cas {
                         entity: EntityRef::Id(account),
                         attribute: balance_attribute,
                         old: Some(Value::Long(*balance).into()),
                         new: Value::Long(next).into(),
-                        source: EntityRef::Id(source),
                     },
                 ],
+                EntityRef::Id(source),
             ))
         };
         let request = prepare().map_err(|error| DepositFailure {
@@ -306,14 +295,14 @@ Because `db_after` is also returned by `DatabaseValue::with`, `with_forms` and `
 The following example uses `:db/cas` and `db_after` in conjunction to verify that a deposit increases the account by the correct amount. The existing balance is 10000 cents and the deposit is 85000 cents:
 
 ```rust
-use edb_core::{EntityIdentifier, Keyword, TransactionRequest};
+use edb_core::{EntityIdentifier, EntityRef, Keyword, TransactionRequest};
 use edb_core::edn_pull::parse_pull_edn;
 use std::time::Duration;
 
 let request = TransactionRequest::from_edn(
     "deposit-123-example",
-    r#"[[:db/txInstant 99]
-        [:db/cas [:account/number "123"] :account/balance 10000 95000 99]]"#,
+    r#"[[:db/cas [:account/number "123"] :account/balance 10000 95000]]"#,
+    EntityRef::Id(99),
 )?;
 // Retain request for exact retry if the outcome is unknown.
 let report = conn.transact(request.clone(), Duration::from_secs(30))?;
@@ -339,15 +328,14 @@ EDB's `:db/txInstant` values must be nondecreasing; multiple transactions can sh
 - Choose an instant no newer than the transactor's clock time. The durable writer rejects future instants.
 - If the source time predates the destination's existing transactions, preserve it in an application attribute instead of backdating `:db/txInstant`.
 
-To set `:db/txInstant`, add a map with the special `:db/id` value `"edb.tx"` and the supplied instant:
+To set `:db/txInstant`, add a map with the special `:db/id` value `"edb.tx"` and the supplied instant, then submit it with source `99`:
 
 ```edn
 [{:db/id "edb.tx"
-  :db/source 99
   :db/txInstant #inst "2014-02-28T00:00:00Z"}]
 ```
 
-This example requires a destination whose last instant is at or before that date. Native requests may instead use `TransactionRequest::with_tx_instant(milliseconds)` together with `TxOp::TxInstant { source }` to assert the selected instant. The override supplies the value, and the operation supplies its source. If a sourced literal assertion also supplies a timestamp, its value must agree with the override. See [transaction data](../04_transactions/04_transaction_data.md).
+This example requires a destination whose last instant is at or before that date. Native requests may instead use `TransactionRequest::with_tx_instant(milliseconds)` to select the explicit instant. EDB records one timestamp assertion with the source supplied on the request. If transaction data also supplies a timestamp, its value must agree with the override. See [transaction data](../04_transactions/04_transaction_data.md).
 
 ## Pipeline Transactions for Higher Throughput
 

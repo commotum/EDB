@@ -23,30 +23,30 @@ into a `Vec<Datom>`. With no prefix, `scan_cursor(IndexOrder)` traverses the who
 index; `datoms(IndexOrder)` collects it.
 
 The example below searches the AVET index for datoms whose `a` component is
-`:inv/sku`. This small in-memory database supplies the data for the examples:
+`:inv/sku`. This small in-memory database supplies the data for the examples.
+Each transaction supplies one source and receives an automatic timestamp:
 
 ```rust
 use edb_core::{
-    AttributeName, Database, IndexComponents, IndexPrefix, Keyword, Value,
+    AttributeName, Database, EntityIdentifier, EntityRef, IndexComponents,
+    IndexOrder, IndexPrefix, Keyword, Value,
 };
 
+let source = EntityRef::Ident(Keyword::new("db.source", "system"));
 let installed = Database::bootstrap()?.with_edn(r#"[
-  [:db/txInstant :db.source/system]
   {:db/ident :inv/sku
-   :db/source :db.source/system
    :db/valueType :db.type/string
    :db/cardinality :db.cardinality/one
    :db/index true}
-]"#, 1)?.db_after;
+]"#, 1, source.clone())?.db_after;
 let memory = installed.with_edn(r#"[
-  [:db/txInstant :db.source/system]
-  {:db/source :db.source/system :inv/sku "SKU-0"}
-  {:db/source :db.source/system :inv/sku "SKU-1"}
-  {:db/source :db.source/system :inv/sku "SKU-10"}
-  {:db/source :db.source/system :inv/sku "SKU-42"}
-  {:db/source :db.source/system :inv/sku "SKU-43"}
-  {:db/source :db.source/system :inv/sku "SKU-44"}
-]"#, 2)?.db_after;
+  {:inv/sku "SKU-0"}
+  {:inv/sku "SKU-1"}
+  {:inv/sku "SKU-10"}
+  {:inv/sku "SKU-42"}
+  {:inv/sku "SKU-43"}
+  {:inv/sku "SKU-44"}
+]"#, 2, source)?.db_after;
 let db = memory.database_value();
 let sku = db.schema().resolve_ident(&Keyword::new("inv", "sku"))
     .expect("installed :inv/sku");
@@ -71,10 +71,29 @@ Values sort in index order: string SKUs sort lexically, so `"SKU-10"` precedes
 prefix to that exact value. It does not include `"SKU-43"`.
 
 `IndexPrefix` contains resolved IDs and values. Its components must be contiguous
-from the left: an AVET entity component requires a value component. Prefixes
-support up to E/A/V in their index order; they do not have transaction or source
-fields.
-See [the index model](01_index_model.md) for component order and index coverage.
+from the left: an AVET entity component requires a value component. The original
+EAVT, AEVT, AVET, and VAET prefix shapes support up to E/A/V in their index order.
+Source-first prefixes supply S and optionally A, E, and V in index order:
+
+```rust
+let source_id = db.resolve_entity_identifier(&EntityIdentifier::Ident(
+    Keyword::new("db.source", "system"),
+))?.expect("existing source");
+let contributions = db.prefix_cursor(&IndexPrefix::Saevt {
+    source: source_id,
+    attribute: Some(sku),
+    entity: None,
+    value: None,
+})?.collect::<Result<Vec<_>, _>>()?;
+```
+
+`IndexPrefix::Savet` uses `source`, `attribute`, `value`, and `entity` in that
+order. In both variants, `source` is a resolved entity ID and the remaining
+fields are optional and contiguous. Setting only `source` selects that source's
+visible contributions across the index's covered attributes. Prefixes have no
+transaction component. `IndexOrder::Saevt` and `IndexOrder::Savet` can also be
+passed to `scan_cursor` or `datoms` for full scans. See
+[the index model](01_index_model.md) for component order and index coverage.
 
 ## Seek APIs
 
@@ -114,13 +133,16 @@ attribute begins before its first value, while a reverse seek on that attribute
 begins after its last value. Both can spill into adjacent attributes. These are
 ordered boundary operations, not string or tuple prefix searches.
 
-The schema-aware helpers `eavt_boundary`, `aevt_boundary`, `avet_boundary`, and
-`vaet_boundary` resolve idents and lookup refs against the captured database.
-`IndexComponents::Empty`, `One`, `Two`, `Three`, and `Four` express zero through
-four contiguous components in index order. The fourth is
-`IndexTransaction::T(t)` or `IndexTransaction::Tx(tx_entity)`; transaction order
-is descending, followed by source ascending and assertions before retractions.
-Source and assertion/retraction are not boundary components.
+The schema-aware helpers `eavt_boundary`, `aevt_boundary`, `avet_boundary`,
+`vaet_boundary`, `saevt_boundary`, and `savet_boundary` resolve idents and lookup
+refs against the captured database. `IndexComponents::Empty`, `One`, `Two`,
+`Three`, `Four`, and `Five` express zero through five contiguous components in
+index order. The existing four orders place transaction fourth and source fifth;
+SAEVT and SAVET place source first and transaction fifth. Source components use
+`EntityIdentifier`, just like entity components. Transaction components use
+`IndexTransaction::T(t)` or `IndexTransaction::Tx(tx_entity)`. E, A, V, and S sort
+ascending; T sorts descending, and assertions precede retractions. The final
+assertion/retraction boolean is not a boundary component.
 `collect_seek_datoms` and `collect_reverse_seek_datoms` explicitly materialize
 their respective cursors.
 
@@ -201,33 +223,62 @@ assert_eq!(values, vec![
 
 For an open lower bound use `IndexComponents::One(AttributeName::Id(sku))`.
 For an open upper bound stop only when the attribute changes. Use
-`Value::index_cmp` for value ordering. To project entities from an ordered
-attribute range, see [index Pull](03_index_pull.md).
+`Value::index_cmp` for value ordering.
+
+For a source's value range, use SAVET with the same inclusive lower and exclusive
+upper bounds, stopping when either source or attribute changes:
+
+```rust
+let boundary = db.savet_boundary(IndexComponents::Three(
+    EntityIdentifier::Id(source_id),
+    AttributeName::Id(sku),
+    start.clone().into(),
+))?;
+let mut contributions = Vec::new();
+for item in db.seek_cursor(&boundary)? {
+    let datom = item?;
+    if datom.source != source_id || datom.attribute != sku
+        || !datom.value.index_cmp(&end).is_lt()
+    {
+        break;
+    }
+    contributions.push(datom);
+}
+```
+
+An open lower bound uses `IndexComponents::Two(source, attribute)`; an open upper
+bound stops only when source or attribute changes. This uses the same seek API
+as AVET. To project entities from an ordered attribute range, see [index Pull](03_index_pull.md).
 
 ## Readiness and database views
 
-An attribute needs `:db/index true` or `:db/unique` for AVET access. Durable
-background projection must also be ready in the exact captured value:
+An attribute needs `:db/index true` or `:db/unique` for AVET and SAVET access.
+Durable background projection must also be ready in the exact captured value:
 
 ```rust
 assert!(db.has_avet(&AttributeName::Id(sku))?);
 ```
 
-For a known unindexed or pending attribute, `has_avet` returns `false`; unknown
-attributes return an error. Attribute-qualified AVET boundary helpers and seek
-cursors reject unindexed attributes with `index/attribute-not-in-avet` and
-pending projections with `index/avet-not-ready`. The lower-level prefix API
+AVET and SAVET share projection readiness. For a known unindexed or pending
+attribute, `has_avet` returns `false`; unknown attributes return an error.
+Attribute-qualified AVET and SAVET boundary helpers and seek cursors reject
+unindexed attributes with `index/attribute-not-in-avet` and pending projections with `index/avet-not-ready`. The lower-level prefix API
 does not perform the same schema validation: an in-memory prefix for an
 unindexed attribute returns no matches, while a durable prefix rejects it with
 `peer/avet-attribute-not-indexed` and rejects a pending projection with
-`peer/avet-not-ready`. Check `has_avet` before relying on AVET
-prefix results. Unrestricted `DatabaseValue` AVET scans omit unavailable attributes.
+`peer/avet-not-ready`. These errors apply to SAVET as well. Check `has_avet`
+before relying on AVET or SAVET prefix results. Unrestricted `DatabaseValue` AVET and SAVET scans omit
+unavailable attributes.
 The check neither waits for indexing nor refreshes the value. See
 [background indexing](02_background_indexing.md) for requesting publication and
 acquiring a value that observes it.
 
 Raw cursors honor the database value's time window and filters. Current views
-return visible assertions; history can include both assertions and retractions.
+resolve shared E/A/V visibility across all sources before applying a source
+prefix, boundary restriction, or filter. A retraction clears earlier
+contributions from every source, including sources other than the retracting
+transaction's source. Current views return the surviving assertions; history
+can include both assertions and retractions with their original attribution.
 Cursor construction and advancement are fallible; handle each yielded `Result`.
 An error terminates that cursor. An immutable value does not gain later commits
 or index publications while you traverse it.

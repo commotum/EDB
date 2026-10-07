@@ -90,6 +90,7 @@ synchronization timeouts are supplied for the individual operation.
 | `EDB_SSD_CACHE_DIR` | Private disposable local block-cache directory | Path | Optional; no SSD cache unless configured |
 | `EDB_SSD_CACHE_ENTRIES` | Shared directory's entry limit | Entries | 4096 when SSD caching is enabled |
 | `EDB_SSD_CACHE_BYTES` | Shared directory's physical block-file length limit, including framing | Bytes | `1073741824` (1 GiB) when enabled |
+| `edb transact --source`, `edb with --source` | Source of the submitted or speculative transaction | EDN entity reference, such as `99` or `:db.source/system` | Required for each transaction, including empty data |
 | `edb transact --timeout-ms` | Client transaction exchange deadline | Milliseconds | 30000 |
 | `edb query --timeout-ms` | Query evaluation timeout | Milliseconds | 30000 |
 | Rust transaction and synchronization timeout arguments | Bound the caller's wait for that operation | `Duration` | Supplied by the caller |
@@ -119,8 +120,11 @@ sharing it must agree on limits. The same configuration applies to writer-side
 readers. See the [local cache reference](../09_optional/00_local_cache.md) for
 directory admission, retention and failure behavior.
 
+Each transaction supplies its source once. All assertions and retractions it
+produces, including the automatic transaction timestamp, carry that source.
+
 A transaction timeout after admission can leave the outcome unknown. Retain
-the original request key and intent for retry; a timeout does not establish
+the original request key, source and intent for retry; a timeout does not establish
 rollback. See [error handling](../07_peer_api/07_error_handling.md). Query limits
 and Pull limits are operation-specific; see the
 [EDN workflow](../01_tutorials/00_edn_workflow.md).

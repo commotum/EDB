@@ -230,7 +230,7 @@ repository without PostgreSQL credentials:
 ```sh
 edb query --repository /private/backups/application --file query.edn
 edb pull --repository /private/backups/application --file pattern.edn --entity 12345
-edb with --repository /private/backups/application --file transaction.edn
+edb with --repository /private/backups/application --file transaction.edn --source 99
 ```
 
 Add `--backup-basis 42 --backup-generation 0` together for an exact point.

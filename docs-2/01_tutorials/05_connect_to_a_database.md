@@ -42,7 +42,7 @@ With the [peer library](../00_start_here/02_peer_library.md) available in your R
 project, create a connection:
 
 ```rust
-use edb_core::{Connection, TransactionRequest, postgres_config_from_env};
+use edb_core::{Connection, EntityRef, Keyword, TransactionRequest, postgres_config_from_env};
 use std::time::Duration;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -76,8 +76,8 @@ inside `main`, before `Ok(())`:
 let endpoint = std::env::var("EDB_TUTORIAL_ENDPOINT")?;
 let request = TransactionRequest::from_edn(
     "tutorial-hello-world",
-    r#"[[:db/txInstant :db.source/system]
-        {:db/id "hello" :db/source :db.source/system :db/doc "Hello world"}]"#,
+    r#"[{:db/id "hello" :db/doc "Hello world"}]"#,
+    EntityRef::Ident(Keyword::new("db.source", "system")),
 )?;
 let committed = conn.transact_socket(&endpoint, request, Duration::from_secs(30))?;
 println!("Committed at basis {}, replayed={}", committed.basis_t, committed.replayed);
@@ -90,10 +90,9 @@ println!("tempids: {:?}", report.tempids);
 
 `:db/doc` is a built-in string attribute, so this transaction needs no custom
 schema. `"hello"` is a temporary ID that the report maps to the new entity's ID.
-`:db/source` supplies each map's attribution; it is transaction syntax, not a
-stored attribute. This example explicitly uses the built-in source entity
-`:db.source/system`. The `[:db/txInstant :db.source/system]` form attributes the
-transaction's selected instant to that source.
+The request supplies the built-in source entity `:db.source/system` once for
+the transaction. Every resulting datom carries that source, including the
+automatically recorded transaction instant.
 The transaction report contains the exact immutable database values before and
 after the transaction, the datoms asserted or retracted, and the temporary ID
 mapping.
@@ -103,9 +102,9 @@ connection using the peer configuration in your environment:
 
 ```sh
 target/release/edb transact --database edn-demo \
-  --endpoint "$EDB_TUTORIAL_ENDPOINT" --request-key tutorial-hello-world --file - <<'EDN'
-[[:db/txInstant :db.source/system]
- {:db/id "hello" :db/source :db.source/system :db/doc "Hello world"}]
+  --endpoint "$EDB_TUTORIAL_ENDPOINT" --request-key tutorial-hello-world \
+  --source ':db.source/system' --file - <<'EDN'
+[{:db/id "hello" :db/doc "Hello world"}]
 EDN
 ```
 
@@ -128,10 +127,10 @@ entity. Here, `source-id` stands for the numeric entity ID resolved from
 `:db.source/system`.
 
 Keep the request key `tutorial-hello-world` when retrying this exact transaction
-after a lost reply. Running both examples uses the same EDN request and key,
-so the second submission replays the retained receipt. Use a new key for a new
-transaction. A confirmed commit remains committed even if opening its local
-report fails: Rust exposes that failure through `committed.report`, and the CLI
+after a lost reply. Running both examples uses the same EDN request, key, and
+source, so the second submission replays the retained receipt. Use a new key
+for a new transaction. A confirmed commit remains committed even if opening its
+local report fails: Rust exposes that failure through `committed.report`, and the CLI
 can return `:edb/report-error`. See [transactions and exact retries](00_edn_workflow.md#transactions-and-exact-retries).
 
 ## Interact with EDB

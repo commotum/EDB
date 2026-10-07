@@ -76,18 +76,16 @@ metadata predicates, temporal examples, and security considerations.
 This predicate accepts only datoms about the installed `:person/name` attribute:
 
 ```rust
-use edb_core::{Database, IndexOrder, Keyword, SemanticError};
+use edb_core::{Database, EntityRef, IndexOrder, Keyword, SemanticError};
 
 fn example() -> Result<(), SemanticError> {
     let installed = Database::bootstrap()?.with_edn(r#"[
-      [:db/txInstant :db.source/system]
       {:db/ident :person/name :db/valueType :db.type/string
-       :db/cardinality :db.cardinality/one :db/source :db.source/system}
-    ]"#, 1_000)?.db_after;
+       :db/cardinality :db.cardinality/one}
+    ]"#, 1_000, EntityRef::Ident(Keyword::new("db.source", "system")))?.db_after;
     let populated = installed.with_edn(r#"[
-      [:db/txInstant :db.source/system]
-      {:db/id "person" :person/name "Ada" :db/source :db.source/system}
-    ]"#, 2_000)?.db_after;
+      {:db/id "person" :person/name "Ada"}
+    ]"#, 2_000, EntityRef::Ident(Keyword::new("db.source", "system")))?.db_after;
     let db = populated.database_value();
     let name = db.schema().resolve_ident(&Keyword::new("person", "name"))
         .expect("installed attribute");

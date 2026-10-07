@@ -71,10 +71,10 @@ placement policy applies. You can override it with an explicit
 
 ### Installing named partitions
 
-The transaction examples below use `99` as an existing source entity id. Each
-submitted transaction includes `[:db/txInstant 99]` to assert its selected
-transaction instant with source `99`. This does not supply a default source for
-other forms.
+The transaction examples below use `99` as an existing source entity id. Supply
+`EntityRef::Id(99)` once through each request or speculation call, or `--source 99`
+through the CLI. Every resulting fact, including the automatic transaction
+instant, carries that source.
 
 To install a new named partition, transact an entity with an ident and reference
 that new entity as a `:db.install/partition` value of the system entity
@@ -82,9 +82,7 @@ that new entity as a `:db.install/partition` value of the system entity
 install the partition `:app.part/orders`:
 
 ```clojure
-[[:db/txInstant 99]
- {:db/source 99
-  :db/ident :app.part/orders
+[{:db/ident :app.part/orders
   :db.install/_partition :db.part/db}]
 ```
 
@@ -119,7 +117,6 @@ use edb_core::*;
 
 let install = TxForm::EntityMap(EntityMap {
     id: Some(EntityRef::Temp("partition".into())),
-    source: Some(EntityRef::Id(99)),
     attributes: vec![
         (AttributeRef::Ident(Keyword::new("db", "ident")),
          MapValue::Value(Value::Keyword(Keyword::new("app.part", "orders")).into())),
@@ -129,9 +126,8 @@ let install = TxForm::EntityMap(EntityMap {
 });
 ```
 
-Submit `install` alongside
-`TxForm::Op(TxOp::TxInstant { source: EntityRef::Id(99) })` to attribute the
-selected transaction instant to the same source.
+Submit `install` through a transaction request with source `EntityRef::Id(99)`.
+EDB automatically records the transaction instant with the same source.
 
 `AttributeRef::Ident(Keyword::new("db.install", "_partition"))` is also accepted
 for this reverse installation spelling. It lowers to ordinary installation
@@ -185,16 +181,16 @@ cardinality-many ref. See [schema](../03_schema/02_schema_reference.md) and
 ### :db/force-partition
 
 The value of `:db/force-partition` is a map from tempid strings to desired
-partitions. Named partitions are specified by their installed keyword:
+partitions. Named partitions are specified by their installed keyword. Submit
+this data with transaction source `99`:
 
 ```clojure
-[[:db/txInstant 99]
- {:db/id "order" :db/source 99
+[{:db/id "order"
   :order/lineItems ["item1" "item2"]}
- {:db/id "item1" :db/source 99
+ {:db/id "item1"
   :lineItem/product "chocolate"
   :lineItem/quantity 1}
- {:db/id "item2" :db/source 99
+ {:db/id "item2"
   :lineItem/product "whisky"
   :lineItem/quantity 2}
  {:db/force-partition {"order" :app.part/orders
@@ -211,12 +207,11 @@ partition 343:
 ```rust
 let partition = implicit_part(343)?;
 let text = format!(r#"
-[[:db/txInstant 99]
- {{:db/id "customer" :db/source 99 :customer/order "order"}}
- {{:db/id "order" :db/source 99 :order/id "55555"}}
+[{{:db/id "customer" :customer/order "order"}}
+ {{:db/id "order" :order/id "55555"}}
  {{:db/force-partition {{"customer" {partition} "order" {partition}}}}}]
 "#);
-let report = database.with_edn(&text, 1_000)?;
+let report = database.with_edn(&text, 1_000, EntityRef::Id(99))?;
 assert_eq!(partition_eid(report.tempids["customer"])?, partition);
 assert_eq!(partition_eid(report.tempids["order"])?, partition);
 ```
@@ -237,14 +232,13 @@ as their containing order:
 ```rust
 let partition = implicit_part(500)?;
 let text = format!(r#"
-[[:db/txInstant 99]
- {{:db/id "order" :db/source 99 :order/lineItems ["item1" "item2"]}}
- {{:db/id "item1" :db/source 99 :lineItem/product "chocolate" :lineItem/quantity 1}}
- {{:db/id "item2" :db/source 99 :lineItem/product "whisky" :lineItem/quantity 2}}
+[{{:db/id "order" :order/lineItems ["item1" "item2"]}}
+ {{:db/id "item1" :lineItem/product "chocolate" :lineItem/quantity 1}}
+ {{:db/id "item2" :lineItem/product "whisky" :lineItem/quantity 2}}
  {{:db/force-partition {{"order" {partition}}}
    :db/match-partition {{"item1" "order" "item2" "order"}}}}]
 "#);
-let report = database.with_edn(&text, 1_000)?;
+let report = database.with_edn(&text, 1_000, EntityRef::Id(99))?;
 for tempid in ["order", "item1", "item2"] {
     assert_eq!(partition_eid(report.tempids[tempid])?, partition);
 }
@@ -309,7 +303,7 @@ Configure a different default explicitly:
 ```rust
 let defaults = TransactionDefaults::default()
     .with_default_partition(Keyword::new("part", "orders"));
-let preview = database.with_edn_with_defaults(text, instant, &defaults)?;
+let preview = database.with_edn_with_defaults(text, instant, EntityRef::Id(99), &defaults)?;
 let writer = TransactionService::start_with_defaults(config, defaults)?;
 ```
 
@@ -334,17 +328,17 @@ preview the same EDN intent in another terminal:
 mkdir -m 700 /tmp/edb-orders
 edb transactor --database orders --endpoint /tmp/edb-orders/writer.sock \
   --default-partition :part/orders
-edb with --database orders --file order.edn \
+edb with --database orders --file order.edn --source 99 \
   --default-partition :part/orders
 ```
 
 ### Install the partition before fresh use
 
-Using the ordinary default, install a named partition:
+Using the ordinary default, install a named partition with transaction source
+`99`:
 
 ```clojure
-[[:db/txInstant 99]
- {:db/source 99 :db/ident :part/orders :db.install/_partition :db.part/db}]
+[{:db/ident :part/orders :db.install/_partition :db.part/db}]
 ```
 
 Then select its keyword as the execution default. A configured name is resolved

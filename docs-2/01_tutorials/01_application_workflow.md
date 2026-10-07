@@ -5,6 +5,10 @@ The supported `edb` executable owns the transactor process. The
 logical database and local endpoint or authenticated remote discovery, submits application schema/data through
 public APIs, and never provisions PostgreSQL or starts a writer.
 
+Each application request supplies one required `source: EntityRef` alongside
+its transaction data. Every assertion and retraction it produces carries that
+source, including generated changes and the automatic `:db/txInstant` assertion.
+
 Build both programs:
 
 ```sh
@@ -135,7 +139,7 @@ explicitly discovers. Cloned handles share the route, without holding its lock
 during network work.
 
 An unknown transaction outcome is returned unchanged, not automatically replayed.
-Retry explicitly with identical content and key, never a newly generated key.
+Retry explicitly with identical content, source and key, never a newly generated key.
 The lower-level `Connection::discover_remote_writer`, `transact_remote`, and
 `transact_remote_with_hints` remain supported. A confirmed commit remains confirmed
 if opening its local report subsequently fails (`CommittedTransaction::report`).
@@ -203,6 +207,8 @@ connection lifecycle remain outside its executor task.
 reference through the lazy Entity API. It operates on one captured seed snapshot.
 The same function runs against a complete in-memory database constructed with
 `Database::new`, `with` and `database_value`, including schema and references.
+Each speculative `with` call supplies a source alongside its fixed transaction
+instant; the resulting facts and automatic timestamp carry that source.
 The fixture uses the existing semantic engine; it is not a replacement store.
 
 The example changes one project's hours, reruns the calculation on the retained

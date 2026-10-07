@@ -71,7 +71,8 @@ values, credentials, or request keys in them.
 
 Pure `Database::with` and `DatabaseValue::with` expose their counters through the
 enclosing context's `report()` or `measure()` result. For example, a transaction
-with no domain changes still explicitly attributes its transaction metadata:
+with no domain changes still supplies a source for its automatic transaction
+metadata:
 
 ```rust
 use edb_core::{
@@ -83,14 +84,13 @@ fn main() -> Result<(), SemanticError> {
     let db = Database::new(Schema::default())?;
     let source = db.entid(&Keyword::new("db.source", "system")).unwrap();
     let instant = 1_700_000_000_000;
-    let operations = [TxOp::TxInstant {
-        source: EntityRef::Id(source),
-    }];
+    let operations: [TxOp; 0] = [];
     let context = OperationContext::diagnostic(OperationKind::Transaction);
-    let (result, report) = context.measure(|| db.with(&operations, instant));
+    let (result, report) =
+        context.measure(|| db.with(&operations, instant, EntityRef::Id(source)));
     let transaction = result?;
     assert_eq!(report.stats.transaction.assessments, 1);
-    assert_eq!(report.stats.transaction.input_operations, 1);
+    assert_eq!(report.stats.transaction.input_operations, 0);
     assert_eq!(
         report.stats.transaction.produced_datoms,
         transaction.tx_data.len() as u64,
@@ -164,7 +164,7 @@ excerpt; other envelope and metric fields are omitted:
   "operation_elapsed_nanos": 5000000,
   "metrics": {
     "transaction.assessments": 1,
-    "transaction.input_operations": 1,
+    "transaction.input_operations": 0,
     "transaction.identity_claims": 0,
     "transaction.identity_lookups": 0,
     "transaction.upsert_resolutions": 0,
@@ -202,8 +202,9 @@ durable receipt hashes/bytes or the native wire receipt format. Reconstructed
 remote/historical reports therefore have `diagnostics: None`; they cannot
 recreate past execution costs honestly.
 
-An exact retry includes the same forms and explicit sources and resolves its receipt
-before current functions or schema are assessed. A separately submitted retry has
+An exact retry includes the same forms and explicit transaction source and resolves
+its receipt before fresh source resolution, clock selection, or assessment of
+current functions or schema. A separately submitted retry has
 `replayed: true` and zero fresh semantic work, although reconstructing its values
 can perform reads. Shared receipt clones retain one `Arc` to their diagnostic
 snapshot.

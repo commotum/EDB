@@ -56,19 +56,22 @@ database may allocate different IDs. Query relations have no row-order guarantee
 - Next, issue a transaction telling EDB about the new value for `:movie/genre`.
 
 Remember back to the [transact data](07_transact_data.md) tutorial that a
-transaction requires an active connection and a collection of transaction data.
-In this case, we will bind `:db/id` to the entity ID we just retrieved and supply
-`:db/source` for the update. The `:db/txInstant` form supplies the source for
-the transaction's selected instant. The transaction looks like this:
+transaction requires an active connection, a collection of transaction data,
+and one explicit source. In this case, we will bind `:db/id` to the entity ID we
+just retrieved and supply `:db.source/system` once in the request. EDB
+automatically records the transaction instant with that same source. The
+transaction looks like this:
 
 ```rust
 let update = format!(
-    r#"[[:db/txInstant :db.source/system]
-        {{:db/id {commando_id} :db/source :db.source/system
-          :movie/genre "future governor"}}]"#
+    r#"[{{:db/id {commando_id} :movie/genre "future governor"}}]"#
 );
 let endpoint = std::env::var("EDB_TUTORIAL_ENDPOINT")?;
-let request = TransactionRequest::from_edn("tutorial-commando-genre", &update)?;
+let request = TransactionRequest::from_edn(
+    "tutorial-commando-genre",
+    &update,
+    edb_core::EntityRef::Ident(edb_core::Keyword::new("db.source", "system")),
+)?;
 let committed = conn.transact_socket(&endpoint, request, Duration::from_secs(30))?;
 println!("Committed at basis {}, replayed={}", committed.basis_t, committed.replayed);
 let report = committed.report?;
@@ -99,9 +102,9 @@ new genre replaces the old genre in the current view. The retraction carries
 the update's source; the earlier assertion retains its original source in
 history.
 
-Keep `tutorial-commando-genre` and the same transaction data when retrying after
-a lost reply. A confirmed commit remains committed even if opening or rendering
-its report fails. See [transactions and exact retries](00_edn_workflow.md#transactions-and-exact-retries).
+Keep `tutorial-commando-genre`, the same transaction data, and the same source
+when retrying after a lost reply. A confirmed commit remains committed even if
+opening or rendering its report fails. See [transactions and exact retries](00_edn_workflow.md#transactions-and-exact-retries).
 
 - The transaction succeeded. Let's verify if Commando has been updated:
 

@@ -30,15 +30,14 @@ target/release/edb transactor --database edn-demo --endpoint /tmp/edb-edn-demo/w
 ```
 
 The supplied [schema](../../examples/edn/schema.edn) and
-[people](../../examples/edn/people.edn) are complete transaction inputs. Their
-maps explicitly use the built-in source entity `:db.source/system`, and each
-transaction includes `[:db/txInstant :db.source/system]` for its
-generated `:db/txInstant`. Applications can describe and use their own source
-entities.
+[people](../../examples/edn/people.edn) contain ordinary transaction forms. Each
+submission supplies the built-in source entity `:db.source/system` once with
+`--source`; all resulting facts, including the automatic `:db/txInstant`, carry
+that source. Applications can describe and use their own source entities.
 
 ```sh
-target/release/edb transact --database edn-demo --endpoint /tmp/edb-edn-demo/writer.sock --request-key install-person-schema --file examples/edn/schema.edn
-target/release/edb transact --database edn-demo --endpoint /tmp/edb-edn-demo/writer.sock --request-key create-alice --file examples/edn/people.edn
+target/release/edb transact --database edn-demo --endpoint /tmp/edb-edn-demo/writer.sock --request-key install-person-schema --source ':db.source/system' --file examples/edn/schema.edn
+target/release/edb transact --database edn-demo --endpoint /tmp/edb-edn-demo/writer.sock --request-key create-alice --source ':db.source/system' --file examples/edn/people.edn
 target/release/edb query --database edn-demo --file examples/edn/names-query.edn
 target/release/edb pull --database edn-demo --file examples/edn/person-pull.edn --entity '[:person/email "alice@example.com"]'
 ```
@@ -50,9 +49,9 @@ stdin. `query` supports `--as-of`, `--since`, and `--history`; `pull` supports
 point-in-time `--as-of`/`--since` views. Reads execute in this process and do not
 require the transactor to be running.
 
-`edb with --database edn-demo --file PATH` previews a transaction locally. It
-returns speculative transaction data/tempids with `:edb/committed false`; it
-does not reserve identities, write facts, or create a durable receipt. Supply
+`edb with --database edn-demo --source ':db.source/system' --file PATH` previews a
+transaction locally. It returns speculative transaction data/tempids with
+`:edb/committed false`; it does not reserve identities, write facts, or create a durable receipt. Supply
 `--tx-instant MILLIS` for a reproducible explicit preview time. To query the
 speculative database value itself, use the library report's `db_after`.
 
@@ -62,49 +61,45 @@ delivery through the normal transport.
 
 ## Transactions and exact retries
 
-Map forms use `:db/source`; primitive additions and retractions take the source
-as their final argument. Sources resolve to ordinary entity ids.
-`[:db/txInstant source]` asserts the selected transaction instant with that
-source. It supplies no default source for other forms. An explicit sourced
-`:db/txInstant` assertion can supply the time and source instead. A time option
-such as `--tx-instant` supplies only the value; the transaction still needs a
-sourced timestamp form or assertion.
+Every transaction requires one source alongside its data, using `--source` for
+the CLI or the request's source argument in Rust. Sources resolve to ordinary entity ids.
+Maps contain ordinary attributes, and primitive forms retain their ordinary
+arguments. All explicit and generated changes receive the transaction's source.
+EDB automatically records one `:db/txInstant` assertion, even for empty transaction
+data. An explicit `:db/txInstant` map or add assertion on the current transaction
+can supply the time value, subject to the clock bounds; it must agree with an
+explicit time option such as `--tx-instant`.
+
+Submit each transaction below with `--source ':db.source/system'`:
 
 ```edn
 ;; No :db/id: assert facts about a new/upserted identity.
-[[:db/txInstant :db.source/system]
- {:db/source :db.source/system
-  :person/name "Alice" :person/email "alice@example.com"}]
+[{:person/name "Alice" :person/email "alice@example.com"}]
 
 ;; Existing identity: change only the facts explicitly asserted.
-[[:db/txInstant :db.source/system]
- {:db/id [:person/email "alice@example.com"]
-  :db/source :db.source/system
+[{:db/id [:person/email "alice@example.com"]
   :person/name "Alicia"}]
 
 ;; Equivalent authoring with a primitive form.
-[[:db/txInstant :db.source/system]
- [:db/add [:person/email "alice@example.com"] :person/name "Alicia" :db.source/system]]
+[[:db/add [:person/email "alice@example.com"] :person/name "Alicia"]]
 ```
 
 Omitted attributes are not retractions. Lists/vectors of many-values, nested
 reference maps, reverse attributes, tuple slots, string tempids, idents, lookup
 references and transaction metadata reuse the native normalizer. An explicit
 nested `:db/id`, including an existing numeric ID or lookup reference, identifies
-the child without requiring a component edge or a repeated unique attribute:
+the child without requiring a component edge or a repeated unique attribute.
+Submit this example with `--source ':db.source/system'`:
 
 ```edn
-[[:db/txInstant :db.source/system]
- {:db/id [:person/email "alice@example.com"]
-  :db/source :db.source/system
+[{:db/id [:person/email "alice@example.com"]
   :person/friends [{:db/id [:person/email "bob@example.com"]
                     :person/name "Robert"}]}]
 ```
 
 This changes Bob's name through the noncomponent `:person/friends` reference;
 his omitted email and Alice's omitted attributes remain unchanged.
-The nested map inherits the parent's source unless it supplies its own
-`:db/source`; the reference edge retains the parent's source.
+The nested facts and reference edge receive the transaction's source.
 Without `:db/id`, a forward nested map needs a component edge or a unique
 attribute. An anonymous reverse nested map needs a unique attribute: a reverse
 component reference does not make the nested entity the outer entity's component.
@@ -138,9 +133,10 @@ for transaction callbacks and supply query registries in a Rust application.
 `transact` requires a caller-supplied `--request-key`. Retry the same request and
 options with the same key after a lost response. Whitespace/comments, map/set
 order and outer transaction order do not change EDN request identity. Ordered
-list/vector contents, numeric representations and explicit sources remain request
-data. Equivalent EDN and typed authoring are not promised to have identical
-request digests; continue retrying a request through its original representation.
+list/vector contents, numeric representations and the supplied transaction source
+remain request data. Equivalent EDN and typed authoring are not promised to have
+identical request digests; continue retrying a request through its original
+representation.
 
 EDN intent remains schema-independent until authoritative transaction processing.
 Retained receipt lookup happens before current schema, idents or program bindings
@@ -156,19 +152,21 @@ not proof of rollback. Retain the key; do not invent a new one to recover a repl
 ## Native library
 
 ```rust
-use edb_core::{Database, TransactionRequest};
+use edb_core::{Database, EntityRef, Keyword, TransactionRequest};
 use edb_core::edn::{read_edn, write_edn};
 use edb_core::edn_query::{EdnQueryArgument, parse_query_edn};
 
-let data = read_edn(r#"[[:db/txInstant :db.source/system]
-                      {:db/source :db.source/system :person/name "Alice"}]"#)?;
+let source = EntityRef::Ident(Keyword::new("db.source", "system"));
+let data = read_edn(r#"[{:person/name "Alice"}]"#)?;
 let text = write_edn(&data)?;
-let request = TransactionRequest::from_edn("create-alice", &text)?;
+let request = TransactionRequest::from_edn("create-alice", &text, source.clone())?;
 // Send request with the existing Connection/TransactionClient APIs.
 
 let empty = Database::bootstrap()?;
-let installed = empty.with_edn(include_str!("../examples/edn/schema.edn"), 10)?;
-let preview = installed.db_after.with_edn(&text, 20)?;
+let installed = empty.with_edn(
+    include_str!("../examples/edn/schema.edn"), 10, source.clone(),
+)?;
+let preview = installed.db_after.with_edn(&text, 20, source)?;
 let query = parse_query_edn("[:find ?name :where [?e :person/name ?name]]")?;
 let bound = query.bind(&[EdnQueryArgument::Source(
     edb_core::QuerySourceValue::Database(preview.db_after.database_value()),

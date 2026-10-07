@@ -18,15 +18,18 @@ A transaction is logical information to apply indivisibly, not a script of
 imperative updates. Typed `TxOp`/`TxForm` and EDN entity maps or primitive forms
 use the same assessment rules. The writer evaluates fresh intent against one
 immutable db-before, validates it, then publishes a new ordered transaction.
-Each assertion and retraction explicitly names its source entity, so one
-transaction can preserve contributions from several sources. Unrelated omitted
-facts remain unchanged.
+The caller explicitly supplies one source for the transaction. Every assertion
+and retraction it produces carries that source, including generated changes and
+the automatic transaction instant. Contributions from different sources reach
+the shared record through separate transactions. Unrelated omitted facts remain
+unchanged.
 
-`TransactionRequest` pairs that intent with a caller-owned request key. Keep the
-complete request, including source declarations, explicit basis/time options and
-generated UUIDs, until its outcome is known. An application outbox can preserve
-it across process failure. A transaction callback must compute from supplied
-data, not perform external side effects that a retry could duplicate.
+`TransactionRequest` pairs that intent with a caller-owned request key and a
+required `source: EntityRef`. Keep the complete request, including its source,
+explicit basis/time options and generated UUIDs, until its outcome is known.
+An application outbox can preserve it across process failure. A transaction
+callback must compute from supplied data, not perform external side effects
+that a retry could duplicate.
 
 ## Interpret the outcome
 
@@ -38,7 +41,7 @@ unchanged.
 
 After ambiguous delivery, retry identical content under the same key. Receipt
 resolution precedes current schema/default/function assessment. Reusing a key
-with different intent, including different sources, conflicts; it is not a second
+with different intent, including a different source, conflicts; it is not a second
 transaction. Keep the original typed or EDN representation: equivalent
 representations are not promised to have the same request digest.
 
@@ -52,6 +55,7 @@ occupied-key tombstones; see [its retry policy](../08_operations/00_deployment.m
 
 `DatabaseValue::with`, `with_forms` and EDN preview produce a speculative
 db-after without storage publication, durable receipts or identity reservation.
+Each preview requires one source alongside its transaction data and fixed instant.
 Pass the result through ordinary queries/Pull to compare alternatives.
 Submit the original logical forms, not preview IDs or a datom diff.
 An optional basis guard rejects a plan whose required live basis changed;

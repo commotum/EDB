@@ -227,8 +227,10 @@ A keyword value of the `:db/ident` attribute that uniquely identifies an
 Sorted collection of datoms. Indexes are named by the order in which datom
 components are used for sort. E.g. an index that sorts first by [entity](#entity),
 then [attribute](#attribute), then [value](#value), then [tx](#tx) is called EAVT.
-EDB also provides AEVT, AVET and VAET, with different inclusion rules. Transaction
-coordinates sort descending within the preceding components. See
+EDB also provides AEVT, AVET, VAET, SAEVT and SAVET, with different inclusion
+rules. Entity, attribute, value and source sort ascending; transaction coordinates
+sort descending within the preceding components. All indexes retain all six datom
+fields. See
 [indexes and the transaction log](../06_indexes/00_indexes_and_log.md).
 
 ## Infrastructure
@@ -322,8 +324,9 @@ An atomic fact in the database, dissociating an [entity](#entity) from a
 particular [value](#value) of an [attribute](#attribute). Opposite of an
 [assertion](#assertion). Its datom has `added = false`. Retraction preserves
 history subject to retention and `:db/noHistory`; it is distinct from excision.
-A retraction carries its own [source](#source), leaving the original assertion's
-attribution unchanged.
+A retraction withdraws current contributions to that entity/attribute/value
+regardless of their original sources. It carries the retracting transaction's
+[source](#source), leaving the original assertions' attribution unchanged.
 
 ## Role
 
@@ -364,12 +367,13 @@ back to PostgreSQL on runtime cache failures. See
 
 ## Source
 
-The ordinary [entity](#entity) to whom an assertion or retraction is attributed.
-The application explicitly supplies its ID for each statement. A source is
-described by ordinary database facts, and one transaction can contain statements
-from multiple sources. Assertions of the same entity/attribute/value from different
-sources retain distinct attribution while counting as one value for
-[cardinality](#cardinality).
+The ordinary [entity](#entity) to whom a transaction and all of its assertions
+and retractions are attributed. The application explicitly supplies one source
+entity reference for every durable or speculative transaction, even with empty
+data. All explicit and generated facts carry that source. A source is described
+by ordinary database facts. Assertions of the same entity/attribute/value from
+different sources in separate transactions retain distinct attribution while
+counting as one value for [cardinality](#cardinality).
 
 ## Storage Resources
 
@@ -415,7 +419,8 @@ basis must be visible. See [synchronization](../04_transactions/09_synchronizati
 An [entity](#entity) representing a [transaction](#transaction). Every
 [datom](#datom) includes the tx that created its assertion or retraction, allowing
 recovery of retained history. Transactions are automatically associated with
-wall-clock time through `:db/txInstant`, but are otherwise ordinary entities.
+wall-clock time through one `:db/txInstant` assertion carrying the transaction's
+[source](#source), but are otherwise ordinary entities.
 In particular, application code can make additional assertions about
 transactions. `t_to_tx` and `tx_to_t` convert between logical time and transaction
 entity IDs. See [transaction data](../04_transactions/04_transaction_data.md).

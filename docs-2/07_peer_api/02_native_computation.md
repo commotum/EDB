@@ -82,12 +82,10 @@ needs it. The database does not archive native machine code; retain source/build
 artifacts externally. Do not silently reuse a version for incompatible code.
 
 Functions receive exact db-before, `RuntimeValue` arguments and a
-`NativeCallContext`, and return transaction forms with explicit sources for their
-assertions and retractions. Pass sources as ordinary function arguments when needed.
-Returned calls expand under the same transaction controls. A callback can return
-`TxForm::Op(TxOp::TxInstant { source })` to attribute the selected transaction
-instant. Expansion does not read the clock; the source applies only to that
-timestamp assertion. Attribute predicates
+`NativeCallContext`, and return ordinary transaction forms. Their assertions and
+retractions receive the source supplied once for the enclosing transaction,
+as does its automatic `:db/txInstant` assertion. Returned calls expand under the
+same transaction controls. Expansion does not read the clock. Attribute predicates
 receive values; ensured entity predicates receive the complete proposed db-after.
 Only literal true accepts a predicate; rejection data/errors and panic containment
 follow the native boundary.
@@ -97,11 +95,10 @@ an already accepted request's exact retry. A new request needing missing code fa
 Native schema predicates can name a registered callback directly. After
 registering `demo.people/valid-name?` as an attribute predicate, attach it to
 an existing attribute. These excerpts use an existing source entity `99`; each
-submitted transaction also includes `[:db/txInstant 99]` to attribute
-its selected `:db/txInstant`:
+transaction supplies it through its request or `--source 99`:
 
 ```edn
-[[:db/add :person/name :db.attr/preds demo.people/valid-name? 99]]
+[[:db/add :person/name :db.attr/preds demo.people/valid-name?]]
 ```
 
 Entity predicate symbols work the same way through `:db.entity/preds`.
@@ -109,8 +106,7 @@ An optional temporal alias can bind a stable database ident to a native name.
 To use aliases, install `native_deployment_attribute(id)`, then transact:
 
 ```edn
-[{:db/source 99
-  :db/ident :checks/valid-person
+[{:db/ident :checks/valid-person
   :edb.native/deployment demo.people/valid-person}]
 ```
 
@@ -141,15 +137,14 @@ The host uses the same explicit PostgreSQL environment configuration as `edb`,
 prints `READY endpoint=...`, and stops on newline/EOF. Its optional second argument
 is a stable socket path in an owned mode-0700 directory. In another terminal,
 submit this file through `edb transact --database people --endpoint SOCKET
---request-key person-1 --file person.edn`:
+--request-key person-1 --source ':db.source/system' --file person.edn`:
 
 ```edn
-[[:db/txInstant :db.source/system]
- [demo.people.v1/add-person "person" "  ALICE   Smith  " :db.source/system]]
+[[demo.people.v1/add-person "person" "  ALICE   Smith  "]]
 ```
 
-The function uses its final argument as the source of the returned assertions.
-The result stores `"alice smith"` under `:person/name`, attributed here to the
+The result stores `"alice smith"` under `:person/name`. Its assertions and the
+automatic transaction timestamp are attributed here to the transaction's
 explicitly supplied `:db.source/system` entity. The stock client does not
 load code; it sends ordinary data to the explicitly extended host. The stock
 transactor has an empty native registry. Restart the custom host with the same

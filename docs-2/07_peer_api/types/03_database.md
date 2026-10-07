@@ -41,11 +41,15 @@ corresponding `IndexPrefix` or `IndexBoundary` variant.
 | `IndexOrder::Aevt` | AEVT | Attribute, entity, value, transaction. |
 | `IndexOrder::Avet` | AVET | Attribute, value, entity, transaction. |
 | `IndexOrder::Vaet` | VAET | Value, attribute, entity, transaction; reverse references. |
+| `IndexOrder::Saevt` | SAEVT | Source, attribute, entity, value, transaction. |
+| `IndexOrder::Savet` | SAVET | Source, attribute, value, entity, transaction. |
 
-All four retain the source entity ID after the transaction coordinate.
-EAVT and AEVT contain all datoms visible in the selected view. AVET contains
-datoms for attributes with indexing or uniqueness enabled and an available
-projection. VAET contains datoms for reference attributes. See the
+All six retain the complete datom. Entity, attribute, value and source sort
+ascending; transaction sorts descending. EAVT, AEVT and SAEVT contain all datoms
+visible in the selected view. AVET and SAVET contain datoms for the same attributes
+with indexing or uniqueness enabled and an available projection. VAET contains
+datoms for reference attributes. Source-restricted current reads honor retractions
+by any source. See the
 [index model](../../06_indexes/01_index_model.md).
 
 ## Method summary
@@ -143,11 +147,11 @@ True for databases created with [`history`](#history).
 ### with
 
 ```rust,ignore
-fn with(&self, ops: &[TxOp], tx_instant: i64)
+fn with(&self, ops: &[TxOp], tx_instant: i64, source: EntityRef)
     -> Result<SpeculativeTransactionReport, SemanticError>;
-fn with_forms(&self, forms: &[TxForm], tx_instant: i64)
+fn with_forms(&self, forms: &[TxForm], tx_instant: i64, source: EntityRef)
     -> Result<SpeculativeTransactionReport, SemanticError>;
-fn with_edn(&self, text: &str, tx_instant: i64)
+fn with_edn(&self, text: &str, tx_instant: i64, source: EntityRef)
     -> Result<SpeculativeTransactionReport, SemanticError>;
 ```
 
@@ -157,14 +161,15 @@ The input is primitive operations, transaction forms, or EDN transaction data,
 respectively. Supply the transaction instant explicitly as Unix epoch
 milliseconds.
 
-Each assertion and retraction explicitly supplies its source through the
-transaction form. Include `[:db/txInstant S]`, or the native operation
-`TxOp::TxInstant { source: S }`, to attribute the supplied transaction instant
-to source `S`. A sourced `TxOp::Add` or map asserting that same instant on the
-current transaction is also sufficient. The `tx_instant` argument supplies the
-value only; it does not supply a source. Different sources may contribute the
-same timestamp, but all timestamp assertions must agree with `tx_instant`.
-The dedicated form does not supply a default source for other forms.
+Supply one required `source: EntityRef` for the speculative transaction, even
+when its data is empty. Every assertion and retraction produced by the
+transaction carries that source, including function output and generated
+changes. Forms and primitive operations retain their ordinary arguments.
+EDB automatically asserts exactly one `:db/txInstant` on the current transaction
+with that source. An ordinary map or add form may explicitly supply the instant
+on the current transaction, but its value must agree with `tx_instant`, which
+must not precede db-before. Timestamp retraction and compare-and-swap are
+prohibited.
 
 The report contains `db_before`, `db_after`, `tx_data`, and `tempids`. No
 connection advances and no entity IDs are reserved. IDs allocated on a
@@ -371,8 +376,9 @@ fn prefix_cursor(&self, prefix: &IndexPrefix)
 
 Implements raw access to matching index data. Supply an index order for a whole
 index, or leading components in the index's order to narrow the result. Prefixes
-restrict all results to the specified components and support E/A/V components
-in the chosen order; use a boundary for a transaction component.
+restrict all results to the specified components and support E/A/V in the four
+original orders or S/A/E/V and S/A/V/E in the source-first orders; use a boundary
+for a transaction component.
 
 Collecting methods return vectors. Cursors yield
 `Result<Datom, SemanticError>` incrementally: both construction and advancement
@@ -380,8 +386,8 @@ can fail, and an error terminates the cursor. Handle each result. A [Datom](05_d
 `entity: u64`, `attribute: u32`, `value: Value`, `tx: u64` (a transaction entity
 ID), `source: u64` (a source entity ID), and `added: bool`.
 
-AVET availability depends on the captured value. Unrestricted AVET scans omit
-unavailable attributes. Attribute-qualified seeks reject unavailable projections;
+AVET and SAVET share availability at the captured value. Unrestricted scans of
+these orders omit unavailable attributes. Attribute-qualified seeks reject unavailable projections;
 eager and durable prefix APIs have different validation/error behavior.
 Check `has_avet` when relying on a projection, and see
 [index readiness](../../06_indexes/04_index_apis.md#readiness-and-database-views).
@@ -403,7 +409,8 @@ an exact prefix:
 Prefer matching-prefix APIs wherever they are adequate. A seek caller must
 supply termination logic for an attribute or value range. Schema-aware boundary
 helpers resolve attributes, entity identifiers, and values. Boundaries support
-up to four leading components, including a transaction coordinate. See
+up to five leading components: E/A/V in the selected original order, then T/S,
+or S/A/E/V/T and S/A/V/E/T in the source-first orders. See
 [seek APIs](../../06_indexes/04_index_apis.md#seek-apis).
 
 ### reverse_seek_cursor
@@ -524,28 +531,27 @@ This in-memory example applies transaction data, reads a selection, and compares
 current and history views without advancing a connection:
 
 ```rust
-use edb_core::{Database, IndexOrder, Keyword, SemanticError};
+use edb_core::{Database, EntityRef, IndexOrder, Keyword, SemanticError};
 use edb_core::edn_pull::parse_pull_edn;
 
 fn example() -> Result<(), SemanticError> {
     let initial = Database::bootstrap()?.database_value();
+    let source = EntityRef::Ident(Keyword::new("db.source", "system"));
     let installed = initial.with_edn(r#"[
-      [:db/txInstant :db.source/system]
-      {:db/ident :person/name :db/source :db.source/system
+      {:db/ident :person/name
        :db/valueType :db.type/string
        :db/cardinality :db.cardinality/one}
-    ]"#, 1_000)?.db_after;
+    ]"#, 1_000, source.clone())?.db_after;
     let first = installed.with_edn(r#"[
-      [:db/txInstant :db.source/system]
-      {:db/id "person" :db/source :db.source/system :person/name "Ada"}
-    ]"#, 2_000)?;
+      {:db/id "person" :person/name "Ada"}
+    ]"#, 2_000, source.clone())?;
     let id = first.tempids["person"];
     let changed = first.db_after.with_edn(
         &format!(r#"[
-          [:db/txInstant :db.source/system]
-          [:db/add {id} :person/name "Augusta" :db.source/system]
+          [:db/add {id} :person/name "Augusta"]
         ]"#),
         3_000,
+        source,
     )?.db_after;
     let pattern = parse_pull_edn("[:person/name]")?;
     let earlier = changed.clone().as_of(first.db_after.basis_t());

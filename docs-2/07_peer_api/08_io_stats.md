@@ -287,8 +287,8 @@ There are several important things to know when interpreting these maps:
 - Duration sums can overlap or include concurrent work. They may exceed the
   operation's wall time and must not be added to reconstruct latency.
 
-For each observed `IndexOrder` (`Eavt`, `Aevt`, `Avet`, `Vaet`), index statistics
-report `cursors`, `node_accesses` and `decoded_misses`. Node attribution records
+For each observed `IndexOrder` (`Eavt`, `Aevt`, `Avet`, `Vaet`, `Saevt`, `Savet`),
+index statistics report `cursors`, `node_accesses` and `decoded_misses`. Node attribution records
 traversed directory/leaf loads. A decoded miss can be satisfied by a lower cache;
 it does not mean a PostgreSQL block had to be read. These counts are also distinct
 from logical query `index_seeks` and examined-datom counts.

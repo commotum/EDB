@@ -1,6 +1,7 @@
 # Start with EDB
 
-EDB is a general purpose database system designed for data-of-record applications.
+EDB is a general purpose database system designed for data-of-record applications,
+including collaboratively maintained catalogs with one shared current record.
 An EDB database is a set of immutable atomic facts called datoms. Ordinary EDB
 transactions add assertions and retractions, rather than changing existing facts,
 so you can retain an audit trail and query “as of” points in time. Transactions
@@ -71,47 +72,46 @@ attribute is used. A value can be one of the built-in types, including entity
 references, strings, keywords, numbers, booleans, instants, UUIDs, URIs, bytes and
 tuples. The E/A/V portion of a datom is similar to the triples of a traditional
 triple store. Each datom also includes the ID of the transaction entity (Tx) that
-added it, a source entity ID (S) explicitly supplied by the application, and a
+added it, a source entity ID (S) supplied once for the transaction, and a
 boolean indicating whether it is an assertion or retraction:
 
 ```text
 [Entity  Attribute  Value  Transaction  Source  Added-or-retracted]
 ```
 
-The source is an ordinary entity describing the person, institution, publication
-or other origin to whom the statement is attributed. One transaction can contain
-facts from several sources. A retraction carries its own source; it does not
-change the attribution of the earlier assertion.
+The source is an ordinary entity describing the person, institution or other
+contributor to whom the transaction is attributed. The application must supply
+one source, even for an empty transaction. Every assertion and retraction the
+transaction produces carries that source, including generated changes. A
+retraction records the withdrawing contributor; it does not change the
+attribution of the earlier assertion.
 
 Datoms sharing a common E can be projected into an entity, an associative
 attribute-to-value view of the assertions with that entity ID as of a given
 point in time. Cardinality-one attributes have at most one current value;
 cardinality-many attributes can have a set of values. Two sources asserting the
-same value retain distinct attribution while contributing one value to this
-view. Reference values connect entities without requiring a separate join-table
-model.
+same value in separate transactions retain distinct attribution while
+contributing one value to this shared view. Reference values connect entities
+without requiring a separate join-table model.
 
 For example, after installing the attributes, this EDN transaction records two
-facts about a person. Assume entity `99` identifies the contributor:
+facts about a person. Assume entity `99` identifies the contributor and supply
+it as the transaction's source in the request or with CLI `--source 99`:
 
 ```edn
-[[:db/txInstant 99]
- {:db/source 99
-  :person/name "Alice"
+[{:person/name "Alice"
   :person/email "alice@example.com"}]
 ```
 
-The `[:db/txInstant 99]` form asserts the current transaction's selected
-`:db/txInstant` with source `99`. Each domain map supplies its own attribution
-through `:db/source`.
+EDB automatically asserts the current transaction's `:db/txInstant`. That
+assertion and both person facts carry source `99`.
 
 If `:person/email` is unique, a later transaction can identify that person with
-a lookup reference and change the name:
+a lookup reference and change the name. Supply source `99` for this transaction
+as well:
 
 ```edn
-[[:db/txInstant 99]
- {:db/id [:person/email "alice@example.com"]
-  :db/source 99
+[{:db/id [:person/email "alice@example.com"]
   :person/name "Alicia"}]
 ```
 
@@ -125,10 +125,11 @@ explains entity maps, identifiers, assertions and retractions.
 EDB ensures that transactions are serialized in a total order, accessible
 programmatically through logical time `t` and the database value's `basis_t`.
 The transaction entity ID and `t` are related representations, not interchangeable
-raw numbers. Transactions are themselves entities, recording wall-clock time
-in `:db/txInstant` along with additional datoms you choose to add. This gives
-transaction metadata, such as the purpose of a change, the same queryable form as
-application facts. Each of these datoms also has its own source.
+raw numbers. Transactions are themselves entities, automatically recording one
+wall-clock instant in `:db/txInstant` along with additional datoms you choose to
+add. This gives transaction metadata, such as the purpose of a change, the same
+queryable form as application facts. All of these datoms carry the transaction's
+source.
 
 Schema is also data: an attribute is an entity whose facts describe its name,
 value type, cardinality and other constraints. See
@@ -168,6 +169,7 @@ The EDB information model has the following benefits:
 - **Efficiency across multiple read access patterns:** EAVT supports entity or
   “row” access, AVET supports attribute/value lookup, AEVT supports attribute or
   “column” access, and VAET supports reverse reference and graph navigation.
+  SAEVT and SAVET support source-specific attribute and value access.
 
 ### Tradeoffs
 
@@ -248,7 +250,7 @@ application attributes as SQL columns.
 An EDB database is logically a set of datoms. To make this structure practical,
 EDB provides indexes and query capabilities that use those indexes.
 
-EDB maintains four different index orders designed to support different access
+EDB maintains six different index orders designed to support different access
 patterns. The durable implementation is an immutable, shallow tree: roots and
 directories contain routing keys and child hashes, while leaf segments hold
 datoms in parallel columns. Each node is a separate authenticated storage object,
@@ -256,18 +258,22 @@ similar in purpose to a page in a traditional relational database.
 
 | Index | Sort order | Contains |
 | --- | --- | --- |
-| EAVT | Entity / attribute / value / transaction | All applicable datoms |
-| AEVT | Attribute / entity / value / transaction | All applicable datoms |
-| AVET | Attribute / value / entity / transaction | Indexed or unique attributes whose projection is ready |
-| VAET | Reference value / attribute / entity / transaction | Reference-valued datoms |
+| EAVT | Entity / attribute / value / transaction / source / added? | All applicable datoms |
+| AEVT | Attribute / entity / value / transaction / source / added? | All applicable datoms |
+| AVET | Attribute / value / entity / transaction / source / added? | Indexed or unique attributes whose projection is ready |
+| VAET | Reference value / attribute / entity / transaction / source / added? | Reference-valued datoms |
+| SAEVT | Source / attribute / entity / value / transaction / added? | All applicable datoms |
+| SAVET | Source / attribute / value / entity / transaction / added? | Indexed or unique attributes whose projection is ready |
 
-Within a logical E/A/V group, newer transactions sort first, followed by source
-ID in ascending order and assertions before retractions. All four indexes retain
-source attribution. Current and history views use their corresponding trees
-plus captured recent information; history
-exposes assertions and retractions. Schema's indexing intent and completed
+Entity, attribute, value and source sort ascending; transaction sorts descending
+within each order, followed by assertions before retractions. All six indexes
+retain the complete datom and its source attribution. Current and history views
+use their corresponding trees plus captured recent information; history exposes
+assertions and retractions. Schema's indexing intent and completed
 physical indexing are distinct. Use `DatabaseValue::has_avet` to inspect readiness
 on the captured value, or synchronization APIs to await the required publication.
+AVET and SAVET share attribute eligibility and readiness. Source-restricted
+current reads still honor retractions by any source.
 
 Query and Pull use available indexes through the shared read engine. Decoded
 immutable nodes are kept in an entry- and byte-bounded LRU cache. An optional
@@ -416,7 +422,7 @@ code schedules work.
 | Transactions | Typed or EDN requests | Native requests through attached or configured transport | `transact` with caller-owned request key |
 | Query and Pull | Typed APIs and EDN adapters | Scheduled query/Pull and sequences | `query`, `pull` |
 | Lazy entity navigation | Native `Entity` | Returned native values retain synchronous behavior | Pull output |
-| Index access | EAVT, AEVT, AVET, VAET cursors and ranges | Index collection on workers | Use the native API for raw cursor access |
+| Index access | EAVT, AEVT, AVET, VAET, SAEVT, SAVET cursors and ranges | Index collection on workers | Use the native API for raw cursor access |
 | Temporal views | As-of, since, history and predicate filters | Captured native source values | Query as-of/since/history; point-in-time Pull |
 | Transaction log | Immutable log and transaction ranges | Captured log streams | Query log sources |
 | Local speculation | `with` and form/EDN variants | Native value operation | `with` |

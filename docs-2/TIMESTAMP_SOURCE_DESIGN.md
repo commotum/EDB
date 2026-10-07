@@ -1,139 +1,102 @@
-# Attribution for the transaction instant
+# Transaction source and timestamp
 
-Decision: use the dedicated transaction form `[:db/txInstant source]` to request an assertion of the current transaction's selected instant, attributed to the supplied source entity. Its native representation is `TxOp::TxInstant { source: EntityRef }`.
+Each transaction has one explicitly supplied source. Every assertion and
+retraction it produces carries that source, including its transaction instant,
+annotations, nested entity facts, function results, and generated changes.
 
-This form supplies attribution for one assertion. It does not set a source default for other transaction data. Ordinary entity maps continue to abbreviate their attribute assertions, including maps describing the transaction entity.
+Source identifies the contributor of the database statements. Domain attributes
+describe distinct roles such as a work's author, performer, or publisher.
+See [NORTHSTAR](NORTHSTAR.md#music-and-books-authorship-and-source).
 
-## The problem
+## Transaction input
 
-EDB's source model requires each assertion and retraction to carry an explicitly supplied source entity ID. The transaction's timestamp is also an assertion. Its entity and attribute are known, and the existing clock rules select its value; the missing input is its source.
+The application supplies source once alongside transaction data. Rust requests
+carry `source: EntityRef`; transaction forms retain their ordinary arguments.
 
-Applications need to provide that attribution while retaining automatic clock selection, independent attribution for other facts, and ordinary transaction composition. Adding annotations or rearranging equivalent transaction data must not change timestamp attribution.
-
-The earlier documentation gave a source-only transaction map a special role:
-
-```edn
-{:db/id "edb.tx" :db/source 99}
+```rust
+let request = TransactionRequest::from_edn(
+    "catalog-import-1",
+    r#"[{:db/id 42 :painting/year 1916}]"#,
+    EntityRef::Id(99),
+)?;
 ```
 
-It attributed the generated timestamp only while the map had no attribute entries. Adding `:db/doc "Import"` changed its role and required another timestamp declaration. That dependence on unrelated attributes was the defect.
+The equivalent CLI submission supplies an EDN entity reference with `--source`:
 
-## Basis for the decision
+```sh
+edb transact --database catalog --endpoint /tmp/catalog/writer.sock \
+  --request-key catalog-import-1 --source 99 --file painting.edn
+```
 
-The investigation used the describe, diagnose, delimit, direction and design stages from Rich Hickey's [Design in Practice](https://github.com/matthiasn/talk-transcripts/blob/master/Hickey_Rich/DesignInPractice.md), including a problem statement, competing approaches, concrete use cases and an executable model. The assessment focused on independent responsibilities and the ability to compose and change the resulting system, following [Simple Made Easy](https://github.com/matthiasn/talk-transcripts/blob/master/Hickey_Rich/SimpleMadeEasy.md) and [Simplicity Matters](https://github.com/matthiasn/talk-transcripts/blob/master/Hickey_Rich/SimplicityMatters.md). The choice of a dedicated form is an EDB design judgment; the talks do not prescribe that syntax.
+Source follows ordinary entity-reference resolution. It may be an existing id,
+ident, lookup reference, or a tempid established in entity position in the same
+transaction. It resolves to the source entity id stored in each resulting
+datom. Transaction functions produce ordinary forms within the enclosing
+transaction; their output receives that transaction's source.
 
-Datomic's conventions establish useful boundaries: transaction data is unordered, entity maps expand into attribute additions, transaction annotations are ordinary facts, and a transaction's automatically selected instant can be replaced by an explicit instant. Datomic does not have EDB's source coordinate or the dedicated form chosen here. See its [transaction data reference](https://docs.datomic.com/transactions/transaction-data-reference.html#reified-transactions).
+The supplied source is part of request identity, alongside the transaction
+data, basis condition, and explicit time option. Reusing a request key requires
+the same complete request. Exact retries return the accepted result before
+fresh entity resolution or clock selection.
 
-The EDB implementation already separates normalized transaction forms, clock selection and assessment in [the transaction pipeline](src/transaction/pipeline.rs). Its [transaction input types](src/transaction/forms.rs) distinguish unresolved input from stored values and include explicit directives. Those boundaries support a dedicated form without replacing existing submission or speculation methods.
+## Automatic timestamp
 
-## Alternatives examined
-
-| Approach | What it provides | Consequence |
-| --- | --- | --- |
-| Source-only transaction map | Attribution without a new syntactic form | Adding an unrelated annotation changes whether the map supplies timestamp attribution. |
-| Every transaction map supplies timestamp attribution | Stable behavior when a map gains an attribute | An annotation by another source also creates a timestamp contribution by that source. Equivalent primitive additions no longer have the same effect as the map. |
-| Automatic system source | No additional application input | Requires an exception to the settled requirement for explicitly supplied attribution. |
-| Literal timestamp assertion on every submission | Ordinary assertion syntax throughout | Transfers clock selection and time-ordering concerns to applications; suitable for imports, but does not preserve normal automatic clock selection. |
-| Request field such as `tx_instant_source` | A named input for the generated fact | Requires another input channel across submission, speculation and CLI interfaces. A singleton field cannot compose several source contributions; transaction functions return forms rather than request options. |
-| Deferred transaction-instant value in Add/map | Attribution stays in ordinary assertion syntax | Introduces a value legal only in particular operation, entity and attribute positions, with rules for rejecting it elsewhere. |
-| Dedicated timestamp form | A composable request for the selected instant with an explicit source | Adds one specialized form and native operation, plus encoding and persisted-program support. |
-
-The deferred-value alternative remains credible because EDB already resolves transaction-only values before storage. It would become more attractive if using the selected transaction time in arbitrary domain attributes were a requirement. For the present scope, the dedicated form directly represents its legal entity/attribute/value combination without introducing a broader value category and restricting most uses of it.
-
-The dedicated form also carries the complete assertion request through the transaction-data collection already accepted by native, EDN, CLI and transaction-function interfaces. No request-level source default is needed.
-
-## Accepted contract
+The writer selects one transaction instant and EDB automatically asserts it on
+the current transaction entity. The assertion receives the transaction's source.
+For a transaction from source `99`, the resulting datoms include:
 
 ```text
-EDN:    [:db/txInstant source]
-Native: TxOp::TxInstant { source: EntityRef }
-VM:     Instruction::EmitTxInstant, consuming [source]
+[42 :painting/year 1916             tx 99 true]
+[tx :db/txInstant selected-instant  tx 99 true]
 ```
 
-The form means: assert the selected transaction instant on the current transaction entity, with the supplied source. It does not read the clock when encountered or depend on its position among transaction forms.
+There is one timestamp assertion per transaction. Empty transaction data is
+valid and still produces that assertion. Adding an annotation or rearranging
+transaction forms does not change timestamp attribution.
 
-The source follows the ordinary transaction entity-reference rules. It resolves to an explicitly supplied entity ID. A source tempid must also be established in entity position in the same transaction. Source resolution precedes deduplication, so different references resolving to the same entity identify the same source.
+Clock selection retains the existing rules:
 
-Clock selection retains existing behavior:
+- Durable transactions normally use the writer's clock, clamped to the previous
+  transaction instant when necessary to keep time nondecreasing.
+- An explicit instant must not precede the previous transaction instant or
+  exceed the writer's clock. A value supplied through transaction data must
+  agree with an explicit request-level time override.
+- Speculative transactions use the fixed instant supplied to the `with` call.
+  An explicit timestamp assertion must agree with that instant, which must not
+  precede db-before.
 
-- Durable transactions use the writer's clock and existing nondecreasing-time rule unless an allowed explicit instant is supplied.
-- Explicit timestamp assertions and an explicit request-level time override must agree on one value and satisfy the existing time bounds.
-- Speculative transactions use the fixed instant supplied to the existing `with` family of methods. Explicit timestamp assertions must agree with that value.
+The source records responsibility for the transaction. The clock supplies the
+timestamp value. Speculation supplies that value through its existing time
+argument and uses the source supplied for the speculative transaction.
 
-After selecting the instant, each dedicated form contributes an ordinary sourced timestamp assertion. An explicit sourced `:db/txInstant` assertion is sufficient by itself; it requires no dedicated form. A request-level time override supplies a value but still requires attribution through transaction data.
+## Explicit timestamp values
 
-Each submitted transaction must produce at least one sourced timestamp assertion, including transactions with no domain changes. A transaction-entity map containing only `:db/id` and `:db/source` produces no assertion and has no timestamp-declaration role. Sources on annotation maps apply to their own assertions.
-
-One transaction has one distinct timestamp value. It can retain several explicitly supplied sources for that value:
-
-| Submitted timestamp intent | Result |
-| --- | --- |
-| Dedicated form from S1 | Selected instant attributed to S1. |
-| Dedicated forms from S1 and S2 | Same selected instant attributed separately to S1 and S2. |
-| Repeated dedicated forms from S1 | One assertion after ordinary deduplication. |
-| Explicit instant I from S1 | I attributed to S1. |
-| Explicit instant I from S1 and a dedicated form from S2 | I attributed separately to S1 and S2. |
-| Explicit instant I from S1 and explicit I from S2 | Both source contributions retained. |
-| Distinct explicit instants I and J | Transaction rejected. |
-| Transaction annotation from S1 | Only that annotation is attributed to S1; it supplies no timestamp attribution. |
-
-Retraction and compare-and-swap of `:db/txInstant` remain prohibited. Timestamp assertions apply only to the current transaction. The final datom slot remains a boolean.
-
-## Examples
-
-Assume source entities `99`, `77` and `101`, painting entity `42`, and the attributes already exist:
-
-```edn
-[[:db/txInstant 99]
- {:db/id "edb.tx"
-  :db/source 77
-  :db/doc "Reviewed museum import"}
- {:db/id 42
-  :db/source 101
-  :painting/year 1916}]
-```
-
-Schematically, the assertions are:
-
-```text
-[tx :db/txInstant selected-instant        tx 99  true]
-[tx :db/doc       "Reviewed museum import" tx 77 true]
-[42 :painting/year 1916                  tx 101 true]
-```
-
-Removing the annotation removes only the second assertion. Reordering the forms leaves their meaning unchanged.
-
-A transaction with no domain changes can contain just:
-
-```edn
-[[:db/txInstant 99]]
-```
-
-An import can instead assert its timestamp directly, subject to the destination's existing time bounds:
+An import may supply a timestamp value through ordinary transaction data:
 
 ```edn
 [{:db/id "edb.tx"
-  :db/source 101
-  :db/txInstant #inst "2026-10-01T12:00:00Z"}]
+  :db/txInstant #inst "2026-10-01T12:00:00Z"}
+ {:db/id 42
+  :painting/year 1916}]
 ```
 
-Adding `[:db/txInstant 99]` to that import contributes source `99` to the same selected historical instant; it does not replace the explicit assertion's source or select a second time.
+Submit this data with one source through the request or CLI. EDB validates the
+explicit instant and records one timestamp assertion with that source.
+Timestamp assertions apply only to the current transaction. Retraction and
+compare-and-swap of `:db/txInstant` are prohibited.
 
-## Implementation consequences
+## Stored facts and history
 
-The source-aware implementation will need to:
+Datoms retain the form `[e a v t s added?]`. All datoms produced by a transaction
+have its transaction id and source id; `added?` is a boolean. Existing facts
+retain their original transaction and source when a later transaction changes
+the record. Retractions record the withdrawing transaction's source.
 
-1. Add the native operation, EDN lowering and persisted-program emission instruction. `EmitTxInstant` consumes one source entity reference and emits the dedicated operation; it does not inspect the clock.
-2. Select one instant under the existing clock rules, then lower dedicated forms to ordinary sourced additions before source resolution and assessment. Primitive-only speculation must use the same lowering rule.
-3. Replace the unconditional timestamp append with validation and materialization of explicitly attributed timestamp assertions.
-4. Replace timestamp-datom count restrictions with agreement on one distinct instant. Existing checks occur in [clock selection](src/transaction/pipeline.rs), [assessment](src/transaction/assess/mod.rs), and [history/recovery validation](src/database.rs).
-5. Include the new operation in canonical request encoding, wire formats, resource accounting and persisted-program encoding. Exact receipt lookup must remain ahead of fresh source resolution and clock selection, preserving the accepted timestamp and attribution on retry.
-6. Preserve existing submission signatures, report shapes, source-reference resolution and time-boundary semantics. Convenience helpers that create transactions must emit an explicitly sourced timestamp form or assertion.
+Different transactions may supply the same E/A/V from different sources.
+Those contributions remain distinct, while cardinality continues to count
+distinct values in the shared current record.
 
-Canonical genesis is a separate bootstrap case: the current implementation's genesis contains vocabulary and schema facts without a transaction timestamp. A later schema-installation transaction remains subject to ordinary timestamp attribution. See [database construction](src/database.rs) and [the built-in vocabulary](src/model/vocabulary.rs).
-
-## Evidence and limits
-
-A small executable model reproduced the old empty-map failure and the incidental attribution caused by treating every transaction map as a timestamp declaration. The dedicated-form and deferred-value alternatives both preserved annotation independence, equivalent map expansion, multiple sources, duplicate elimination and explicit time overrides. Each preserved its assertion set across all 120 permutations of a five-form transaction.
-
-These experiments checked the candidate semantics, not an implemented EDB feature. The structural comparison and existing API boundaries determined the choice between the two successful candidates. This report records the decision; the accompanying documentation describes the accepted behavior. Implementation and engine-level validation remain a separate code refactor.
+Canonical genesis contains system-attributed vocabulary and schema facts
+without a transaction timestamp. Internal bootstrap transactions use the
+ordinary source entity `:db.source/system`. Application transactions supply
+their own source and receive the automatic timestamp under the rules above.

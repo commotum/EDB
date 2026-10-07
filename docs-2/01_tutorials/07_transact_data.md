@@ -20,25 +20,21 @@ transactor.
 
   ```sh
   cat > first-movies.edn <<'EDN'
-  [{:db/source :db.source/system
-    :movie/title "The Goonies"
+  [{:movie/title "The Goonies"
     :movie/genre "action/adventure"
     :movie/release-year 1985}
-   {:db/source :db.source/system
-    :movie/title "Commando"
+   {:movie/title "Commando"
     :movie/genre "action/adventure"
     :movie/release-year 1985}
-   {:db/source :db.source/system
-    :movie/title "Repo Man"
+   {:movie/title "Repo Man"
     :movie/genre "punk dystopia"
-    :movie/release-year 1984}
-   [:db/txInstant :db.source/system]]
+    :movie/release-year 1984}]
   EDN
   ```
 
-Each movie map explicitly uses the built-in `:db.source/system` entity as its
-source. The final `:db/txInstant` form asserts the transaction's selected timestamp
-with that source.
+Submit these movie maps with the built-in `:db.source/system` entity as the
+transaction's source. EDB automatically asserts the transaction's selected
+timestamp with that same source.
 
 This is an example of the power of working directly with data—anything you might
 do to assemble a collection of movie maps could be substituted for the file
@@ -50,7 +46,8 @@ cleaning/pre-processing before transacting.
   ```sh
   target/release/edb transact --database edn-demo \
     --endpoint "$EDB_TUTORIAL_ENDPOINT" \
-    --request-key tutorial-first-movies --file first-movies.edn
+    --request-key tutorial-first-movies --source ':db.source/system' \
+    --file first-movies.edn
   ```
 
 The executable prints a commit receipt with `:edb/committed true`,
@@ -88,8 +85,8 @@ The three movie maps omitted `:db/id`, so EDB generated temporary IDs and return
 their entity IDs in `:edb/tempids`. Generated names and allocation order are
 implementation details; do not assume they match the order of your input maps.
 
-Keep `tutorial-first-movies` and the same file contents when retrying this
-transaction after a lost reply. Use a new key for a new transaction. Submitting
+Keep `tutorial-first-movies`, the same source, and the same file contents when
+retrying this transaction after a lost reply. Use a new key for a new transaction. Submitting
 these maps again with a new key creates three more movies: none of these
 attributes declares a unique identity. A confirmed commit remains committed
 even if its local report cannot be opened or rendered, in which case the receipt

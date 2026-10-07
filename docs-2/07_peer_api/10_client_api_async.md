@@ -179,7 +179,7 @@ fn collect_datoms_with_prefix(&self, prefix: IndexPrefix, timeout: Option<Durati
     -> Result<AsyncOperation<Vec<Datom>>, SemanticError>;
 ```
 
-Returns datoms from an index: `Eavt`, `Aevt`, `Avet` or `Vaet`.
+Returns datoms from an index: `Eavt`, `Aevt`, `Avet`, `Vaet`, `Saevt` or `Savet`.
 An optional `IndexPrefix` supplies leading components in index order to
 narrow the result; the prefix scan ends when components no longer match.
 Both methods capture the connection value at the call and materialize a
@@ -454,8 +454,8 @@ fn reverse_seek_cursor(&self, boundary: &IndexBoundary)
 
 Like `seek_cursor`, but iterates the index in reverse, beginning at or before
 the point where the supplied components would reside. The boundary selects
-EAVT, AEVT, AVET or VAET and zero through four leading components in index
-order. Missing suffix components position after the highest matching suffix.
+EAVT, AEVT, AVET, VAET, SAEVT or SAVET and zero through five leading components
+in index order. Missing suffix components position after the highest matching suffix.
 Callers supply termination logic; traversal otherwise continues to the
 beginning of the index.
 
@@ -473,11 +473,13 @@ Returns datoms starting at or after the point in the index where the components
 would reside, iterating forward to the end of the index. Callers must supply
 their own termination logic; seek does not stay within a prefix.
 
-Build EAVT, AEVT, AVET or VAET boundaries using schema-aware
-`eavt_boundary`, `aevt_boundary`, `avet_boundary` or `vaet_boundary` methods.
-`IndexComponents` supplies zero through four leading components; the fourth
-is `IndexTransaction`. This is a synchronous fallible cursor, with no async
-seek method. `collect_seek_datoms` materializes native traversal;
+Build boundaries using schema-aware `eavt_boundary`, `aevt_boundary`,
+`avet_boundary`, `vaet_boundary`, `saevt_boundary` or `savet_boundary` methods.
+`IndexComponents` supplies zero through five leading components. The original
+orders put `IndexTransaction` fourth and optional source `EntityIdentifier`
+fifth; source-first orders put source first and transaction fifth. Source
+identifiers resolve like entity identifiers. This is a synchronous fallible
+cursor, with no async seek method. `collect_seek_datoms` materializes native traversal;
 `AsyncClient::collect_datoms_with_prefix` is a different, prefix-bounded
 operation. See [seek APIs](../06_indexes/04_index_apis.md#seek-apis).
 
@@ -525,14 +527,20 @@ fn transact(&self, request: TransactionRequest, timeout: Duration)
 ```
 
 Submits a transaction through the attached writer. Construct a request with
-`TransactionRequest::new(request_key, operations)`, `from_forms(request_key,
-forms)` or `from_edn(request_key, text)`. EDN transaction data is a collection
-of operation vectors, entity maps and transaction calls. Each assertion and
-retraction carries an explicitly supplied source entity ID. The dedicated
-`[:db/txInstant S]` form asserts the selected transaction instant with source
-`S`; its native equivalent is `TxOp::TxInstant { source }`. It supplies no
-default source for other forms. Each transaction needs this form or an
-explicit sourced assertion of `:db/txInstant`; see
+`TransactionRequest::new(request_key, operations, source)`,
+`from_forms(request_key, forms, source)` or
+`from_edn(request_key, text, source)`. The required `source: EntityRef` follows
+ordinary entity-reference resolution; a source tempid must be established in
+entity position in the same transaction. EDN transaction data is a collection
+of ordinary operation vectors, entity maps and transaction calls. Every
+assertion and retraction, including function output and generated changes,
+carries this transaction's source entity ID. EDB automatically records exactly
+one `:db/txInstant` assertion with that source, even for empty data. The writer
+normally selects the greater of its clock and the previous transaction instant.
+An explicit timestamp value supplied through ordinary map or add data must
+describe the current transaction, not precede the previous instant or exceed
+the writer's clock, and agree with any request-level time override. Timestamp
+retraction and compare-and-swap are prohibited. See
 [transaction data](../04_transactions/04_transaction_data.md).
 
 The admission result is a waiter, not proof of durability. Awaiting it yields
@@ -554,15 +562,17 @@ and entity `99` identifies the contributor:
 ```rust,ignore
 let request = edb_core::TransactionRequest::from_edn(
     "add-goonies",
-    r#"[[:db/txInstant 99]
-        {:db/id "goonies" :db/source 99 :movie/title "The Goonies"}]"#,
+    r#"[{:db/id "goonies" :movie/title "The Goonies"}]"#,
+    edb_core::EntityRef::Id(99),
 )?;
 let report = client.transact(request, std::time::Duration::from_secs(30))?.await?;
 let goonies = report.tempids["goonies"];
 ```
 
-Keep the request key and exact data for retries; use a new key for a new
-logical request. `AsyncTransaction::request_key()` exposes the retained key.
+Keep the request key, exact data, source, basis condition and explicit time
+option for retries; use a new key for a new logical request. Exact retries
+return the accepted result before fresh entity resolution or clock selection.
+`AsyncTransaction::request_key()` exposes the retained key.
 Busy admission means no submission occurred. After admission, dropping the
 waiter does not cancel the transaction. A deadline expired before submission
 prevents it, but timeout/disconnection after submission can mean
@@ -612,11 +622,11 @@ for errors. See [LogValue](types/08_log.md) for retention and authentication.
 ## Speculative transaction: `DatabaseValue::with`
 
 ```rust,ignore
-fn with(&self, ops: &[TxOp], tx_instant: i64)
+fn with(&self, ops: &[TxOp], tx_instant: i64, source: EntityRef)
     -> Result<SpeculativeTransactionReport, SemanticError>;
-fn with_forms(&self, forms: &[TxForm], tx_instant: i64)
+fn with_forms(&self, forms: &[TxForm], tx_instant: i64, source: EntityRef)
     -> Result<SpeculativeTransactionReport, SemanticError>;
-fn with_edn(&self, text: &str, tx_instant: i64)
+fn with_edn(&self, text: &str, tx_instant: i64, source: EntityRef)
     -> Result<SpeculativeTransactionReport, SemanticError>;
 ```
 
@@ -627,9 +637,11 @@ in a transaction, leaving the durable database unaffected. The report has
 
 There is no async speculative transaction method. Use the native method on a
 blocking worker for storage-backed values. Data forms use the same transaction
-semantics, but need an explicit Unix-millisecond instant and no request key.
-The instant argument selects the value; the transaction data must still
-include `TxOp::TxInstant { source }` or an explicit sourced timestamp assertion.
+semantics, but need an explicit Unix-millisecond instant and source, with no
+request key. The instant argument selects the automatically recorded timestamp;
+any explicit timestamp value in the data must agree with it, and the instant
+must not precede db-before. Every resulting datom carries the supplied source,
+including the timestamp assertion for empty data.
 History is rejected. Temporal/custom read filters apply to the resulting view,
 not transaction generation or invariant checking. Speculation does not advance
 the connection or reserve durable IDs. Its `db_after` can be queried through

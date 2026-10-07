@@ -8,21 +8,22 @@ allocations do not prevent a match. Consider the following example.
 - First, we do some setup, creating a simple schema with just one byte array
   attribute. These Rust examples run in order in a function returning
   `Result<(), Box<dyn std::error::Error>>`. They use local speculative database
-  values, so no running database service is required.
+  values, so no running database service is required. Both transactions supply
+  `:db.source/system` as their source; EDB automatically records each
+  transaction's timestamp with that source.
 
   ```rust
-  use edb_core::{Database, QueryControl, QuerySourceValue, Value};
+  use edb_core::{Database, EntityRef, Keyword, QueryControl, QuerySourceValue, Value};
   use edb_core::edn::{read_edn, write_edn};
   use edb_core::edn_query::{EdnQueryArgument, parse_query_edn};
 
   let empty = Database::bootstrap()?;
+  let source = EntityRef::Ident(Keyword::new("db.source", "system"));
   let schema = empty.with_edn(r#"
-      [{:db/source :db.source/system
-        :db/ident :some-bytes
+      [{:db/ident :some-bytes
         :db/valueType :db.type/bytes
-        :db/cardinality :db.cardinality/one}
-       [:db/txInstant :db.source/system]]
-  "#, 10)?;
+        :db/cardinality :db.cardinality/one}]
+  "#, 10, source.clone())?;
   ```
 
 - Next, a few entities with two byte arrays with equivalent values. Each
@@ -31,12 +32,11 @@ allocations do not prevent a match. Consider the following example.
 
   ```rust
   let report = schema.db_after.with_edn(r#"
-      [{:db/id "first"  :db/source :db.source/system
+      [{:db/id "first"
         :some-bytes #edb/bytes "010203"}
-       {:db/id "second" :db/source :db.source/system
-        :some-bytes #edb/bytes "010203"}
-       [:db/txInstant :db.source/system]]
-  "#, 20)?;
+       {:db/id "second"
+        :some-bytes #edb/bytes "010203"}]
+  "#, 20, source)?;
   let db = report.db_after.database_value();
   ```
 

@@ -105,7 +105,7 @@ native connection with `Connection::connect_configured`. This takes:
 Create the connection in `src/main.rs`:
 
 ```rust
-use edb_core::{Connection, TransactionRequest, postgres_config_from_env};
+use edb_core::{Connection, EntityRef, Keyword, TransactionRequest, postgres_config_from_env};
 use edb_core::edn::write_edn;
 use edb_core::edn_value::transaction_report_to_edn;
 use std::time::Duration;
@@ -143,17 +143,16 @@ Rust futures and streams. You supply the executor that polls those futures.
 ## Transacting
 
 The client's transaction methods take a `TransactionRequest`. Create one from
-the EDN transaction collection and a request key with
+the EDN transaction collection, a request key, and one explicit source with
 `TransactionRequest::from_edn`.
 
 `movie-schema.edn` is defined in the peer tutorial's
 [transacting schema](06_transact_schema.md) section. Save that file in your
 application's working directory. It defines `:movie/title` and `:movie/genre`
 as cardinality-one strings and `:movie/release-year` as a cardinality-one long,
-along with their documentation strings. Each schema map supplies
-`:db/source :db.source/system`; the dedicated form
-`[:db/txInstant :db.source/system]` attributes the transaction's selected
-instant to that source. Follow that guide starting from the
+along with their documentation strings. Supply `:db.source/system` once as the
+request's source; all schema facts and the automatically generated transaction
+instant carry that source. Follow that guide starting from the
 schema section, using these client calls to submit the same data.
 
 Insert this code before `Ok(())` in `main`:
@@ -161,7 +160,8 @@ Insert this code before `Ok(())` in `main`:
 ```rust
 let endpoint = std::env::var("EDB_TUTORIAL_ENDPOINT")?;
 let movie_schema = std::fs::read_to_string("movie-schema.edn")?;
-let request = TransactionRequest::from_edn("tutorial-movie-schema", &movie_schema)?;
+let source = EntityRef::Ident(Keyword::new("db.source", "system"));
+let request = TransactionRequest::from_edn("tutorial-movie-schema", &movie_schema, source)?;
 let committed = conn.transact_socket(&endpoint, request, Duration::from_secs(30))?;
 
 println!("Committed at {}, replayed={}", committed.basis_t, committed.replayed);
@@ -250,10 +250,12 @@ From the EDB checkout, the equivalent command is:
 ```sh
 target/release/edb transact --database edn-demo \
   --endpoint "$EDB_TUTORIAL_ENDPOINT" \
-  --request-key tutorial-movie-schema --file /path/to/hello-edb/movie-schema.edn
+  --request-key tutorial-movie-schema --source ':db.source/system' \
+  --file /path/to/hello-edb/movie-schema.edn
 ```
 
-Keep the same request key and transaction data when retrying after a lost reply.
+Keep the same request key, transaction data, and source when retrying after a
+lost reply.
 These Rust and CLI examples share the peer tutorial's key, so repeating the same
 request retrieves its retained receipt. Use a new key for a new transaction.
 A confirmed commit remains committed if `committed.report` is an error; report

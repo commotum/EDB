@@ -215,9 +215,9 @@ fn prefix_cursor(&self, prefix: &IndexPrefix) -> Result<DatabaseValuePrefixCurso
 Raw access to index data, by index. Supply an `IndexOrder` for an entire index,
 or an `IndexPrefix` with leading components to narrow the result.
 
-- `Eavt` and `Aevt` contain all datoms visible in the selected view.
-- `Avet` contains datoms for indexed or unique attributes whose projection is
-  available at the captured value.
+- `Eavt`, `Aevt` and `Saevt` contain all datoms visible in the selected view.
+- `Avet` and `Savet` contain datoms for the same indexed or unique attributes
+  whose projection is available at the captured value.
 - `Vaet` contains datoms for reference attributes; it is the reverse reference
   index.
 
@@ -235,15 +235,16 @@ Datoms have these named fields:
 | `added` | `bool` | `true` for assertion, `false` for retraction. |
 
 Datom reads retain distinct source contributions for the same entity, attribute,
-and value.
+and value. Source-restricted current reads still honor retractions by any source.
 
-AVET readiness and error behavior differ between eager prefixes, durable
-prefixes, and attribute-qualified seek boundaries. Check `has_avet` when relying
+AVET and SAVET share readiness; error behavior differs between eager prefixes,
+durable prefixes, and attribute-qualified seek boundaries. Check `has_avet` when relying
 on an attribute projection; unrestricted scans omit unavailable projections. See
 [index readiness](../06_indexes/04_index_apis.md#readiness-and-database-views).
 
 Prefixes restrict the entire result to matching components. They support up to
-E/A/V in the chosen index order. For a transaction component or a nonmatching
+E/A/V in the four original orders, or S/A/E/V and S/A/V/E in the source-first
+orders. For a transaction component or a nonmatching
 starting position, use a seek boundary. See
 [index APIs](../06_indexes/04_index_apis.md).
 
@@ -776,8 +777,11 @@ at the end of the index. Supply your own termination logic, since applications
 rarely want the entire remainder. Prefer a prefix cursor wherever it is adequate.
 
 Build schema-aware boundaries with `eavt_boundary`, `aevt_boundary`,
-`avet_boundary`, or `vaet_boundary`. `IndexComponents` accepts zero through four
-leading components in index order; the fourth is an `IndexTransaction`.
+`avet_boundary`, `vaet_boundary`, `saevt_boundary`, or `savet_boundary`.
+`IndexComponents` accepts zero through five leading components in index order.
+The original orders put `IndexTransaction` fourth and an optional source
+`EntityIdentifier` fifth; source-first orders put source first and transaction
+fifth. Source identifiers resolve like entity identifiers.
 `collect_seek_datoms` explicitly materializes the traversal. Index coverage and
 returned datom fields are described under [Datoms](#datoms-databasevaluedatoms-and-prefix_cursor).
 
@@ -944,12 +948,16 @@ fn transact(
 Given a connection with an attached transaction endpoint and a set of information
 in a `TransactionRequest`, submits a transaction and blocks until a result or
 wait error is available. Construct requests from primitive operations, forms,
-or EDN using `TransactionRequest::new`, `from_forms`, or `from_edn`. Every durable
-request includes a request key for exact retry handling. Each assertion and
-retraction supplies a source entity ID in its transaction form; a single request
-can include several sources. Supply `TxOp::TxInstant { source }` (or
-`[:db/txInstant source]` in EDN) to attribute the selected transaction instant,
-or assert `:db/txInstant` explicitly with a source.
+or EDN using `TransactionRequest::new(key, operations, source)`,
+`from_forms(key, forms, source)`, or `from_edn(key, text, source)`. Every durable
+request includes a request key for exact retry handling and one required
+`source: EntityRef`. All assertions and retractions produced by the transaction,
+including function output and generated changes, carry that source. EDB
+automatically asserts one `:db/txInstant` with the same source, including for
+empty transaction data. The selected instant is the writer's clock clamped to
+the previous transaction instant. An explicit timestamp value must not precede
+the previous instant or exceed the writer's clock, and must agree with any
+request-level time override.
 
 A successful report includes `db_before`, `db_after`, `tx_data`, and `tempids`,
 plus `basis_t`, `tx_hash`, `replayed`, and optional diagnostics. These database
@@ -959,9 +967,11 @@ separate from durable success and is exposed by `observation_error()`.
 
 An error may mean rejection or an unknown transaction outcome after a wait or
 communication failure. Do not assume that a timeout rolled back the transaction.
-Retain the same request key and transaction data when retrying an unknown outcome.
-See [transaction processing](../04_transactions/06_processing_transactions.md)
-and [diagnostics](../04_transactions/03_diagnostics.md).
+Retain the same request key, transaction data, source, and request options when
+retrying an unknown outcome. Exact retries return the accepted result before
+fresh source resolution or clock selection. See
+[transaction processing](../04_transactions/06_processing_transactions.md) and
+[diagnostics](../04_transactions/03_diagnostics.md).
 
 ## Asynchronous submission: `Connection::submit`
 
@@ -1059,9 +1069,9 @@ pin or a guarantee of exactly-once external effects.
 ## Speculative transactions: `DatabaseValue::with`
 
 ```rust,ignore
-fn with(&self, ops: &[TxOp], tx_instant: i64) -> Result<SpeculativeTransactionReport, SemanticError>;
-fn with_forms(&self, forms: &[TxForm], tx_instant: i64) -> Result<SpeculativeTransactionReport, SemanticError>;
-fn with_edn(&self, text: &str, tx_instant: i64) -> Result<SpeculativeTransactionReport, SemanticError>;
+fn with(&self, ops: &[TxOp], tx_instant: i64, source: EntityRef) -> Result<SpeculativeTransactionReport, SemanticError>;
+fn with_forms(&self, forms: &[TxForm], tx_instant: i64, source: EntityRef) -> Result<SpeculativeTransactionReport, SemanticError>;
+fn with_edn(&self, text: &str, tx_instant: i64, source: EntityRef) -> Result<SpeculativeTransactionReport, SemanticError>;
 ```
 
 `with` is a pure function that takes a database value and a set of information
@@ -1071,20 +1081,18 @@ advance a connection, or reserve entity IDs.
 
 Transaction data is semantically an unordered set of information. Syntactically,
 `with` accepts primitive operations; `with_forms` also accepts entity maps and
-transaction calls; `with_edn` parses the EDN representation. Each assertion and
-retraction carries an explicit source. Both durable and speculative transactions
-also supply attribution for `:db/txInstant`: use `TxOp::TxInstant { source }`,
-where `source` is an `EntityRef`, or an explicit sourced `TxOp::Add` of the
-transaction instant. Wrap the operation in `TxForm::Op` when supplying forms.
-The EDN form `[:db/txInstant source]` is shown below. It asserts the selected
-instant and supplies no default source for other forms. A source-only entity
-map emits no assertion.
+transaction calls; `with_edn` parses the EDN representation. The required
+`source: EntityRef` argument supplies one source for every assertion and
+retraction, including nested entity facts, function output, and generated
+changes. Source uses ordinary entity-reference resolution; a source tempid must
+be established in entity position in the same transaction.
 
-Each transaction has one distinct instant. Contributions from different sources
-at that instant are retained; assertions of different instants are rejected.
-The `tx_instant` argument supplies the value, so the transaction data must still
-supply a source through the dedicated form or an explicit timestamp assertion.
-If the data is valid, the report contains:
+EDB automatically asserts exactly one `:db/txInstant` using the fixed
+`tx_instant` argument and the transaction's source. Empty transaction data is
+valid and still requires source. An explicit timestamp value in an ordinary
+map or add form must agree with `tx_instant`; timestamp assertions apply only
+to the current transaction, and timestamp retraction or compare-and-swap is
+prohibited. If the data is valid, the report contains:
 
 | Field | Meaning |
 | --- | --- |
@@ -1093,10 +1101,11 @@ If the data is valid, the report contains:
 | `tx_data` | Datoms produced by the transaction. |
 | `tempids` | Tempid-to-entity-ID mapping. |
 
-Supply Unix epoch milliseconds explicitly as `tx_instant`. History values
-cannot transact. Read filters, including as-of/since, apply to the returned
-view, not to transaction generation or invariant checking. `with_functions`
-supplies process-local callbacks; `with_forms_with_execution_options` supplies
+Supply Unix epoch milliseconds explicitly as `tx_instant`; it must not precede
+the db-before transaction instant. History values cannot transact. Read filters,
+including as-of/since, apply to the returned view, not to transaction generation
+or invariant checking. `with_functions` supplies process-local callbacks;
+`with_forms_with_execution_options` supplies
 an explicit native deployment registry and allocation defaults. Limits are
 available through `SpeculationLimits`.
 
@@ -1108,21 +1117,19 @@ This complete in-memory example installs schema, applies information, resolves a
 tempid, reads an entity, and retains an earlier view:
 
 ```rust
-use edb_core::{Database, Keyword, SemanticError};
+use edb_core::{Database, EntityRef, Keyword, SemanticError};
 
 fn example() -> Result<(), SemanticError> {
     let initial = Database::bootstrap()?.database_value();
+    let source = EntityRef::Ident(Keyword::new("db.source", "system"));
     let schema = initial.with_edn(r#"[
-      [:db/txInstant :db.source/system]
       {:db/ident :person/name
-       :db/source :db.source/system
        :db/valueType :db.type/string
        :db/cardinality :db.cardinality/one}
-    ]"#, 1_000)?;
+    ]"#, 1_000, source.clone())?;
     let report = schema.db_after.with_edn(r#"[
-      [:db/txInstant :db.source/system]
-      {:db/id "person" :db/source :db.source/system :person/name "Ada"}
-    ]"#, 2_000)?;
+      {:db/id "person" :person/name "Ada"}
+    ]"#, 2_000, source)?;
     let id = report.tempids["person"];
     let entity = report.db_after.entity(id)?.expect("resolved entity ID");
     assert!(entity.get_named(&edb_core::AttributeName::Ident(

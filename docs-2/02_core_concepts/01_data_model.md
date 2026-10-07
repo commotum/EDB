@@ -10,6 +10,8 @@ See below for explanations of these terms.
 
 In EDB, a *database value* is a set of *datoms* and is often abbreviated as *database* or *db*. A db is a point-in-time, immutable value and will never change. If you use the same db for several queries, you will know the answers are based upon exactly the same data from a single point in time.
 
+EDB is a database of record: contributors maintain one shared current record, with earlier assertions and changes retained in history.
+
 The Rust read API represents this with `DatabaseValue`. A connection can acquire newer values as transactions commit; an already captured value does not refresh itself. Deriving an as-of or history view creates another value. See [composing immutable reads](00_database_values.md) for captured-value retention, entity identity, and physical index readiness.
 
 ## Datoms
@@ -23,7 +25,7 @@ A *datom* is an immutable atomic fact that represents the addition or retraction
 - a source entity id (S)
 - a boolean (Op) indicating whether the datom is being added or retracted
 
-The application explicitly supplies the source for each assertion or retraction. A source is an ordinary entity that can represent a person, institution, publication, LLM, or another origin of information. Its description uses the same installed attributes as other entities, with its own history and attribution. Facts committed in the same transaction can have different sources.
+The application explicitly supplies one source for each transaction, including transactions with empty data. Every assertion or retraction it produces carries that source, including function results, generated changes, and the automatic transaction timestamp. A source is an ordinary entity that can represent a person, institution, publication, LLM, or another contributor of database statements. Its description uses the same installed attributes as other entities, with its own history and attribution. Different sources contribute to the same record through separate transactions.
 
 ### Example Datom
 
@@ -56,7 +58,7 @@ An entity can be visualized as a table:
 
 Here `:user/favorite-color` has cardinality one: asserting a different color retracts the previous color. The two datoms at transaction 4567 belong to one atomic change, not two independently visible updates.
 
-The two assertions of `:blue` carry different sources and both remain in history. The second assertion adds source information even though the current value is still `:blue`; cardinality counts distinct values, so cardinality-one still holds. If source 1001 is Julia and source 1002 is Jake, the retraction at 4567 is attributed to Jake while Julia's earlier assertion retains her attribution.
+The two assertions of `:blue` carry different sources and both remain in history. The second assertion adds source information even though the current value is still `:blue`; cardinality counts distinct values, so cardinality-one still holds. The retraction at 4567 withdraws both current contributions of `:blue`. If source 1001 is Julia and source 1002 is Jake, the retraction is attributed to Jake while Julia's earlier assertion retains her attribution.
 
 ### Point-In-Time Entity Example
 
@@ -89,7 +91,7 @@ This three-tuple view is very similar to a programming language object where the
  :user/last-name "Doe"}
 ```
 
-`:db/id` identifies the entity; it is not another stored application attribute. [Pull](../05_query_and_pull/06_pull_reference.md) projects entities into maps, while the [entity API](../05_query_and_pull/02_pull_and_entities.md) provides lazy navigation. A map used as transaction input supplies `:db/source` and asserts its supplied attributes; omitting an attribute does not retract it. Like `:db/id`, `:db/source` is a reserved input key rather than a stored application attribute.
+`:db/id` identifies the entity; it is not another stored application attribute. [Pull](../05_query_and_pull/06_pull_reference.md) projects entities into maps, while the [entity API](../05_query_and_pull/02_pull_and_entities.md) provides lazy navigation. A map used as transaction input asserts its supplied attributes; omitting an attribute does not retract it. The enclosing transaction supplies the source for those assertions.
 
 ## Universal Schema
 
@@ -122,11 +124,10 @@ There are two kinds of attributes in EDB:
 - **Domain attributes** describe aspects of your domain data. You use domain attributes to describe the data about your domain entities.
 - **Schema attributes** describe aspects of the schema itself. EDB's built-in schema vocabulary supplies the supported schema semantics. You use schema attributes to define your domain attributes; custom metadata can be added to schema entities without introducing new built-in schema behavior.
 
-Schema entities are ordinary database data and are installed through transactions. The transaction excerpts below assume source entity `99` already exists. Each full submission also needs a sourced `:db/txInstant` assertion. The form `[:db/txInstant 99]` requests the selected transaction instant with source `99`; it supplies no source for other facts. For example, install this schema before submitting facts that use the attribute:
+Schema entities are ordinary database data and are installed through transactions. Submit the transaction excerpt below with source entity `99`, assumed to already exist, through the request or CLI. EDB automatically records the transaction instant with that same source. For example, install this schema before submitting facts that use the attribute:
 
 ```edn
 [{:db/ident :inv/id
-  :db/source 99
   :db/valueType :db.type/string
   :db/cardinality :db.cardinality/one
   :db/unique :db.unique/identity}]
@@ -143,8 +144,8 @@ EDB's time model is applied automatically as committed transactions are recorded
 - Every committed transaction is assigned a transaction id that is unique within the database.
 - Committed transactions are serialized, and transaction ids increase over time, so they provide a total ordering of the database's committed transactions. Logical T is the corresponding sequential time coordinate.
 - Every datom in the database includes the id of the transaction that asserted or retracted that datom.
-- Transaction ids are themselves entity ids, so transactions can have datoms that describe them. EDB records a `:db/txInstant` for every transaction, so datoms can be joined to the recorded wall-clock instant of their transaction. Each transaction has one distinct instant, whose assertions can carry several explicitly supplied sources.
-- Transactions can have other attributes. For example, a system might record why a transaction corrects an earlier one. Each assertion or retraction independently records its source; transaction metadata does not substitute for that source.
+- Transaction ids are themselves entity ids, so transactions can have datoms that describe them. EDB automatically records one `:db/txInstant` assertion for every transaction after genesis, so datoms can be joined to the recorded wall-clock instant of their transaction. That assertion carries the transaction's source.
+- Transactions can have other attributes. For example, a system might record why a transaction corrects an earlier one. Every assertion or retraction, including transaction metadata, carries the source supplied once for the transaction.
 
 For example, imagine setting the count of an item in an inventory database in one transaction, then updating that count later. In addition to recording the item counts and their sources, EDB also records the transactions that made the changes, when the changes happened, plus any additional transaction metadata you choose to include. This might be used to, for example, record that a particular transaction corrects another transaction that was made in error.
 
@@ -200,11 +201,10 @@ You can use lookup refs to retrieve entities using the *pull* and *entity* APIs.
  :where [[:person/email "joe@example.com"] :person/name ?name]]
 ```
 
-You can also use lookup refs to refer to existing entities in transactions, avoiding extra lookup code:
+You can also use lookup refs to refer to existing entities in transactions, avoiding extra lookup code. Submit this example with source entity `99` through the request or CLI:
 
 ```edn
 [{:db/id [:person/email "joe@example.com"]
-  :db/source 99
   :person/loves :pizza}]
 ```
 
@@ -233,7 +233,7 @@ This differs from the Create/Read/Update/Delete (CRUD) paradigm:
 - *Assertions* are granular statements of fact.
 - *Reads* are performed against an immutable database value at a particular point in time. Committed time is globally ordered within a database by ACID transactions.
 - Ordinary new transactions *accumulate* changes. Existing datoms never change in place.
-- *Retractions* state that an assertion no longer holds at some later point in time. A retraction carries its own source; the original assertion and its source remain unchanged while retained.
+- *Retractions* state that an assertion no longer holds at some later point in time. A retraction carries its transaction's source; the original assertion and its source remain unchanged while retained.
 
 Assert/Read/Accumulate/Retract (ARAR) can be pronounced doubled and in a pirate voice "Ar Ar Ar Ar".
 

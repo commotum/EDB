@@ -3,6 +3,7 @@ mod deployment;
 pub(crate) mod excision;
 mod index;
 mod inspect;
+pub(crate) mod integrity;
 mod model;
 mod operator;
 pub(crate) mod projection;

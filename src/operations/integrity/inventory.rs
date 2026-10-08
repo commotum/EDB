@@ -3,6 +3,7 @@ use super::*;
 #[derive(Default)]
 pub(super) struct Inventory {
     pub(super) count: usize,
+    pub(super) bytes: u64,
     pub(super) values: BTreeMap<ObjectId, DatabaseValueRoot>,
     pub(super) indexes: BTreeMap<u64, BTreeSet<ObjectId>>,
     pub(super) metadata: BTreeMap<u64, Vec<SnapshotMetadata>>,
@@ -12,36 +13,40 @@ pub(super) struct Inventory {
 /// Authenticate the complete reachable graph, including program references
 /// embedded in tree values, log bodies and native query/program literals.
 /// Deep mode also validates tree routing/counts and typed descriptor codecs.
-pub(crate) fn walk_repository(
-    directory: &Path,
+pub(crate) fn walk_objects(
+    source: &mut dyn ObjectReader,
     roots: &[ObjectId],
     control: &MaintenanceControl,
     deep: bool,
 ) -> Result<usize, SemanticError> {
-    Ok(inventory(directory, roots, control, deep)?.count)
+    // Presence validation does not create a fulltext traversal.
+    let mut unavailable = || Err(fault("integrity/reader", "Owned reader not requested"));
+    let mut reader = Reader {
+        source,
+        factory: &mut unavailable,
+        control,
+    };
+    Ok(inventory(&mut reader, roots, deep)?.count)
 }
 
 pub(super) fn inventory(
-    directory: &Path,
+    reader: &mut Reader<'_>,
     roots: &[ObjectId],
-    control: &MaintenanceControl,
     deep: bool,
 ) -> Result<Inventory, SemanticError> {
-    let mut reader = Reader { directory, control };
     let mut seen = BTreeSet::new();
     let mut programs = BTreeSet::new();
     let mut pending = roots.to_vec();
     let mut result = Inventory::default();
     while let Some(id) = pending.pop() {
-        control.check()?;
+        reader.control.check()?;
         if !seen.insert(id) {
             continue;
         }
         let bytes = reader.read_object(id)?;
+        result.bytes = result.bytes.saturating_add(bytes.len() as u64);
         pending.extend(crate::storage::ownership::object_children(
-            &mut reader,
-            id,
-            &bytes,
+            reader, id, &bytes,
         )?);
         if bytes.starts_with(b"EDBI") {
             if let TreeNode::Leaf(leaf) = crate::index::tree::decode_tree_node(&id, &bytes)? {
@@ -96,10 +101,7 @@ pub(super) fn inventory(
                     result.receipts.insert(id);
                 }
                 crate::storage::log::LOG_ENTRY_KIND => {
-                    programs.extend(crate::storage::log::entry_program_links(
-                        &mut reader,
-                        &block,
-                    )?);
+                    programs.extend(crate::storage::log::entry_program_links(reader, &block)?);
                 }
                 _ => {}
             }

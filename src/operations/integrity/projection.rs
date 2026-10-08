@@ -137,7 +137,7 @@ pub(super) fn verify_fulltext(
         &limits,
         &mut Default::default(),
     )?;
-    let directory = reader.directory.to_path_buf();
+    let mut owned = (reader.factory)()?;
     let control = reader.control.clone();
     let mut observed = crate::FulltextCursor::new(
         &projection,
@@ -150,7 +150,7 @@ pub(super) fn verify_fulltext(
             control.check()?;
             let (page, blocks, bytes) = crate::storage::fulltext::read_page(id, &mut |id| {
                 control.check()?;
-                read_object(&directory, id)
+                owned.read_object(id)
             })?;
             stats.blocks_read = stats.blocks_read.saturating_add(blocks);
             stats.block_bytes = stats.block_bytes.saturating_add(bytes);

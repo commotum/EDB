@@ -84,8 +84,9 @@ pub(super) fn validate_receipts(
     publication: &DatabaseRoot,
     log: &LogRoot,
     inventory: &Inventory,
-) -> Result<(), SemanticError> {
+) -> Result<u64, SemanticError> {
     let requests = RequestIndex::from_root(publication.receipts);
+    let mut request_keys = 0u64;
     let mut mapped = BTreeSet::new();
     let mut after = None;
     loop {
@@ -93,7 +94,7 @@ pub(super) fn validate_receipts(
         if page.is_empty() {
             break;
         }
-        for (_, id) in &page {
+        for (key, id) in &page {
             let bytes = reader.read_object(*id)?;
             let block = Block::decode(id, &bytes)?;
             if block.kind == crate::storage::excision::TOMBSTONE_KIND {
@@ -106,6 +107,7 @@ pub(super) fn validate_receipts(
                 if error.code != "postgres/idempotency-predates-excision" {
                     return Err(error);
                 }
+                request_keys += 1;
                 continue;
             }
             if block.kind != RECEIPT_KIND {
@@ -114,10 +116,13 @@ pub(super) fn validate_receipts(
                     "Request index points to an invalid outcome",
                 ));
             }
+            let receipt = ExactReceipt::load_from_bytes(reader, *id, &bytes)?;
+            if *key != basis_receipt_key(&receipt.identity, receipt.basis) {
+                request_keys += 1;
+            }
             if !mapped.insert(*id) {
                 continue;
             }
-            let receipt = ExactReceipt::load_from_bytes(reader, *id, &bytes)?;
             let before = inventory
                 .values
                 .get(&receipt.before)
@@ -169,5 +174,5 @@ pub(super) fn validate_receipts(
             "Reachable receipt is not a current canonical request outcome",
         ));
     }
-    Ok(())
+    Ok(request_keys)
 }

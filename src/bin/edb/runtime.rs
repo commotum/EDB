@@ -1,8 +1,8 @@
 //! Stock foreground transactor lifecycle; no administrative provisioning.
 use super::{
-    Arguments, STOP,
+    Arguments,
     health::{HealthServer, Phase},
-    install_signals, io_error, transaction_defaults, usage,
+    install_signals, io_error, stop_requested, transaction_defaults, usage,
 };
 use edb_core::{
     BackgroundIndexingConfig, CapacityLimits, ErrorCategory, ExcisionConfig,
@@ -12,7 +12,6 @@ use edb_core::{
 };
 use std::io::Write;
 use std::path::Path;
-use std::sync::atomic::Ordering;
 use std::time::Duration;
 
 pub(super) fn run(
@@ -150,7 +149,7 @@ pub(super) fn run(
                 emitter.publish_if_due(|| {
                     TelemetrySnapshot::capture(None, TelemetryPhase::Waiting, false)
                 });
-                if STOP.load(Ordering::Relaxed) {
+                if stop_requested() {
                     set_phase(&health, Phase::Stopping);
                     standby.shutdown();
                     return Ok(None);
@@ -191,7 +190,7 @@ pub(super) fn run(
             return Err(error);
         }
     };
-    if STOP.load(Ordering::Relaxed) {
+    if stop_requested() {
         set_phase(&health, Phase::Stopping);
         service.shutdown();
         if telemetry.shutdown(Duration::from_millis(100)) {
@@ -244,7 +243,7 @@ pub(super) fn run(
     std::io::stdout().flush().map_err(|_| io_error())?;
     let mut lost_authority = false;
     let mut maintenance_failure = None;
-    while !STOP.load(Ordering::Relaxed) {
+    while !stop_requested() {
         emitter.publish_if_due(|| {
             TelemetrySnapshot::capture(
                 Some(&service.client()),

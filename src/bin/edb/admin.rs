@@ -374,6 +374,15 @@ fn selected_point(args: &Arguments) -> Result<BackupPoint, SemanticError> {
 }
 
 fn run(args: Arguments) -> Result<(), SemanticError> {
+    // Only maintenance paths below consume the shared cancellation token.
+    // Other commands retain the normal process signal behavior.
+    if matches!(
+        args.command.as_str(),
+        "backup" | "consolidate" | "fulltext-rebuild" | "gc" | "inspect" | "gc-deleted"
+    ) || (args.command == "restore" && args.has("--apply"))
+    {
+        super::install_signals()?;
+    }
     let started = Instant::now();
     if args.command == "list-backups" {
         let points = PortableBackup::list_backup_points(Path::new(args.required("--repository")?))?;
@@ -420,7 +429,7 @@ fn run(args: Arguments) -> Result<(), SemanticError> {
         } else {
             0
         }),
-        std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
+        super::cancellation_token().clone(),
     )?;
     match args.command.as_str() {
         "install" => {
@@ -492,7 +501,8 @@ fn run(args: Arguments) -> Result<(), SemanticError> {
         }
         "gc-deleted" => {
             verify_target(&config, &args)?;
-            let mut operator = PostgresOperator::connect_configured(&config)?;
+            let mut operator = PostgresOperator::connect_configured(&config)?
+                .with_maintenance_control(maintenance.clone());
             let storage_id = args.required("--storage-id")?;
             let lineage = args.required("--lineage")?;
             let age = Duration::from_secs(args.number("--older-than-seconds")?);
@@ -598,6 +608,7 @@ fn run(args: Arguments) -> Result<(), SemanticError> {
             let entry = DatabaseCatalog::connect_configured(&config)?
                 .resolve(args.required("--database")?)?;
             let report = PostgresOperator::connect_configured(&config)?
+                .with_maintenance_control(maintenance.clone())
                 .inspect_database(&entry.database_id, deep)?;
             let m = &report.metrics;
             println!(

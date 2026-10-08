@@ -9,12 +9,25 @@ use arguments::{Arguments, transaction_defaults, usage};
 use dispatch::run;
 use edb_core::{ErrorCategory, SemanticError};
 use std::process::ExitCode;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{
+    Arc, OnceLock,
+    atomic::{AtomicBool, Ordering},
+};
 
-static STOP: AtomicBool = AtomicBool::new(false);
+static STOP: OnceLock<Arc<AtomicBool>> = OnceLock::new();
+
+fn cancellation_token() -> &'static Arc<AtomicBool> {
+    STOP.get_or_init(|| Arc::new(AtomicBool::new(false)))
+}
+
+fn stop_requested() -> bool {
+    cancellation_token().load(Ordering::Relaxed)
+}
 extern "C" fn stop_signal(_: libc::c_int) {
     // A lock-free store is the only work performed in a signal handler.
-    STOP.store(true, Ordering::Relaxed);
+    if let Some(stop) = STOP.get() {
+        stop.store(true, Ordering::Relaxed);
+    }
 }
 
 fn io_error() -> SemanticError {
@@ -22,6 +35,8 @@ fn io_error() -> SemanticError {
 }
 
 fn install_signals() -> Result<(), SemanticError> {
+    // Initialize before a handler can read the shared cancellation token.
+    cancellation_token();
     // POSIX handlers only set a lock-free flag. The main thread owns all
     // cleanup, and handlers remain installed for the process lifetime.
     unsafe {
@@ -66,7 +81,7 @@ fn main() -> ExitCode {
                 );
             }
             eprintln!(
-                "See edb --help and docs/01_tutorials/01_application_workflow.md; no rollback is implied by a failed observation."
+                "See edb --help and docs-2/01_tutorials/01_application_workflow.md; no rollback is implied by a failed observation."
             );
             ExitCode::from(if error.category == ErrorCategory::Incorrect {
                 2
@@ -74,5 +89,26 @@ fn main() -> ExitCode {
                 1
             })
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn process_signal_cancels_the_shared_maintenance_token() {
+        let token = cancellation_token().clone();
+        token.store(false, Ordering::Relaxed);
+        let control =
+            edb_core::MaintenanceControl::new(std::time::Duration::ZERO, token.clone()).unwrap();
+        install_signals().unwrap();
+        // Exercise the installed POSIX handler in this dedicated test process.
+        unsafe {
+            libc::raise(libc::SIGINT);
+        }
+        assert_eq!(control.check().unwrap_err().code, "maintenance/canceled");
+        assert!(stop_requested());
+        token.store(false, Ordering::Relaxed);
+        control.check().unwrap();
     }
 }

@@ -320,6 +320,57 @@ fn recent_facts(events: &[Datom], base: u64) -> super::recent::RecentTier {
 }
 
 #[test]
+fn capacity_cutover_recent_limits_charge_contributions_in_all_six_orders() {
+    use super::recent::{RecentLimits, RecentTier};
+
+    let first = recent_facts(&[fact(1, 98, true)], 0);
+    let shared = recent_facts(&[fact(1, 98, true), fact(2, 99, true)], 0);
+    let stats = shared.stats();
+    assert_eq!(stats.datoms, 2);
+    assert_eq!(stats.raw_index_entries, 12);
+    assert!(stats.encoded_bytes > first.stats().encoded_bytes);
+    assert!(stats.accounted_bytes > first.stats().accounted_bytes);
+    for order in ORDERS {
+        assert_eq!(
+            shared
+                .cursor(false, order, &super::recent::RecentRange::unbounded())
+                .unwrap()
+                .count(),
+            2,
+            "{order:?} retains both contributors to one EAV"
+        );
+    }
+
+    let rebuild = |hard_datoms, hard_bytes| {
+        RecentTier::new(
+            "index-cutover",
+            0,
+            [0; 32],
+            shared
+                .entries()
+                .iter()
+                .map(|entry| (*entry.transaction).clone()),
+            (*shared.projection()).clone(),
+            RecentLimits {
+                soft_datoms: 1,
+                soft_bytes: 1,
+                hard_datoms,
+                hard_bytes,
+            },
+        )
+    };
+    let admitted = rebuild(2, stats.accounted_bytes).unwrap().stats();
+    assert_eq!(admitted.datoms, stats.datoms);
+    assert_eq!(admitted.accounted_bytes, stats.accounted_bytes);
+    for rejected in [
+        rebuild(1, stats.accounted_bytes),
+        rebuild(2, stats.accounted_bytes - 1),
+    ] {
+        assert_eq!(rejected.unwrap_err().code, "recent/hard-capacity");
+    }
+}
+
+#[test]
 fn index_cutover_recent_source_ranges_apply_global_visibility() {
     let assertions = vec![fact(1, 98, true), fact(2, 99, true)];
     let active = recent_facts(&assertions, 0);

@@ -645,6 +645,44 @@ mod tests {
     }
 
     #[test]
+    fn capacity_cutover_request_byte_limit_includes_the_source_reference() {
+        let sources = [
+            EntityRef::Id(99),
+            EntityRef::Ident(Keyword::new("contributor", "j".repeat(128))),
+            EntityRef::Lookup {
+                attribute: crate::DB_IDENT as u32,
+                value: Value::Keyword(Keyword::new("contributor", "j".repeat(128))),
+            },
+            EntityRef::Temp("j".repeat(128)),
+            EntityRef::Edn(format!("[:contributor/name \"{}\"]", "j".repeat(128))),
+        ];
+        let (_, id_bytes) =
+            canonical_submission_request(&[], &sources[0], None, None, usize::MAX).unwrap();
+        for (index, source) in sources.iter().enumerate() {
+            let exact = canonical_submission_request(&[], source, None, None, usize::MAX).unwrap();
+            assert_eq!(
+                canonical_submission_request(&[], source, None, None, exact.1).unwrap(),
+                exact
+            );
+            assert_eq!(
+                canonical_submission_request(&[], source, None, None, exact.1 - 1)
+                    .unwrap_err()
+                    .code,
+                "service/request-byte-capacity"
+            );
+            if index != 0 {
+                assert!(exact.1 > id_bytes);
+                assert_eq!(
+                    canonical_submission_request(&[], source, None, None, id_bytes)
+                        .unwrap_err()
+                        .code,
+                    "service/request-byte-capacity"
+                );
+            }
+        }
+    }
+
+    #[test]
     fn old_submission_version_is_rejected_without_inventing_source() {
         let old = encode_blob(REQUEST, &[VERSION - 1]).unwrap();
         assert_eq!(

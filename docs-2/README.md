@@ -51,7 +51,6 @@ The [North Star](NORTHSTAR.md) describes EDB's data model and design principles.
 
 ## Transactions
 
-- [Transaction source and timestamp](TIMESTAMP_SOURCE_DESIGN.md)
 - [Transactions, reports and exact retries](04_transactions/00_transactions.md)
 - [Persisted native queries](04_transactions/01_persisted_programs.md)
 - [Partitions and time-local UUIDs](04_transactions/02_partitions.md)

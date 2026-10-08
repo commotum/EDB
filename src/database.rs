@@ -44,10 +44,12 @@ struct CurrentFact {
     attribute: u32,
     value: Value,
     tx: u64,
+    source: u64,
 }
 
 #[derive(Clone, Debug)]
 struct LogicalDatom {
+    source: u64,
     entity: u64,
     attribute: u32,
     value: Value,
@@ -163,7 +165,13 @@ impl Database {
         if operations.is_empty() {
             Ok(database)
         } else {
-            Ok(database.with(&operations, 0)?.db_after)
+            Ok(database
+                .with(
+                    &operations,
+                    0,
+                    crate::EntityRef::Id(crate::model::vocabulary::DB_SOURCE_SYSTEM),
+                )?
+                .db_after)
         }
     }
 
@@ -408,7 +416,9 @@ impl Database {
     }
 
     pub fn values(&self, entity: u64, attribute: u32) -> Vec<&Value> {
-        self.current_indexes
+        let mut values = Vec::<&Value>::new();
+        for datom in self
+            .current_indexes
             .matching(&IndexPrefix::Eavt {
                 entity,
                 attribute: Some(attribute),
@@ -416,8 +426,17 @@ impl Database {
             })
             .expect("internally constructed index prefix is valid")
             .iter()
-            .map(|datom| &datom.value)
-            .collect()
+        {
+            if !values
+                .iter()
+                .rev()
+                .take_while(|value| value.index_cmp(&datom.value).is_eq())
+                .any(|value| value.stored_eq(&datom.value))
+            {
+                values.push(&datom.value);
+            }
+        }
+        values
     }
 
     /// Exact current-database matches for a left-contiguous index prefix.
@@ -528,6 +547,8 @@ impl Database {
             IndexOrder::Aevt,
             IndexOrder::Avet,
             IndexOrder::Vaet,
+            IndexOrder::Saevt,
+            IndexOrder::Savet,
         ] {
             if !same_stored_datoms(self.current_indexes.get(order), expected_current.get(order)) {
                 return Err(SemanticError::new(
@@ -577,17 +598,21 @@ impl Database {
                         format!("history transaction {t} cannot be represented: {error}"),
                     )
                 })?;
-                if chunk.iter().any(|datom| datom.tx != tx)
-                    || chunk
-                        .iter()
-                        .filter(|datom| {
-                            datom.entity == tx
-                                && datom.attribute == tx_instant_attribute
-                                && datom.added
-                                && matches!(datom.value, Value::Instant(_))
-                        })
-                        .count()
-                        != 1
+                if chunk.iter().any(|datom| {
+                    datom.tx != tx
+                        || chunk
+                            .first()
+                            .is_some_and(|first| first.source != datom.source)
+                }) || chunk
+                    .iter()
+                    .filter(|datom| {
+                        datom.entity == tx
+                            && datom.attribute == tx_instant_attribute
+                            && datom.added
+                            && matches!(datom.value, Value::Instant(_))
+                    })
+                    .count()
+                    != 1
                 {
                     return Err(SemanticError::new(
                         ErrorCategory::Fault,
@@ -599,6 +624,7 @@ impl Database {
         }
         for datom in self.genesis.iter() {
             validate_stored_entity(datom.entity, self.eidx_frontier, self.basis_t, &self.schema)?;
+            validate_stored_entity(datom.source, self.eidx_frontier, self.basis_t, &self.schema)?;
             validate_stored_value(&datom.value, self.eidx_frontier, self.basis_t, &self.schema)?;
         }
         for datom in self.history.iter().flat_map(|chunk| chunk.iter()) {
@@ -617,6 +643,7 @@ impl Database {
                 ));
             }
             validate_stored_entity(datom.entity, self.eidx_frontier, self.basis_t, &self.schema)?;
+            validate_stored_entity(datom.source, self.eidx_frontier, self.basis_t, &self.schema)?;
             validate_stored_value(&datom.value, self.eidx_frontier, self.basis_t, &self.schema)?;
         }
         Ok(())
@@ -655,11 +682,15 @@ impl Database {
             ));
         }
         if current.cardinality == Cardinality::Many && proposed.cardinality == Cardinality::One {
-            let mut counts = BTreeMap::<u64, usize>::new();
-            for fact in facts.iter().filter(|fact| fact.attribute == proposed.id) {
-                *counts.entry(fact.entity).or_default() += 1;
-            }
-            if counts.values().any(|count| *count > 1) {
+            let mut first_values = BTreeMap::new();
+            if facts
+                .iter()
+                .filter(|fact| fact.attribute == proposed.id)
+                .any(|fact| {
+                    let first: &&Value = first_values.entry(fact.entity).or_insert(&fact.value);
+                    !first.stored_eq(&fact.value)
+                })
+            {
                 return Err(SemanticError::conflict(
                     "schema/cardinality-change-conflict",
                     "current data contains multiple values for one entity",
@@ -802,8 +833,18 @@ impl Database {
 
     /// Pure transaction application. `tx_instant` is supplied by the caller so
     /// the same inputs always produce the same result.
-    pub fn with(&self, ops: &[TxOp], tx_instant: i64) -> Result<TxReport, SemanticError> {
-        self.with_defaults(ops, tx_instant, &crate::TransactionDefaults::default())
+    pub fn with(
+        &self,
+        ops: &[TxOp],
+        tx_instant: i64,
+        source: crate::EntityRef,
+    ) -> Result<TxReport, SemanticError> {
+        self.with_defaults(
+            ops,
+            tx_instant,
+            source,
+            &crate::TransactionDefaults::default(),
+        )
     }
 
     /// Pure application with explicit allocation defaults. Neither this value
@@ -812,12 +853,14 @@ impl Database {
         &self,
         ops: &[TxOp],
         tx_instant: i64,
+        source: crate::EntityRef,
         defaults: &crate::TransactionDefaults,
     ) -> Result<TxReport, SemanticError> {
         let assessed = crate::transaction::pipeline::assess_operations(
             &self.database_value(),
             ops,
             tx_instant,
+            &source,
             defaults,
             None,
         )?;
@@ -922,6 +965,18 @@ impl Database {
                 "database has no transaction instant attribute",
             )
         })?;
+        let source = transaction.tx_data.first().map(|datom| datom.source);
+        if transaction
+            .tx_data
+            .iter()
+            .any(|datom| Some(datom.source) != source)
+        {
+            return Err(SemanticError::new(
+                ErrorCategory::Fault,
+                "recovery/mixed-transaction-source",
+                "committed transaction has multiple sources",
+            ));
+        }
         let instants: Vec<_> = transaction
             .tx_data
             .iter()
@@ -972,6 +1027,7 @@ impl Database {
             }
             seen.insert(datom.entity, datom.attribute, &datom.value, logical.len());
             logical.push(LogicalDatom {
+                source: datom.source,
                 entity: datom.entity,
                 attribute: datom.attribute,
                 value: datom.value.clone(),
@@ -995,7 +1051,13 @@ impl Database {
             })?;
         let before_index = StoredFactIndex::from_current(&self.current);
         for datom in &transaction.tx_data {
-            let existed = before_index.contains(datom.entity, datom.attribute, &datom.value);
+            let existed = if datom.added {
+                before_index
+                    .positions_for(datom.entity, datom.attribute, &datom.value)
+                    .any(|position| self.current[position].source == datom.source)
+            } else {
+                before_index.contains(datom.entity, datom.attribute, &datom.value)
+            };
             if existed == datom.added
                 && !(allow_dangling_retractions && !datom.added && !existed)
                 && !(datom.added && datom.attribute == crate::DB_ALTER_ATTRIBUTE as u32)
@@ -1074,9 +1136,16 @@ impl Database {
         // positive contiguous basis were checked above.
         for datom in &transaction.tx_data {
             validate_stored_entity(datom.entity, transaction.eidx_frontier, t, &derived_schema)?;
+            validate_stored_entity(datom.source, transaction.eidx_frontier, t, &derived_schema)?;
             validate_stored_value(&datom.value, transaction.eidx_frontier, t, &derived_schema)?;
             validate_new_entity_allocation(
                 datom.entity,
+                self.eidx_frontier,
+                &allocations,
+                reserved_after,
+            )?;
+            validate_new_entity_allocation(
+                datom.source,
                 self.eidx_frontier,
                 &allocations,
                 reserved_after,
@@ -1131,6 +1200,7 @@ impl Database {
             .tx_data
             .iter()
             .map(|datom| LogicalDatom {
+                source: datom.source,
                 entity: datom.entity,
                 attribute: datom.attribute,
                 value: datom.value.clone(),
@@ -1298,7 +1368,14 @@ fn apply_logical(current: &[CurrentFact], datoms: &[LogicalDatom], tx: u64) -> V
         }
     }
     for datom in datoms.iter().filter(|datom| datom.added) {
-        if let Some(position) = index.first(datom.entity, datom.attribute, &datom.value) {
+        if let Some(position) = index
+            .positions_for(datom.entity, datom.attribute, &datom.value)
+            .find(|position| {
+                result[*position]
+                    .as_ref()
+                    .is_some_and(|fact| fact.source == datom.source)
+            })
+        {
             // Attribute-alter hooks are deliberately non-redundant events.
             // The current logical coordinate follows the newest such event,
             // while history retains every immutable hook assertion.
@@ -1315,6 +1392,7 @@ fn apply_logical(current: &[CurrentFact], datoms: &[LogicalDatom], tx: u64) -> V
                 attribute: datom.attribute,
                 value: datom.value.clone(),
                 tx,
+                source: datom.source,
             }));
         }
     }
@@ -1322,12 +1400,13 @@ fn apply_logical(current: &[CurrentFact], datoms: &[LogicalDatom], tx: u64) -> V
 }
 
 fn validate_cardinality(schema: &Schema, facts: &[CurrentFact]) -> Result<(), SemanticError> {
-    let mut seen = BTreeSet::new();
+    let mut first_values = BTreeMap::new();
     let duplicate_coordinates: BTreeSet<_> = facts
         .iter()
         .filter_map(|fact| {
             let coordinate = (fact.entity, fact.attribute);
-            (!seen.insert(coordinate)).then_some(coordinate)
+            let first = first_values.entry(coordinate).or_insert(&fact.value);
+            (!first.stored_eq(&fact.value)).then_some(coordinate)
         })
         .collect();
     // Retain the original traversal/error precedence, including unknown schema
@@ -1489,6 +1568,7 @@ fn compare_current(left: &CurrentFact, right: &CurrentFact) -> Ordering {
         .cmp(&right.entity)
         .then(left.attribute.cmp(&right.attribute))
         .then_with(|| left.value.stored_cmp(&right.value))
+        .then(left.source.cmp(&right.source))
 }
 
 fn same_stored_current(left: &[CurrentFact], right: &[CurrentFact]) -> bool {
@@ -1497,6 +1577,7 @@ fn same_stored_current(left: &[CurrentFact], right: &[CurrentFact]) -> bool {
             left.entity == right.entity
                 && left.attribute == right.attribute
                 && left.tx == right.tx
+                && left.source == right.source
                 && left.value.stored_eq(&right.value)
         })
 }
@@ -1507,6 +1588,7 @@ fn same_stored_datoms(left: &[Datom], right: &[Datom]) -> bool {
             left.entity == right.entity
                 && left.attribute == right.attribute
                 && left.tx == right.tx
+                && left.source == right.source
                 && left.added == right.added
                 && left.value.stored_eq(&right.value)
         })
@@ -1546,6 +1628,7 @@ fn facts_as_datoms(facts: &[CurrentFact]) -> Vec<Datom> {
             attribute: fact.attribute,
             value: fact.value.clone(),
             tx: fact.tx,
+            source: fact.source,
             added: true,
         })
         .collect()
@@ -1639,6 +1722,24 @@ impl<'a> StoredFactIndex<'a> {
         }
     }
 
+    fn positions_for<'b>(
+        &'b self,
+        entity: u64,
+        attribute: u32,
+        value: &'b Value,
+    ) -> impl Iterator<Item = usize> + 'b {
+        let logical = IndexValue(value);
+        let scale = Self::scale(value);
+        self.positions
+            .range(
+                (entity, attribute, logical, None)..=(entity, attribute, logical, Some(i64::MAX)),
+            )
+            .filter(move |((_, _, _, candidate), _)| {
+                scale.is_none() || candidate.is_none() || *candidate == scale
+            })
+            .flat_map(|(_, positions)| positions.iter().copied())
+    }
+
     fn remove(&mut self, entity: u64, attribute: u32, value: &'a Value) -> Vec<usize> {
         let logical = IndexValue(value);
         if let Some(scale) = Self::scale(value) {
@@ -1669,7 +1770,14 @@ fn replay<'a>(datoms: impl Iterator<Item = &'a Datom>) -> Vec<CurrentFact> {
     let mut result = Vec::<Option<CurrentFact>>::new();
     for datom in datoms {
         if datom.added {
-            if let Some(position) = index.first(datom.entity, datom.attribute, &datom.value) {
+            if let Some(position) = index
+                .positions_for(datom.entity, datom.attribute, &datom.value)
+                .find(|position| {
+                    result[*position]
+                        .as_ref()
+                        .is_some_and(|fact| fact.source == datom.source)
+                })
+            {
                 if u64::from(datom.attribute) == crate::DB_ALTER_ATTRIBUTE {
                     result[position]
                         .as_mut()
@@ -1683,6 +1791,7 @@ fn replay<'a>(datoms: impl Iterator<Item = &'a Datom>) -> Vec<CurrentFact> {
                     attribute: datom.attribute,
                     value: datom.value.clone(),
                     tx: datom.tx,
+                    source: datom.source,
                 }));
             }
         } else {
@@ -1801,6 +1910,7 @@ fn allocations_under_authenticated_frontier(
     };
     for datom in &transaction.tx_data {
         observe(datom.entity)?;
+        observe(datom.source)?;
         let mut pending = vec![&datom.value];
         while let Some(value) = pending.pop() {
             match value {

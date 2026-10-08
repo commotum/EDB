@@ -4,7 +4,7 @@
 //! borrows the original spelling; no DNS, percent decoding, path cleanup, default
 //! ports or host rewriting occurs. Callers keep original bytes for exact receipts.
 //!
-//! Specification: https://docs.oracle.com/en/java/javase/17/docs/api/java.base/java/net/URI.html
+//! Specification: <https://docs.oracle.com/en/java/javase/17/docs/api/java.base/java/net/URI.html>
 //! Parser edge cases were checked against OpenJDK 17 URI.Parser (parseHierarchical,
 //! parseAuthority, parseServer, parseHostname). This is a native implementation,
 //! not a copy of its parser or a Java-compatible numeric hash implementation.

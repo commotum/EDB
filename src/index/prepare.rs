@@ -101,7 +101,7 @@ pub(crate) fn current_edits(
     avet_drops: &BTreeMap<u32, (Vec<Datom>, Vec<Datom>)>,
 ) -> Result<TreeMergeEdits, SemanticError> {
     let changed = |attribute| {
-        order == IndexOrder::Avet
+        matches!(order, IndexOrder::Avet | IndexOrder::Savet)
             && changed_avet
                 .iter()
                 .any(|(candidate, _, _)| *candidate == attribute)
@@ -117,7 +117,7 @@ pub(crate) fn current_edits(
             edits.insertions.push(datom.clone());
         }
     }
-    if order == IndexOrder::Avet {
+    if matches!(order, IndexOrder::Avet | IndexOrder::Savet) {
         for (current, _) in avet_backfills.values() {
             edits.insertions.extend(current.iter().cloned());
         }
@@ -136,7 +136,7 @@ pub(crate) fn history_edits(
     avet_drops: &BTreeMap<u32, (Vec<Datom>, Vec<Datom>)>,
 ) -> Result<TreeMergeEdits, SemanticError> {
     let changed = |attribute| {
-        order == IndexOrder::Avet
+        matches!(order, IndexOrder::Avet | IndexOrder::Savet)
             && changed_avet
                 .iter()
                 .any(|(candidate, _, _)| *candidate == attribute)
@@ -161,7 +161,7 @@ pub(crate) fn history_edits(
             .collect(),
         ..TreeMergeEdits::default()
     };
-    if order == IndexOrder::Avet {
+    if matches!(order, IndexOrder::Avet | IndexOrder::Savet) {
         for (_, history) in avet_backfills.values() {
             edits.insertions.extend(history.iter().cloned());
         }
@@ -176,9 +176,11 @@ pub(crate) fn canonicalize_merge_edits(edits: &mut TreeMergeEdits, order: IndexO
     sort_dedup_datoms(&mut edits.removals, order);
     sort_dedup_datoms(&mut edits.projection_removals, order);
     sort_dedup_datoms(&mut edits.insertions, order);
-    edits
-        .no_history_pairs
-        .sort_by(|left, right| left.retraction.cmp_in(&right.retraction, order));
+    edits.no_history_pairs.sort_by(|left, right| {
+        left.retraction
+            .cmp_in(&right.retraction, order)
+            .then_with(|| left.assertion.cmp_in(&right.assertion, order))
+    });
 }
 
 pub(crate) fn stored_eav_key(datom: &Datom) -> Result<Vec<u8>, SemanticError> {
@@ -196,6 +198,7 @@ fn eav_bound(exemplar: &Datom, lower: bool) -> Datom {
         attribute: exemplar.attribute,
         value: exemplar.value.clone(),
         tx: if lower { u64::MAX } else { 0 },
+        source: if lower { 0 } else { u64::MAX },
         added: lower,
     }
 }
@@ -213,6 +216,7 @@ fn attribute_bounds(attribute: u32) -> Result<(Datom, Datom), SemanticError> {
         attribute,
         value: crate::Value::Double(f64::NEG_INFINITY),
         tx: u64::MAX,
+        source: 0,
         added: true,
     };
     Ok((bound(attribute), bound(end)))
@@ -335,26 +339,26 @@ impl IndexEavLookup {
         })
     }
 
-    /// BigDecimal scale is ordered after T/op. Seek through the complete
-    /// logical-comparator group until the exact stored representation appears.
-    pub(crate) fn exact(
+    /// All current contributions for one strict stored E/A/V, across sources.
+    pub(crate) fn all(
         &mut self,
         store: &mut impl IndexNodeReader,
         exemplar: &Datom,
         cache: &mut TreeNodeSet,
-    ) -> Result<Option<Datom>, SemanticError> {
+    ) -> Result<Vec<Datom>, SemanticError> {
         let lower = eav_bound(exemplar, true);
         let mut candidate = self.seek(store, &lower, false, cache)?;
+        let mut contributions = Vec::new();
         while let Some(datom) = candidate {
             if !same_logical_eav(&datom, exemplar) {
-                return Ok(None);
+                break;
             }
             if same_eav(&datom, exemplar) {
-                return Ok(Some(datom));
+                contributions.push(datom.clone());
             }
             candidate = self.seek(store, &datom, true, cache)?;
         }
-        Ok(None)
+        Ok(contributions)
     }
 
     fn seek(

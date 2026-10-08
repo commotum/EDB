@@ -10,6 +10,7 @@ pub struct Datom {
     pub attribute: u32,
     pub value: Value,
     pub tx: u64,
+    pub source: u64,
     pub added: bool,
 }
 
@@ -19,6 +20,8 @@ pub enum IndexOrder {
     Aevt,
     Avet,
     Vaet,
+    Saevt,
+    Savet,
 }
 
 impl Datom {
@@ -51,9 +54,22 @@ impl Datom {
                 .index_cmp(&other.value)
                 .then(self.attribute.cmp(&other.attribute))
                 .then(self.entity.cmp(&other.entity)),
+            IndexOrder::Saevt => self
+                .source
+                .cmp(&other.source)
+                .then(self.attribute.cmp(&other.attribute))
+                .then(self.entity.cmp(&other.entity))
+                .then_with(|| self.value.index_cmp(&other.value)),
+            IndexOrder::Savet => self
+                .source
+                .cmp(&other.source)
+                .then(self.attribute.cmp(&other.attribute))
+                .then_with(|| self.value.index_cmp(&other.value))
+                .then(self.entity.cmp(&other.entity)),
         };
         ordering
             .then_with(|| other.tx.cmp(&self.tx))
+            .then(self.source.cmp(&other.source))
             .then_with(|| other.added.cmp(&self.added))
             // The recovered comparator orders a logical E/A/V group by
             // descending transaction and operation. Retain a final physical

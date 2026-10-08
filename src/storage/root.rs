@@ -8,10 +8,10 @@ use super::ObjectId;
 use crate::{SemanticError, sha256};
 
 const MAGIC: &[u8; 4] = b"EDBO";
-// URI key semantics are component-based in this first-release engine. Reject
-// earlier database roots rather than mixing indexes/receipts assessed under
-// raw-string URI equality. The opaque PostgreSQL provider format is unchanged.
-const VERSION: u16 = 2;
+// Source-bearing datoms and twelve-tree descriptors form one storage cutover.
+// Reject earlier blocks before interpreting their unversioned log payloads.
+// The opaque PostgreSQL provider and physical compression format are unchanged.
+const VERSION: u16 = 3;
 const HEADER_BYTES: usize = 20;
 const OBJECT_ID_BYTES: usize = 32;
 const ROOT_PAYLOAD_BYTES: usize = 33;

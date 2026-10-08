@@ -42,6 +42,55 @@ const ARTICLE_TEXT: u32 = 1_010;
 const ARTICLE_PUBLIC: u32 = 1_011;
 const WAIT: Duration = Duration::from_secs(20);
 
+fn source_ident() -> Keyword {
+    Keyword::new("application.source", "demo")
+}
+
+fn application_source() -> EntityRef {
+    EntityRef::Ident(source_ident())
+}
+
+fn source_description() -> TxOp {
+    add(
+        "application-source",
+        edb_core::DB_IDENT as u32,
+        Value::Keyword(source_ident()).into(),
+    )
+}
+
+/// Attribution and the automatic timestamp apply to explicit and generated
+/// changes alike. The source description is ordinary database information.
+fn check_attribution(
+    database: &DatabaseValue,
+    datoms: &[edb_core::Datom],
+) -> std::result::Result<(), SemanticError> {
+    let source = database.entid(&source_ident()).ok_or_else(|| {
+        SemanticError::incorrect(
+            "application/source",
+            "application source was not established",
+        )
+    })?;
+    let tx = edb_core::t_to_tx(database.basis_t())?;
+    let timestamps: Vec<_> = datoms
+        .iter()
+        .filter(|datom| datom.attribute == edb_core::DB_TX_INSTANT as u32)
+        .collect();
+    if datoms
+        .iter()
+        .any(|datom| datom.source != source || datom.tx != tx)
+        || timestamps.len() != 1
+        || !timestamps[0].added
+        || timestamps[0].entity != tx
+        || Some(&timestamps[0].value) != database.last_tx_instant().map(Value::Instant).as_ref()
+    {
+        return Err(SemanticError::incorrect(
+            "application/attribution",
+            "receipt changes or automatic timestamp have inconsistent attribution",
+        ));
+    }
+    Ok(())
+}
+
 enum AppEndpoint {
     Local(PathBuf),
     Remote(edb_core::RemoteWriter),
@@ -61,10 +110,18 @@ impl AppSubmit for Connection {
         request: TransactionRequest,
         timeout: Duration,
     ) -> std::result::Result<edb_core::CommittedTransaction, SemanticError> {
-        match endpoint {
+        let mut committed = match endpoint {
             AppEndpoint::Local(path) => self.transact_socket(path, request, timeout),
             AppEndpoint::Remote(writer) => writer.transact(request, timeout),
+        }?;
+        // Keep a confirmed receipt confirmed even if opening or checking its
+        // local report fails. Exact retries still use the complete request.
+        if let Ok(report) = &committed.report {
+            if let Err(error) = check_attribution(&report.db_after, &report.tx_data) {
+                committed.report = Err(error);
+            }
         }
+        Ok(committed)
     }
 }
 
@@ -248,7 +305,10 @@ fn add(entity: &str, attribute: u32, value: TxValue) -> TxOp {
 }
 
 fn initial_data() -> Vec<TxOp> {
-    let mut operations = vec![add("owner", NAME, Value::String("Ada".into()).into())];
+    let mut operations = vec![
+        source_description(),
+        add("owner", NAME, Value::String("Ada".into()).into()),
+    ];
     for (key, hours) in [("alpha", 3), ("beta", 5)] {
         operations.extend([
             add(key, PROJECT, Value::String(key.into()).into()),
@@ -285,7 +345,7 @@ fn read_values_workflow(before: &DatabaseValue, after: &DatabaseValue) -> Result
     let _scope = measured.enter();
     let started = Instant::now();
     let indexed = before.has_avet(&edb_core::AttributeName::Id(PROJECT))?;
-    let mut target = DataPattern::new(Term::var("key"), Term::var("target"), Term::Blank);
+    let mut target = edb_core::RelationPattern::new(vec![Term::var("key"), Term::var("target")]);
     target.source = "$targets".into();
     let query = Query::new(
         FindSpec::Relation(vec![
@@ -298,7 +358,7 @@ fn read_values_workflow(before: &DatabaseValue, after: &DatabaseValue) -> Result
                 Term::Constant(Value::Ref(PROJECT.into())),
                 Term::var("key"),
             ))),
-            Clause::Pattern(Box::new(target)),
+            Clause::RelationPattern(Box::new(target)),
         ],
     );
     {
@@ -543,7 +603,8 @@ fn planning_workflow(
             ),
         ]
     };
-    let low = base.with(&intent(9), time)?;
+    let low = base.with(&intent(9), time, application_source())?;
+    check_attribution(&low.db_after, &low.tx_data)?;
     let selected_intent = intent(11);
     let selected = base.with_forms_with_hints(
         &selected_intent
@@ -552,9 +613,11 @@ fn planning_workflow(
             .map(edb_core::TxForm::Op)
             .collect::<Vec<_>>(),
         time,
+        application_source(),
         edb_core::SpeculationLimits::default(),
         edb_core::HintLimits::default(),
     )?;
+    check_attribution(&selected.report.db_after, &selected.report.tx_data)?;
     require(
         calculation(&low.db_after)?.total_hours == 14,
         "low alternative mismatch",
@@ -597,6 +660,7 @@ fn planning_workflow(
                         Value::String("Intervening person".into()).into(),
                     ),
                 ],
+                application_source(),
             )
             .comparing_basis(base.basis_t()),
             WAIT,
@@ -607,6 +671,7 @@ fn planning_workflow(
         TransactionRequest::new(
             "application-workflow/planning-stale/v1",
             selected_intent.clone(),
+            application_source(),
         )
         .comparing_basis(base.basis_t()),
         WAIT,
@@ -624,12 +689,18 @@ fn planning_workflow(
             .last_tx_instant()
             .ok_or("replan base has no time")?
             + 1,
+        application_source(),
     )?;
+    check_attribution(&replanned.db_after, &replanned.tx_data)?;
     let selected = connection
         .transact_application(
             endpoint,
-            TransactionRequest::new("application-workflow/planning-select/v1", selected_intent)
-                .comparing_basis(intervened.basis_t),
+            TransactionRequest::new(
+                "application-workflow/planning-select/v1",
+                selected_intent,
+                application_source(),
+            )
+            .comparing_basis(intervened.basis_t),
             WAIT,
         )?
         .report?;
@@ -665,6 +736,7 @@ fn planning_workflow(
                     TxOp::RetractEntity(EntityRef::Id(selected.tempids["planned-person"])),
                     TxOp::RetractEntity(EntityRef::Id(intervened.tempids["intervening-person"])),
                 ],
+                application_source(),
             )
             .comparing_basis(selected.basis_t),
             WAIT,
@@ -728,6 +800,7 @@ fn partition_workflow(connection: &Connection, endpoint: &AppEndpoint) -> Result
             TransactionRequest::new(
                 "application-workflow/partition-schema/v1",
                 attributes.into_iter().map(TxOp::InstallAttribute).collect(),
+                application_source(),
             ),
             WAIT,
         )?
@@ -736,20 +809,24 @@ fn partition_workflow(connection: &Connection, endpoint: &AppEndpoint) -> Result
     let partition = connection
         .transact_application(
             endpoint,
-            TransactionRequest::new("application-workflow/partition-install/v1", vec![])
-                .with_forms([TxForm::EntityMap(EntityMap {
-                    id: Some(EntityRef::Temp("partition".into())),
-                    attributes: vec![
-                        (
-                            AttributeRef::Ident(Keyword::new("db", "ident")),
-                            MapValue::Value(Value::Keyword(partition_ident.clone()).into()),
-                        ),
-                        (
-                            AttributeRef::ReverseIdent(Keyword::new("db.install", "partition")),
-                            MapValue::Value(Value::Keyword(Keyword::new("db.part", "db")).into()),
-                        ),
-                    ],
-                })]),
+            TransactionRequest::new(
+                "application-workflow/partition-install/v1",
+                vec![],
+                application_source(),
+            )
+            .with_forms([TxForm::EntityMap(EntityMap {
+                id: Some(EntityRef::Temp("partition".into())),
+                attributes: vec![
+                    (
+                        AttributeRef::Ident(Keyword::new("db", "ident")),
+                        MapValue::Value(Value::Keyword(partition_ident.clone()).into()),
+                    ),
+                    (
+                        AttributeRef::ReverseIdent(Keyword::new("db.install", "partition")),
+                        MapValue::Value(Value::Keyword(Keyword::new("db.part", "db")).into()),
+                    ),
+                ],
+            })]),
             WAIT,
         )?
         .report?;
@@ -782,6 +859,7 @@ fn partition_workflow(connection: &Connection, endpoint: &AppEndpoint) -> Result
             tempid: "tenant".into(),
             partition: EntityRef::Ident(partition_ident),
         }],
+        application_source(),
     )
     .with_forms([TxForm::EntityMap(EntityMap {
         id: Some(EntityRef::Temp("tenant".into())),
@@ -884,6 +962,7 @@ fn fulltext_workflow(connection: &Connection, endpoint: &AppEndpoint) -> Result<
                         Cardinality::One,
                     )),
                 ],
+                application_source(),
             ),
             WAIT,
         )?
@@ -908,6 +987,7 @@ fn fulltext_workflow(connection: &Connection, endpoint: &AppEndpoint) -> Result<
                 Value::Bool(false).into(),
             ),
         ],
+        application_source(),
     );
     let submitted = connection.transact_application(endpoint, request.clone(), WAIT)?;
     let replayed = submitted.replayed;
@@ -1130,12 +1210,18 @@ fn run() -> Result<()> {
             .attributes()
             .cloned()
             .map(TxOp::InstallAttribute)
+            .chain([source_description()])
             .collect(),
+        EntityRef::Temp("application-source".into()),
     );
     connection
         .transact_application(&endpoint, schema_request, WAIT)?
         .report?;
-    let request = TransactionRequest::new("application-workflow/seed/v1", initial_data());
+    let request = TransactionRequest::new(
+        "application-workflow/seed/v1",
+        initial_data(),
+        application_source(),
+    );
     let seeded = connection.transact_application(&endpoint, request.clone(), WAIT)?;
     let seed_replayed = seeded.replayed;
     let seeded = seeded.report?;
@@ -1152,9 +1238,16 @@ fn run() -> Result<()> {
     // Capture the exact seed value from its receipt, including on a later replay after restart.
     let captured = seeded.db_after;
     let old = calculation(&captured)?;
-    let fixture = Database::new(schema)?
-        .with(&initial_data(), 1_000)?
-        .db_after;
+    let fixture_seed = Database::new(schema)?.with(
+        &initial_data(),
+        1_000,
+        EntityRef::Temp("application-source".into()),
+    )?;
+    check_attribution(
+        &fixture_seed.db_after.database_value(),
+        &fixture_seed.tx_data,
+    )?;
+    let fixture = fixture_seed.db_after;
     require(
         calculation(&fixture.database_value())? == old,
         "native/fixture calculation mismatch",
@@ -1183,7 +1276,11 @@ fn run() -> Result<()> {
 
     let updated = connection.transact_application(
         &endpoint,
-        TransactionRequest::new("application-workflow/update/v1", update()),
+        TransactionRequest::new(
+            "application-workflow/update/v1",
+            update(),
+            application_source(),
+        ),
         WAIT,
     )?;
     let update_replayed = updated.replayed;
@@ -1195,7 +1292,12 @@ fn run() -> Result<()> {
     read_values_workflow(&captured, &current)?;
     general_query_workflow(&captured, &current)?;
     application_computation_workflow(&captured, &current)?;
-    let expected = fixture.with(&update(), 2_000)?.db_after.database_value();
+    let fixture_update = fixture.with(&update(), 2_000, application_source())?;
+    check_attribution(
+        &fixture_update.db_after.database_value(),
+        &fixture_update.tx_data,
+    )?;
+    let expected = fixture_update.db_after.database_value();
     require(
         calculation(&current)? == calculation(&expected)?,
         "updated calculation mismatch",
@@ -1221,6 +1323,33 @@ fn run() -> Result<()> {
         events.len() == 3 && events.iter().filter(|event| event.added).count() == 2,
         "history did not retain the assertion and retraction",
     )?;
+    let source = current
+        .entid(&source_ident())
+        .ok_or("application source missing")?;
+    require(
+        source != edb_core::DB_SOURCE_SYSTEM && events.iter().all(|event| event.source == source),
+        "history changed application attribution",
+    )?;
+    let current_hours = current.collect_datoms_with_prefix(&IndexPrefix::Saevt {
+        source,
+        attribute: Some(HOURS),
+        entity: None,
+        value: None,
+    })?;
+    require(
+        current_hours.len() == 2
+            && current_hours.iter().all(|datom| datom.added)
+            && current_hours
+                .iter()
+                .map(|datom| &datom.value)
+                .collect::<Vec<_>>()
+                .iter()
+                .all(|value| matches!(value, Value::Long(5) | Value::Long(7))),
+        "current source facts did not honor the replacement",
+    )?;
+    println!(
+        "SOURCE_OK ordinary_entity=true receipts=true automatic_timestamp=true speculation=true current=true history=true"
+    );
     let reopened = Connection::connect_configured(config, &database_id, 8)?;
     require(
         reopened.identity() == connection.identity(),

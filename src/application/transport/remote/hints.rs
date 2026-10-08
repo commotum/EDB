@@ -3,7 +3,7 @@ use crate::{
     HintLimits, IndexPrefix, ReadHint, SemanticError, SnapshotReference, TransactionHints, Value,
 };
 pub(super) const MAX_WIRE_BYTES: usize = 4 * 1024 * 1024 + 256 * 1024 + 64 * 1024;
-const MAGIC: &[u8; 8] = b"EDBHNT\0\x01";
+const MAGIC: &[u8; 8] = b"EDBHNT\0\x02";
 pub(super) fn encode(hints: &TransactionHints) -> Result<Vec<u8>, SemanticError> {
     let mut bytes = MAGIC.to_vec();
     put(&mut bytes, &hints.origin().encode()?)?;
@@ -49,6 +49,20 @@ pub(super) fn encode(hints: &TransactionHints) -> Result<Vec<u8>, SemanticError>
                 bytes.push(3);
                 put(&mut bytes, &crate::encoding::encode_canonical_value(value)?)?;
                 optional_u32(&mut bytes, *attribute);
+                optional_u64(&mut bytes, *entity);
+            }
+            IndexPrefix::Saevt { source, attribute, entity, value } => {
+                bytes.push(4);
+                bytes.extend_from_slice(&source.to_be_bytes());
+                optional_u32(&mut bytes, *attribute);
+                optional_u64(&mut bytes, *entity);
+                optional_value(&mut bytes, value.as_ref())?;
+            }
+            IndexPrefix::Savet { source, attribute, value, entity } => {
+                bytes.push(5);
+                bytes.extend_from_slice(&source.to_be_bytes());
+                optional_u32(&mut bytes, *attribute);
+                optional_value(&mut bytes, value.as_ref())?;
                 optional_u64(&mut bytes, *entity);
             }
         }
@@ -102,6 +116,18 @@ pub(super) fn decode(bytes: &[u8]) -> Result<TransactionHints, SemanticError> {
             3 => IndexPrefix::Vaet {
                 value: input.value()?,
                 attribute: input.optional_u32()?,
+                entity: input.optional_u64()?,
+            },
+            4 => IndexPrefix::Saevt {
+                source: input.u64()?,
+                attribute: input.optional_u32()?,
+                entity: input.optional_u64()?,
+                value: input.optional_value()?,
+            },
+            5 => IndexPrefix::Savet {
+                source: input.u64()?,
+                attribute: input.optional_u32()?,
+                value: input.optional_value()?,
                 entity: input.optional_u64()?,
             },
             _ => return Err(invalid()),

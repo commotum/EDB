@@ -70,6 +70,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         MapValue::Value(Value::String(name.clone()).into()),
                     )],
                 })],
+                edb_core::EntityRef::Id(edb_core::DB_SOURCE_SYSTEM),
             );
             let committed = peer.transact_socket(&arguments[2], request.clone(), WAIT)?;
             let report = committed.report?;
@@ -130,6 +131,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     ValueType::String,
                     Cardinality::One,
                 ))],
+                edb_core::EntityRef::Id(edb_core::DB_SOURCE_SYSTEM),
             ),
             WAIT,
         )?

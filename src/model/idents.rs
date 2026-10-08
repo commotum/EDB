@@ -32,6 +32,7 @@ impl IdentIndex {
             left.tx
                 .cmp(&right.tx)
                 .then(left.entity.cmp(&right.entity))
+                .then(left.source.cmp(&right.source))
                 .then_with(|| left.value.stored_cmp(&right.value))
                 .then_with(|| {
                     // Keep the order total even if corrupt input repeats the

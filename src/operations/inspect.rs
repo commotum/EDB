@@ -169,15 +169,25 @@ pub(super) fn inspect(
             IndexOrder::Aevt,
             IndexOrder::Avet,
             IndexOrder::Vaet,
+            IndexOrder::Saevt,
+            IndexOrder::Savet,
         ] {
             control.check()?;
-            compare(
-                &value.datoms(order)?,
-                &super::projection::derive_index_projection(&oracle, &current, order)?,
-            )?;
+            // Unrestricted AVET/SAVET reads omit projections whose shared
+            // backfill is pending at this captured value. Compare the visible
+            // projection, rather than treating incomplete maintenance as loss.
+            let visible_projection = |source: &[Datom]| {
+                let mut expected =
+                    super::projection::derive_index_projection(&oracle, source, order)?;
+                if matches!(order, IndexOrder::Avet | IndexOrder::Savet) {
+                    expected.retain(|datom| value.physical_avet_ready(datom.attribute));
+                }
+                Ok::<_, SemanticError>(expected)
+            };
+            compare(&value.datoms(order)?, &visible_projection(&current)?)?;
             compare(
                 &value.clone().history().datoms(order)?,
-                &super::projection::derive_index_projection(&oracle, &history, order)?,
+                &visible_projection(&history)?,
             )?;
         }
         metrics.current_datoms = Some(current.len() as u64);

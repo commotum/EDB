@@ -43,9 +43,10 @@ Each hit identifies an entity, value and assertion transaction. The value is the
 original string, including its capitalization and punctuation. Several strings asserted
 for a many-valued attribute on the same entity in one transaction remain distinct
 hits. Retracting and later reasserting the same string produces distinct
-assertion transactions in a retained history view. The query form can select an
-explicit database source; both candidate validation and the returned transaction
-refer to that source's view.
+assertion transactions in a retained history view. Identical strings contributed
+by different sources also retain their distinct assertion transactions. The query
+form can select an explicit database source; both candidate validation and the
+returned transaction refer to that database value's view.
 
 ## Analyzer and expression rules
 
@@ -97,8 +98,11 @@ that requirement.
 
 Candidates are checked against the supplied value's visible facts. Retained,
 `as_of`, `since`, history, filtered and speculative views must not leak a fact
-hidden by that view. The `tx` column is the visible assertion transaction, not
-the indexing time. An old assertion can still appear in history after its
+hidden by that view. Current and `as_of` visibility resolves across all sources
+before applying a source filter, so filtering out a withdrawing source cannot
+restore the withdrawn value. History filters can select the original attributed
+assertions. The `tx` column is the visible assertion transaction, not the indexing
+time. An old assertion can still appear in history after its
 current value is retracted. An attachment is fixed for its captured value.
 Indexing can change retained corpus statistics (for example, by physically
 removing no-history assertions) without changing the logical snapshot key.

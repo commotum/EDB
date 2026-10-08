@@ -104,6 +104,7 @@ pub(crate) fn install(
     ident: crate::Keyword,
     program: &Program,
     dependencies: &[Program],
+    source: crate::EntityRef,
     timeout: std::time::Duration,
 ) -> Result<crate::ServiceTransactionReport, SemanticError> {
     let config = &operator.connection;
@@ -144,9 +145,11 @@ pub(crate) fn install(
                 value: crate::Value::Function(hash).into(),
             },
         ],
+        source,
     );
     let (digest, _) = crate::encoding::canonical_submission_request(
         &request.forms,
+        &request.source,
         request.compare_basis_t,
         request.tx_instant_override,
         crate::storage::log::MAX_LOG_TRANSACTION_BYTES,

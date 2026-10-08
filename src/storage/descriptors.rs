@@ -4,22 +4,22 @@ use super::{ObjectId, root::Block};
 use crate::index::tree::TreeDescriptor;
 use crate::{ErrorCategory, IndexOrder, SemanticError};
 
-pub const INDEX_DESCRIPTOR_KIND: u16 = 3;
+pub const INDEX_DESCRIPTOR_KIND: u16 = 13;
 pub const SNAPSHOT_METADATA_KIND: u16 = 4;
-const INDEX_FIXED_BYTES: usize = 32 + 8 * 72 + 4;
+const INDEX_FIXED_BYTES: usize = 32 + 12 * 72 + 4;
 const AVET_WORK_BYTES: usize = 89;
 // No independent schema-width ceiling: the shared encoded-object bound is
 // the admission limit for this compact list of attribute IDs.
-const MAX_PENDING: usize = (super::root::MAX_BLOCK_BYTES - 20 - 8 * 32 - INDEX_FIXED_BYTES) / 4;
+const MAX_PENDING: usize = (super::root::MAX_BLOCK_BYTES - 20 - 12 * 32 - INDEX_FIXED_BYTES) / 4;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct IndexDescriptor {
     pub identity: [u8; 16],
     pub basis: u64,
     pub generation: u64,
-    /// Current EAVT, AEVT, AVET, VAET, then the same four history trees.
+    /// Current EAVT, AEVT, AVET, VAET, SAEVT, SAVET, then six history trees.
     pub trees: Vec<TreeDescriptor>,
-    /// Strictly increasing attributes whose durable AVET backfill is pending.
+    /// Strictly increasing attributes whose shared AVET/SAVET backfill is pending.
     pub pending_avet: Vec<u32>,
     /// Bounded structural checkpoints over immutable AEVT sources. Source
     /// roots are outgoing object links, not merely hashes hidden in payloads.
@@ -45,7 +45,7 @@ impl IndexDescriptor {
     pub fn encode(&self) -> Result<Vec<u8>, SemanticError> {
         self.validate()?;
         let total = 20usize
-            .saturating_add((8 + self.avet_work.len() + usize::from(self.fulltext.is_some())) * 32)
+            .saturating_add((12 + self.avet_work.len() + usize::from(self.fulltext.is_some())) * 32)
             .saturating_add(INDEX_FIXED_BYTES)
             .saturating_add(self.pending_avet.len() * 4)
             .saturating_add(5)
@@ -100,13 +100,13 @@ impl IndexDescriptor {
         }
         let block = Block::decode(expected, bytes)?;
         if block.kind != INDEX_DESCRIPTOR_KIND
-            || block.links.len() < 8
+            || block.links.len() < 12
             || block.payload.len() < INDEX_FIXED_BYTES + 5
         {
-            return Err(invalid("Expected an eight-tree index descriptor"));
+            return Err(invalid("Expected a twelve-tree index descriptor"));
         }
         let p = &block.payload;
-        let pending = u32::from_be_bytes(p[608..612].try_into().unwrap()) as usize;
+        let pending = u32::from_be_bytes(p[896..900].try_into().unwrap()) as usize;
         let work_start = INDEX_FIXED_BYTES
             .checked_add(
                 pending
@@ -132,12 +132,12 @@ impl IndexDescriptor {
         if work_count > MAX_PENDING
             || p.len() != final_offset + 1
             || p[final_offset] > 1
-            || block.links.len() != 8 + work_count + usize::from(p[final_offset])
+            || block.links.len() != 12 + work_count + usize::from(p[final_offset])
         {
             return Err(invalid("AVET work or attachment framing is invalid"));
         }
-        let mut trees = Vec::with_capacity(8);
-        for (i, root_hash) in block.links.iter().copied().take(8).enumerate() {
+        let mut trees = Vec::with_capacity(12);
+        for (i, root_hash) in block.links.iter().copied().take(12).enumerate() {
             let offset = 32 + i * 72;
             let count = u64::from_be_bytes(p[offset..offset + 8].try_into().unwrap());
             let first: ObjectId = p[offset + 8..offset + 40].try_into().unwrap();
@@ -147,8 +147,8 @@ impl IndexDescriptor {
             }
             trees.push(TreeDescriptor {
                 root_hash,
-                order: order(i % 4),
-                history: i >= 4,
+                order: order(i % 6),
+                history: i >= 6,
                 count,
                 first_hash: (count != 0).then_some(first),
                 last_hash: (count != 0).then_some(last),
@@ -177,7 +177,7 @@ impl IndexDescriptor {
                 leaf: u32::from_be_bytes(p[at + 9..at + 13].try_into().unwrap()),
                 slot: u32::from_be_bytes(p[at + 13..at + 17].try_into().unwrap()),
                 source: TreeDescriptor {
-                    root_hash: block.links[8 + i],
+                    root_hash: block.links[12 + i],
                     order: IndexOrder::Aevt,
                     history,
                     count,
@@ -191,7 +191,7 @@ impl IndexDescriptor {
             basis: u64::from_be_bytes(p[16..24].try_into().unwrap()),
             generation: u64::from_be_bytes(p[24..32].try_into().unwrap()),
             trees,
-            pending_avet: p[612..work_start]
+            pending_avet: p[900..work_start]
                 .chunks_exact(4)
                 .map(|v| u32::from_be_bytes(v.try_into().unwrap()))
                 .collect(),
@@ -205,7 +205,7 @@ impl IndexDescriptor {
     fn validate(&self) -> Result<(), SemanticError> {
         crate::t_to_tx(self.basis)?;
         if self.identity == [0; 16]
-            || self.trees.len() != 8
+            || self.trees.len() != 12
             || self.pending_avet.len() > MAX_PENDING
             || self.pending_avet.windows(2).any(|p| p[0] >= p[1])
             || self.avet_work.len() > MAX_PENDING
@@ -223,8 +223,8 @@ impl IndexDescriptor {
                     || (w.clearing && (w.directory != 0 || w.leaf != 0 || w.slot != 0))
             })
             || self.trees.iter().enumerate().any(|(i, t)| {
-                t.order != order(i % 4)
-                    || t.history != (i >= 4)
+                t.order != order(i % 6)
+                    || t.history != (i >= 6)
                     || (t.count == 0) != t.first_hash.is_none()
                     || (t.count == 0) != t.last_hash.is_none()
             })
@@ -317,6 +317,8 @@ pub(crate) fn order_tag(order: IndexOrder) -> u8 {
         IndexOrder::Aevt => 1,
         IndexOrder::Avet => 2,
         IndexOrder::Vaet => 3,
+        IndexOrder::Saevt => 4,
+        IndexOrder::Savet => 5,
     }
 }
 fn order(i: usize) -> IndexOrder {
@@ -325,6 +327,8 @@ fn order(i: usize) -> IndexOrder {
         IndexOrder::Aevt,
         IndexOrder::Avet,
         IndexOrder::Vaet,
+        IndexOrder::Saevt,
+        IndexOrder::Savet,
     ][i]
 }
 fn invalid(message: &str) -> SemanticError {

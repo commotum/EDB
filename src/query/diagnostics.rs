@@ -356,6 +356,7 @@ impl Trace {
                 [&pattern.entity, &pattern.attribute, &pattern.value]
                     .into_iter()
                     .chain(pattern.transaction.iter())
+                    .chain(pattern.fact_source.iter())
                     .chain(pattern.added.iter()),
                 bindings,
             ),

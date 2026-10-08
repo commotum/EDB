@@ -306,7 +306,11 @@ fn account(database: &DatabaseValue, key: i64, expected_balance: i64) -> Result<
 }
 
 fn final_request() -> TransactionRequest {
-    TransactionRequest::from_forms("scale-final-update", vec![set_balance(FINAL_BALANCE)])
+    TransactionRequest::from_forms(
+        "scale-final-update",
+        vec![set_balance(FINAL_BALANCE)],
+        edb_core::EntityRef::Id(edb_core::DB_SOURCE_SYSTEM),
+    )
 }
 
 fn set_balance(balance: i64) -> TxForm {
@@ -503,7 +507,11 @@ fn peer(
         let committed = submit_confirmed(
             &peer,
             endpoint,
-            TransactionRequest::new(format!("scale-import-{lane}-{batch_index}"), operations),
+            TransactionRequest::new(
+                format!("scale-import-{lane}-{batch_index}"),
+                operations,
+                edb_core::EntityRef::Id(edb_core::DB_SOURCE_SYSTEM),
+            ),
             overall_deadline,
             if batch_index == 0 {
                 probe_timeout
@@ -779,6 +787,7 @@ fn main() -> Result<()> {
                     value: Value::Function(program).into(),
                 },
             ],
+            edb_core::EntityRef::Id(edb_core::DB_SOURCE_SYSTEM),
         ),
         Instant::now() + RECONCILE_TIMEOUT,
         None,
@@ -862,6 +871,7 @@ fn main() -> Result<()> {
     let hypothetical = imported.with_forms(
         &[set_balance(123456)],
         imported.last_tx_instant().ok_or("no instant")? + 1,
+        edb_core::EntityRef::Id(edb_core::DB_SOURCE_SYSTEM),
     )?;
     account(&hypothetical.db_after, 0, 123456)?;
     account(&imported, 0, 0)?;

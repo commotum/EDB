@@ -34,6 +34,7 @@ fn transaction_entity_and_report_use_edb_names() {
         .with_edn(
             r#"[{:db/id "edb.tx" :db/doc "observed by an agent"}]"#,
             1000,
+            edb_core::EntityRef::Id(edb_core::DB_SOURCE_SYSTEM),
         )
         .unwrap();
     let tx = t_to_tx(report.db_after.basis_t()).unwrap();
@@ -142,4 +143,32 @@ fn cli_runs_queries_without_database_configuration() {
         read_edn(text.trim()).unwrap(),
         read_edn(r#"#{["Ada"]}"#).unwrap()
     );
+}
+
+#[test]
+fn cli_requires_a_structural_source_before_opening_storage() {
+    use std::process::Command;
+    let directory = tempfile::tempdir().unwrap();
+    let transaction = directory.path().join("transaction.edn");
+    std::fs::write(&transaction, "[]").unwrap();
+    for command in ["transact", "with"] {
+        for source in [None, Some("true"), Some("[]")] {
+            let mut request = Command::new(env!("CARGO_BIN_EXE_edb"));
+            request.args([command, "--database", "unopened-source-admission-test", "--file"]);
+            request.arg(&transaction);
+            if command == "transact" {
+                request.args(["--request-key", "test", "--endpoint"]);
+                request.arg(directory.path().join("absent.sock"));
+            }
+            if let Some(source) = source {
+                request.args(["--source", source]);
+            }
+            let output = request.env_remove("EDB_POSTGRES_URL").output().unwrap();
+            assert!(!output.status.success());
+            let error = String::from_utf8(output.stderr).unwrap();
+            let expected = if source.is_none() { "cli/edn-usage" } else { "edn/entity" };
+            assert!(error.contains(expected), "{command} {source:?}: {error}");
+            assert!(!error.contains("config/environment"), "{error}");
+        }
+    }
 }

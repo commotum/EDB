@@ -235,6 +235,7 @@ fn main() -> Result<()> {
             attribute,
             value: Value::Long(710_001).into(),
         }],
+        edb_core::EntityRef::Id(edb_core::DB_SOURCE_SYSTEM),
     );
     let writer = start_writer(&connection, &database, &format!("{run}-before"))?;
     let submitter = Connection::attach_configured(connection.clone(), writer.client(), 2)?;
@@ -315,6 +316,7 @@ fn main() -> Result<()> {
                 attribute,
                 value: Value::Long(710_002).into(),
             }],
+            edb_core::EntityRef::Id(edb_core::DB_SOURCE_SYSTEM),
         ),
         WAIT,
     )?;

@@ -78,6 +78,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     .unique(Unique::Identity),
                 ),
             ],
+            edb_core::EntityRef::Id(edb_core::DB_SOURCE_SYSTEM),
         ),
         timeout,
     )?;
@@ -87,6 +88,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         Keyword::new("person", "rename"),
         &rename_program,
         &[],
+        edb_core::EntityRef::Id(edb_core::DB_SOURCE_SYSTEM),
         timeout,
     )?;
     let inserted = connection.transact(
@@ -104,6 +106,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     value: Value::Keyword(Keyword::new("person", "ada")).into(),
                 },
             ],
+            edb_core::EntityRef::Id(edb_core::DB_SOURCE_SYSTEM),
         ),
         timeout,
     )?;
@@ -239,6 +242,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let speculative = original.with_forms(
         &[rename_form("Hypothetical Ada"), registration.clone()],
         speculative_instant,
+        edb_core::EntityRef::Id(edb_core::DB_SOURCE_SYSTEM),
     )?;
     let chained = speculative.db_after.with(
         &[TxOp::Add {
@@ -250,13 +254,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             value: Value::String("Hypothetical registration".into()).into(),
         }],
         speculative_instant + 1,
+        edb_core::EntityRef::Id(edb_core::DB_SOURCE_SYSTEM),
     )?;
     assert_ne!(names(&chained.db_after)?, names(&original)?);
     assert_ne!(chained.db_after.pull(&pattern, person)?, original_pull);
     assert_eq!(connection.db().basis_t(), original.basis_t());
     assert_eq!(original.pull(&pattern, person)?, original_pull);
     let changed = connection.transact(
-        TransactionRequest::from_forms("rename", vec![rename_form("Ada Lovelace"), registration]),
+        TransactionRequest::from_forms(
+            "rename",
+            vec![rename_form("Ada Lovelace"), registration],
+            edb_core::EntityRef::Id(edb_core::DB_SOURCE_SYSTEM),
+        ),
         timeout,
     )?;
     assert_eq!(original.pull(&pattern, person)?, original_pull);

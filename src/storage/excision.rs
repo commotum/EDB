@@ -23,11 +23,13 @@ pub const CHECKPOINT_KIND: u16 = 40;
 pub const PLAN_KIND: u16 = 41;
 pub const TOMBSTONE_KIND: u16 = 42;
 pub const COMPLETION_KIND: u16 = 43;
-const ORDERS: [IndexOrder; 4] = [
+const ORDERS: [IndexOrder; 6] = [
     IndexOrder::Eavt,
     IndexOrder::Aevt,
     IndexOrder::Avet,
     IndexOrder::Vaet,
+    IndexOrder::Saevt,
+    IndexOrder::Savet,
 ];
 
 pub(crate) fn work_key(identity: &[u8; 16]) -> String {
@@ -324,7 +326,7 @@ impl ExcisionJob {
             );
             let completion = put_completion(store, database.identity, generation, &all)?;
             let genesis = Database::bootstrap()?;
-            let mut trees = Vec::with_capacity(8);
+            let mut trees = Vec::with_capacity(12);
             for history in [false, true] {
                 for order in ORDERS {
                     control()?;
@@ -1210,7 +1212,9 @@ fn plan_value(
 ) -> Result<ExcisionPlan, SemanticError> {
     let mut requests = BTreeMap::new();
     let mut account = 1024 * 1024u64;
-    for d in value.prefix_cursor(&IndexPrefix::Aevt {
+    // Request identity is its assertion transaction, even after an ordinary
+    // retraction or replacement changes the request entity's current record.
+    for d in value.clone().history().prefix_cursor(&IndexPrefix::Aevt {
         attribute: crate::DB_EXCISE as u32,
         entity: None,
         value: None,
@@ -1218,7 +1222,7 @@ fn plan_value(
         control()?;
         let d = d?;
         let t = tx_to_t(d.tx)?;
-        if complete.contains(&(t, d.entity)) {
+        if !d.added || complete.contains(&(t, d.entity)) {
             continue;
         }
         account = account.saturating_add(512);
@@ -1254,9 +1258,11 @@ fn plan_value(
                     return Err(capacity(account, maximum));
                 }
             }
+            // Distinct sources can contribute the same cardinality-one value.
+            // Interpret that value once without changing its retained datoms.
             match (d.attribute, &d.value) {
                 (a, Value::Ref(e)) if a == crate::DB_EXCISE as u32 => {
-                    if target.replace(*e).is_some() {
+                    if target.replace(*e).is_some_and(|previous| previous != *e) {
                         return Err(fault("excision/request", "Multiple frozen targets"));
                     }
                 }
@@ -1272,12 +1278,20 @@ fn plan_value(
                         crate::t_to_tx(raw)?;
                         raw
                     };
-                    if cutoff.replace(ExcisionCutoff::BeforeT(t)).is_some() {
+                    let selected = ExcisionCutoff::BeforeT(t);
+                    if cutoff
+                        .replace(selected)
+                        .is_some_and(|previous| previous != selected)
+                    {
                         return Err(fault("excision/request", "Conflicting cutoffs"));
                     }
                 }
                 (a, Value::Instant(i)) if a == crate::DB_EXCISE_BEFORE as u32 => {
-                    if cutoff.replace(ExcisionCutoff::BeforeInstant(*i)).is_some() {
+                    let selected = ExcisionCutoff::BeforeInstant(*i);
+                    if cutoff
+                        .replace(selected)
+                        .is_some_and(|previous| previous != selected)
+                    {
                         return Err(fault("excision/request", "Conflicting cutoffs"));
                     }
                 }
@@ -1390,4 +1404,101 @@ fn plan_value(
         return Err(capacity(account, maximum));
     }
     Ok(plan)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{DB_EXCISE, DB_EXCISE_BEFORE, DB_EXCISE_BEFORE_T, EntityRef, TxOp};
+
+    fn add(entity: EntityRef, attribute: u64, value: Value) -> TxOp {
+        TxOp::Add {
+            entity,
+            attribute: attribute as u32,
+            value: value.into(),
+        }
+    }
+
+    #[test]
+    fn frozen_request_counts_values_across_sources_and_survives_retraction() {
+        for (cutoff_attribute, cutoff_value) in [
+            (DB_EXCISE_BEFORE_T, Value::Long(1)),
+            (DB_EXCISE_BEFORE, Value::Instant(1)),
+        ] {
+            let first = Database::bootstrap()
+                .unwrap()
+                .with(
+                    &[
+                        add(EntityRef::Temp("request".into()), DB_EXCISE, Value::Ref(99)),
+                        add(
+                            EntityRef::Temp("request".into()),
+                            cutoff_attribute,
+                            cutoff_value.clone(),
+                        ),
+                    ],
+                    1,
+                    EntityRef::Id(99),
+                )
+                .unwrap();
+            let request = first.tempids["request"];
+            let second = first
+                .db_after
+                .with(
+                    &[
+                        add(EntityRef::Id(request), DB_EXCISE, Value::Ref(99)),
+                        add(
+                            EntityRef::Id(request),
+                            cutoff_attribute,
+                            cutoff_value.clone(),
+                        ),
+                    ],
+                    2,
+                    EntityRef::Id(98),
+                )
+                .unwrap();
+            let plan = plan_value(
+                &second.db_after.database_value(),
+                &BTreeSet::new(),
+                u64::MAX,
+                &mut || Ok(()),
+            )
+            .unwrap();
+            assert_eq!(plan.predicates_len(), 2);
+            assert!(
+                plan.frozen_predicates()
+                    .iter()
+                    .all(|p| p.request.target == 99 && p.before_t == 1)
+            );
+            let retracted = second
+                .db_after
+                .with(
+                    &[TxOp::Retract {
+                        entity: EntityRef::Id(request),
+                        attribute: DB_EXCISE as u32,
+                        value: Some(Value::Ref(99).into()),
+                    }],
+                    3,
+                    EntityRef::Id(97),
+                )
+                .unwrap();
+            let plan = plan_value(
+                &retracted.db_after.database_value(),
+                &BTreeSet::new(),
+                u64::MAX,
+                &mut || Ok(()),
+            )
+            .unwrap();
+            assert_eq!(plan.predicates_len(), 2);
+            assert_eq!(
+                plan.frozen_predicates()
+                    .iter()
+                    .map(|p| p.request.request_t)
+                    .collect::<Vec<_>>(),
+                vec![1, 2]
+            );
+            let before = second.db_after.datoms(View::History, IndexOrder::Eavt);
+            let after = retracted.db_after.datoms(View::History, IndexOrder::Eavt);
+            assert!(before.iter().all(|d| after.contains(d)));
+        }
+    }
 }

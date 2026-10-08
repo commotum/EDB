@@ -264,3 +264,40 @@ impl<'a> Decoder<'a> {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn search_pages_and_headers_reject_pre_source_formats() {
+        let page = Page::Leaf(vec![FulltextRecord {
+            key: vec![1],
+            value: vec![2],
+        }]);
+        let mut encoded = page.encode().unwrap();
+        assert!(Page::decode(sha256(&encoded), &encoded).is_ok());
+        encoded[4..8].copy_from_slice(&1u32.to_be_bytes());
+        assert_eq!(
+            Page::decode(sha256(&encoded), &encoded).unwrap_err().code,
+            "fulltext/page-format"
+        );
+        let projection = FulltextProjection {
+            source_manifest: [1; 32],
+            source_basis_t: 1,
+            source_generation: 0,
+            analyzer_version: 1,
+            root_hash: [2; 32],
+            record_count: 1,
+            encoded_bytes: 15,
+            block_count: 1,
+        };
+        let mut encoded = projection.encode();
+        assert_eq!(FulltextProjection::decode(&encoded).unwrap(), projection);
+        encoded[4..8].copy_from_slice(&1u32.to_be_bytes());
+        assert_eq!(
+            FulltextProjection::decode(&encoded).unwrap_err().code,
+            "fulltext/header-format"
+        );
+    }
+}

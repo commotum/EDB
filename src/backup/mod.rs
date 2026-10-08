@@ -24,3 +24,6 @@ use point::{parse_point_name, point_header, same_information};
 use repository::fault;
 pub(crate) use verify::{verify_read_point, walk_repository};
 const POINT_KIND: u16 = 60;
+
+#[cfg(test)]
+mod tests;

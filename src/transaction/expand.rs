@@ -10,8 +10,14 @@ pub(super) fn normalize_forms_against(
     db_before: &DatabaseValue,
     forms: &[TxForm],
     functions: Option<&TxFunctions>,
+    source: &EntityRef,
     max_primitive_ops: usize,
 ) -> Result<Vec<TxOp>, SemanticError> {
+    let lowered_source = match source {
+        EntityRef::Edn(text) => Some(crate::edn_transaction::lower_entity_ref(db_before, text)?),
+        _ => None,
+    };
+    let source = lowered_source.as_ref().unwrap_or(source);
     let lowered;
     let forms = if forms_have_edn(forms) {
         lowered = crate::edn_transaction::lower_forms(db_before, forms)?;
@@ -32,7 +38,7 @@ pub(super) fn normalize_forms_against(
         (
             Normalizer {
                 db_before,
-                explicit_tempids: BTreeSet::new(),
+                explicit_tempids: explicit_tempids(&[], source),
                 next_anonymous: 0,
                 primitive_count: 0,
                 max_primitive_ops,
@@ -51,7 +57,7 @@ pub(super) fn normalize_forms_against(
     )?;
     let mut normalizer = Normalizer {
         db_before,
-        explicit_tempids: explicit_tempids(&expanded),
+        explicit_tempids: explicit_tempids(&expanded, source),
         next_anonymous: 0,
         primitive_count: 0,
         max_primitive_ops,
@@ -60,6 +66,7 @@ pub(super) fn normalize_forms_against(
     for form in expanded {
         normalizer.expand_form(&form, &mut ops)?;
     }
+    super::input::lower_ops_entity_refs(db_before, &mut ops)?;
     Ok(ops)
 }
 
@@ -122,13 +129,20 @@ fn expand_local_calls(
     Ok(())
 }
 
-fn explicit_tempids(forms: &[TxForm]) -> BTreeSet<String> {
+fn explicit_tempids(forms: &[TxForm], source: &EntityRef) -> BTreeSet<String> {
     fn entity(reference: &EntityRef, names: &mut BTreeSet<String>) {
         match reference {
             EntityRef::Temp(name) => {
                 names.insert(name.clone());
             }
             EntityRef::LookupInput { value: input, .. } => value(input, names),
+            EntityRef::Edn(text) => {
+                if let Ok(crate::edn::EdnValue::String(name)) = crate::edn::read_edn(text)
+                    && name != "edb.tx"
+                {
+                    names.insert(name);
+                }
+            }
             _ => {}
         }
     }
@@ -163,6 +177,7 @@ fn explicit_tempids(forms: &[TxForm]) -> BTreeSet<String> {
         }
     }
     let mut names = BTreeSet::new();
+    entity(source, &mut names);
     for form in forms {
         match form {
             TxForm::EntityMap(input) => map(input, &mut names),

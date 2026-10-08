@@ -498,7 +498,7 @@ You discontinue a composite tuple attribute by adding `:db.tuple/discontinued` `
 [:db/add :semester/year+season :db.tuple/discontinued true]
 ```
 
-When you discontinue a composite tuple attribute, EDB permanently stops generating datoms when any of its constituents are transacted. Existing composite tuple datoms remain in the database.
+When you discontinue a composite tuple attribute, EDB permanently stops generating datoms when any of its constituents are transacted. Existing composite tuple datoms remain in the database. The attribute remains database-managed; direct tuple assertions and retractions do not change its stored value.
 
 `:db.tuple/discontinued` only applies to installed composite tuple attributes. It cannot be set to true in the transaction that installs the composite. Discontinuing a composite tuple attribute is permanent. Create a new composite tuple attribute if you later decide you need the discontinued one.
 
@@ -678,7 +678,7 @@ fn score_predicates() -> TxFunctions {
 }
 ```
 
-Supply these callbacks to the local `Database::with_forms` call (or use `DatabaseValue::with_functions` for primitive operations). For a running writer, register the same check with `NativeRegistryBuilder::entity_predicate` and its cooperative context instead. Both receive the complete proposed db-after, while the entity spec and deployment binding are resolved using db-before.
+Supply these callbacks to the local `Database::with_forms` call (or use `DatabaseValue::with_functions` with native transaction forms). For a running writer, register the same check with `NativeRegistryBuilder::entity_predicate` and its cooperative context instead. Both receive the complete proposed db-after, while the entity spec and deployment binding are resolved using db-before.
 
 After installing the score attributes as cardinality-one Long attributes, install the guard:
 

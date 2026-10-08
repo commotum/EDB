@@ -153,7 +153,8 @@ impl LogValue {
     }
 
     /// Full datoms for one T or transaction entity id. Genesis (T=0) is not a
-    /// submitted transaction; absent or future transactions return `None`.
+    /// submitted transaction; valid genesis or future coordinates return `None`.
+    /// Missing data inside the captured committed range is an error.
     pub fn tx_data(
         &self,
         transaction: IndexTransaction,

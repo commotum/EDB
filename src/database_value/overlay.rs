@@ -7,7 +7,7 @@ use super::read_context::{LogicalReadObserver, ReadValueIdentity, TransactionRea
 use super::resolve::schema_has_avet;
 use super::value::{DatabaseValue, ReadBasis};
 use crate::index::compare_prefix;
-use crate::index::overlay::{EavSet, OverlayIndexCursor, OverlayIndexes};
+use crate::index::overlay::{EavSet, EavsSet, OverlayIndexCursor, OverlayIndexes};
 use crate::model::identity::validate_frontier;
 use crate::{
     DB_IDENT, Datom, IndexBoundary, IndexOrder, IndexPrefix, Schema, SemanticError, Value,
@@ -81,7 +81,7 @@ pub(super) struct OverlayDeltaCursor {
     pub(super) indexed: OverlayIndexCursor,
     pub(super) indexed_next: Option<Arc<Datom>>,
     pub(super) backfill: std::iter::Peekable<IntoIter<OverlayCursorDatom>>,
-    pub(super) backfill_eavs: EavSet,
+    pub(super) backfill_eavs: EavsSet,
     pub(super) schema: Arc<Schema>,
     pub(super) history: bool,
     pub(super) order: IndexOrder,
@@ -98,7 +98,7 @@ impl OverlayDeltaCursor {
         reverse: bool,
         boundary: Option<&crate::index::NormalizedIndexBoundary>,
     ) -> Self {
-        let mut backfill_eavs = EavSet::default();
+        let mut backfill_eavs = EavsSet::default();
         if !history {
             for item in &backfill {
                 backfill_eavs.insert(Arc::new(item.datom.clone()));
@@ -400,7 +400,7 @@ impl TransactionOverlay {
         // the transaction-local AVET. Do the same bounded, attribute-local
         // backfill when this transaction first enables AVET; the durable base
         // remains streamed and untouched.
-        if order == IndexOrder::Avet {
+        if matches!(order, IndexOrder::Avet | IndexOrder::Savet) {
             for attribute in self.newly_enabled_avet.iter().copied() {
                 for datom in self.base.basis_prefix_cursor(
                     history,
@@ -518,6 +518,42 @@ impl TransactionOverlay {
             TransactionOverlayBaseCursor::Empty
         };
 
+        // A source-only SAVET range spans every eligible attribute. Keep
+        // its ready base range and add only the attributes enabled locally.
+        if matches!(
+            prefix,
+            IndexPrefix::Savet {
+                attribute: None,
+                ..
+            }
+        ) {
+            for attribute in self.newly_enabled_avet.iter().copied() {
+                for datom in self.base.basis_prefix_cursor(
+                    history,
+                    &IndexPrefix::Aevt {
+                        attribute,
+                        entity: None,
+                        value: None,
+                    },
+                    None,
+                    physical_context.clone(),
+                )? {
+                    let datom = datom?;
+                    if let Some(observer) = &observer {
+                        observer.charge_datom(&datom)?;
+                    }
+                    if compare_prefix(&datom, prefix).is_eq()
+                        && (history || !removals.contains(&datom))
+                    {
+                        delta.push(OverlayCursorDatom {
+                            datom,
+                            precharged: true,
+                        });
+                    }
+                }
+            }
+        }
+
         let indexed = self.indexes.cursor(
             history,
             prefix.order(),
@@ -555,14 +591,14 @@ impl TransactionOverlay {
             // backfill. Steady indexed reads retain the caller's selective
             // AVET seek, while disabling can filter the old AVET range away.
             IndexPrefix::Avet { attribute, .. }
-                if self.newly_enabled_avet.binary_search(attribute).is_ok() =>
-            {
-                IndexPrefix::Aevt {
-                    attribute: *attribute,
-                    entity: None,
-                    value: None,
-                }
-            }
+            | IndexPrefix::Savet {
+                attribute: Some(attribute),
+                ..
+            } if self.newly_enabled_avet.binary_search(attribute).is_ok() => IndexPrefix::Aevt {
+                attribute: *attribute,
+                entity: None,
+                value: None,
+            },
             _ => prefix.clone(),
         }
     }
@@ -617,7 +653,9 @@ impl TransactionOverlayScanCursor<'_> {
             (Some(_), None) => Ok(self.base_next.take()),
             (None, Some(_)) => Ok(self.delta_next.take()),
             (Some(base), Some(delta))
-                if !self.history && same_stored_eav(&base.datom, &delta.datom) =>
+                if !self.history
+                    && same_stored_eav(&base.datom, &delta.datom)
+                    && base.datom.source == delta.datom.source =>
             {
                 if u64::from(delta.datom.attribute) == crate::DB_ALTER_ATTRIBUTE {
                     // Repeated alter hooks are distinct immutable history
@@ -675,8 +713,8 @@ impl TransactionOverlayScanCursor<'_> {
 
 pub(super) fn overlay_index_member(schema: &Schema, datom: &Datom, order: IndexOrder) -> bool {
     match order {
-        IndexOrder::Eavt | IndexOrder::Aevt => true,
-        IndexOrder::Avet => schema
+        IndexOrder::Eavt | IndexOrder::Aevt | IndexOrder::Saevt => true,
+        IndexOrder::Avet | IndexOrder::Savet => schema
             .attribute(datom.attribute)
             .is_ok_and(|attribute| attribute.indexed || attribute.unique.is_some()),
         IndexOrder::Vaet => schema

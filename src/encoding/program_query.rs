@@ -419,7 +419,7 @@ fn encode_clauses(
                 for term in [&pattern.entity, &pattern.attribute, &pattern.value] {
                     encode_term(output, term, depth + 1, budget)?;
                 }
-                for term in [&pattern.transaction, &pattern.added] {
+                for term in [&pattern.transaction, &pattern.fact_source, &pattern.added] {
                     put_bool(output, term.is_some());
                     if let Some(term) = term {
                         encode_term(output, term, depth + 1, budget)?;
@@ -547,6 +547,11 @@ fn decode_clauses(
                 } else {
                     None
                 };
+                let fact_source = if cursor.boolean()? {
+                    Some(decode_term(cursor, depth + 1, budget)?)
+                } else {
+                    None
+                };
                 let added = if cursor.boolean()? {
                     Some(decode_term(cursor, depth + 1, budget)?)
                 } else {
@@ -558,6 +563,7 @@ fn decode_clauses(
                     attribute,
                     value,
                     transaction,
+                    fact_source,
                     added,
                 }))
             }

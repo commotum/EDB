@@ -126,12 +126,13 @@ pub(crate) fn resolve_tuple_input(
 pub(crate) fn observe_reserved_transaction_inputs(
     reserved: &mut ReservedAllocation,
     ops: &[TxOp],
+    source: &EntityRef,
 ) -> Result<(), SemanticError> {
     enum Input<'a> {
         Entity(&'a EntityRef),
         Value(&'a TxValue),
     }
-    let mut pending = Vec::new();
+    let mut pending = vec![Input::Entity(source)];
     for op in ops {
         match op {
             TxOp::Add {
@@ -184,24 +185,102 @@ pub(crate) fn observe_reserved_transaction_inputs(
                 }
             }
         }
-        while let Some(input) = pending.pop() {
-            match input {
-                Input::Entity(EntityRef::Id(entity)) => reserved.observe_entity(*entity)?,
-                Input::Entity(EntityRef::Lookup { attribute, value }) => {
-                    reserved.observe_attribute(*attribute)?;
-                    reserved.observe_value(value)?;
-                }
-                Input::Entity(EntityRef::LookupInput { attribute, value }) => {
-                    reserved.observe_attribute(*attribute)?;
-                    pending.push(Input::Value(value));
-                }
-                Input::Entity(EntityRef::Ident(_) | EntityRef::Temp(_) | EntityRef::Tx) => {}
-                Input::Value(TxValue::Scalar(value)) => reserved.observe_value(value)?,
-                Input::Value(TxValue::Entity(entity)) => pending.push(Input::Entity(entity)),
-                Input::Value(TxValue::Tuple(slots)) => {
-                    pending.extend(slots.iter().flatten().map(Input::Value))
+    }
+    while let Some(input) = pending.pop() {
+        match input {
+            Input::Entity(EntityRef::Id(entity)) => reserved.observe_entity(*entity)?,
+            Input::Entity(EntityRef::Lookup { attribute, value }) => {
+                reserved.observe_attribute(*attribute)?;
+                reserved.observe_value(value)?;
+            }
+            Input::Entity(EntityRef::LookupInput { attribute, value }) => {
+                reserved.observe_attribute(*attribute)?;
+                pending.push(Input::Value(value));
+            }
+            Input::Entity(EntityRef::Ident(_) | EntityRef::Temp(_) | EntityRef::Tx) => {}
+            Input::Entity(EntityRef::Edn(_)) => {
+                unreachable!("EDN references are lowered before allocation")
+            }
+            Input::Value(TxValue::Scalar(value)) => reserved.observe_value(value)?,
+            Input::Value(TxValue::Entity(entity)) => pending.push(Input::Entity(entity)),
+            Input::Value(TxValue::Tuple(slots)) => {
+                pending.extend(slots.iter().flatten().map(Input::Value))
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Lower schema-independent reference syntax before identity and allocation
+/// analysis. The ordinary EDN adapter produces typed refs, never EDN wrappers.
+pub(crate) fn lower_ops_entity_refs(
+    database: &DatabaseValue,
+    ops: &mut [TxOp],
+) -> Result<(), SemanticError> {
+    fn entity(database: &DatabaseValue, input: &mut EntityRef) -> Result<(), SemanticError> {
+        match input {
+            EntityRef::Edn(text) => {
+                *input = crate::edn_transaction::lower_entity_ref(database, text)?;
+                validate_entity_input(input)?;
+            }
+            EntityRef::LookupInput { value: input, .. } => value(database, input)?,
+            _ => {}
+        }
+        Ok(())
+    }
+    fn value(database: &DatabaseValue, input: &mut TxValue) -> Result<(), SemanticError> {
+        match input {
+            TxValue::Entity(input) => entity(database, input)?,
+            TxValue::Tuple(slots) => {
+                for slot in slots.iter_mut().flatten() {
+                    value(database, slot)?;
                 }
             }
+            TxValue::Scalar(_) => {}
+        }
+        Ok(())
+    }
+    for op in ops {
+        match op {
+            TxOp::Add {
+                entity: id,
+                value: input,
+                ..
+            } => {
+                entity(database, id)?;
+                value(database, input)?;
+            }
+            TxOp::Retract {
+                entity: id,
+                value: input,
+                ..
+            } => {
+                entity(database, id)?;
+                if let Some(input) = input {
+                    value(database, input)?;
+                }
+            }
+            TxOp::Cas {
+                entity: id,
+                old,
+                new,
+                ..
+            } => {
+                entity(database, id)?;
+                if let Some(input) = old {
+                    value(database, input)?;
+                }
+                value(database, new)?;
+            }
+            TxOp::RetractEntity(id) | TxOp::MatchPartition { entity: id, .. } => {
+                entity(database, id)?
+            }
+            TxOp::ForcePartition { partition, .. } => entity(database, partition)?,
+            TxOp::Ensure { entity: id, spec } => {
+                entity(database, id)?;
+                entity(database, spec)?;
+            }
+            TxOp::InstallAttribute(_) | TxOp::AlterAttribute(_) => {}
         }
     }
     Ok(())
@@ -212,16 +291,20 @@ pub(crate) fn observe_reserved_transaction_inputs(
 /// normalized datom establishes it as an entity; otherwise `replace_tempid`
 /// raises `:db.error/tempid-not-an-entity` (`db.clj:7376-7390`). Running this
 /// after form normalization also covers tempids introduced by nested maps.
-pub(crate) fn validated_entity_tempids(ops: &[TxOp]) -> Result<BTreeSet<String>, SemanticError> {
+pub(crate) fn validated_entity_tempids(
+    ops: &[TxOp],
+    source: &EntityRef,
+) -> Result<BTreeSet<String>, SemanticError> {
     let mut entities = BTreeSet::new();
     let mut values = BTreeSet::new();
+    collect_tempids_entity(source, &mut values);
     for op in ops {
         collect_tempids_op(op, &mut entities, &mut values);
     }
     if let Some(tempid) = values.difference(&entities).next() {
         return Err(SemanticError::incorrect(
             "transaction/tempid-not-an-entity",
-            format!("tempid '{tempid}' is used only as a value in transaction data"),
+            format!("tempid '{tempid}' is used as a source or value without an entity position in transaction data"),
         )
         .detail("tempid", tempid.clone()));
     }
@@ -336,6 +419,9 @@ fn validate(mut pending: Vec<Input<'_>>) -> Result<(), SemanticError> {
         match input {
             Input::Entity(EntityRef::Lookup { value, .. }, _)
             | Input::Value(TxValue::Scalar(value), _, _) => validate_stored_input(value)?,
+            Input::Entity(EntityRef::Edn(text), _) => {
+                crate::edn_transaction::canonical_entity_ref(text)?;
+            }
             Input::Entity(EntityRef::LookupInput { value, .. }, depth) => {
                 pending.push(Input::Value(value, depth + 1, false))
             }
@@ -567,6 +653,10 @@ impl DatabaseValue {
             EntityRef::Lookup { attribute, value } => lookup(*attribute, value)?,
             EntityRef::LookupInput { attribute, value } => {
                 self.resolve_lookup_input_with(*attribute, value, lookup)?
+            }
+            EntityRef::Edn(text) => {
+                let lowered = crate::edn_transaction::lower_entity_ref(self, text)?;
+                Some(self.lookup_input_entity(&lowered, lookup)?)
             }
             EntityRef::Temp(_) | EntityRef::Tx => {
                 return Err(SemanticError::incorrect(

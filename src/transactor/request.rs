@@ -1,5 +1,7 @@
 //! Submission data, exact reports and admitted-result waiting; no scheduling policy.
-use crate::{DatabaseValue, Digest, ErrorCategory, ProgramCall, SemanticError, TxForm, TxOp};
+use crate::{
+    DatabaseValue, Digest, EntityRef, ErrorCategory, ProgramCall, SemanticError, TxForm, TxOp,
+};
 use std::collections::BTreeMap;
 use std::sync::{Arc, mpsc};
 use std::time::Duration;
@@ -11,24 +13,32 @@ pub struct TransactionRequest {
     /// Persisted function calls and entity maps are transaction data, not a
     /// second out-of-band request channel.
     pub forms: Vec<TxForm>,
+    /// Ordinary entity reference identifying this transaction’s contributor.
+    pub source: EntityRef,
     pub compare_basis_t: Option<u64>,
     pub tx_instant_override: Option<i64>,
 }
 
 impl TransactionRequest {
-    pub fn new(request_key: impl Into<String>, operations: Vec<TxOp>) -> Self {
+    pub fn new(request_key: impl Into<String>, operations: Vec<TxOp>, source: EntityRef) -> Self {
         Self {
             request_key: request_key.into(),
             forms: operations.into_iter().map(TxForm::Op).collect(),
+            source,
             compare_basis_t: None,
             tx_instant_override: None,
         }
     }
 
-    pub fn from_forms(request_key: impl Into<String>, forms: Vec<TxForm>) -> Self {
+    pub fn from_forms(
+        request_key: impl Into<String>,
+        forms: Vec<TxForm>,
+        source: EntityRef,
+    ) -> Self {
         Self {
             request_key: request_key.into(),
             forms,
+            source,
             compare_basis_t: None,
             tx_instant_override: None,
         }

@@ -11,8 +11,8 @@ pub(crate) fn derive_index_projection(
         .iter()
         .filter_map(|datom| {
             let included = match order {
-                IndexOrder::Eavt | IndexOrder::Aevt => Ok(true),
-                IndexOrder::Avet => database
+                IndexOrder::Eavt | IndexOrder::Aevt | IndexOrder::Saevt => Ok(true),
+                IndexOrder::Avet | IndexOrder::Savet => database
                     .schema()
                     .attribute(datom.attribute)
                     .map(|attribute| attribute.indexed || attribute.unique.is_some()),
@@ -45,19 +45,17 @@ fn same_stored_datom(left: &Datom, right: &Datom) -> bool {
         && left.attribute == right.attribute
         && left.value.stored_eq(&right.value)
         && left.tx == right.tx
+        && left.source == right.source
         && left.added == right.added
 }
 
-/// Prove that physical EAVT history is an authenticated-log projection, not
-/// merely a self-consistent alternative tree. Within one logical E/A/V group,
-/// each contiguous omitted run must reduce to empty by repeatedly deleting a
-/// retraction followed by an assertion. This admits the nested omissions that
-/// successive consolidation jobs can expose (`R R A A`), while rejecting a
-/// fabricated fact, a one-sided omission, or an omission across a retained
-/// fact. Every matched retraction must also have a noHistory=true opportunity
-/// at a transaction boundary on or after it. This proves permission, not the
-/// exact scheduler instant: there is no precise time at which an
-/// eligible pair is physically forgotten.
+/// Prove that physical EAVT history is an authenticated-log projection.
+/// A noHistory omission removes a retraction together with every assertion of
+/// the same stored EAV that it withdrew. One retraction can withdraw several
+/// source contributions. Keeping only part of that group would lose attribution
+/// or allow a removed retraction to expose an older assertion.
+/// Permission is established at any noHistory=true transaction boundary on or
+/// after the retraction; physical maintenance has no prescribed instant.
 pub(crate) fn validate_physical_history_projection(
     replayed: &[Datom],
     physical: &[Datom],
@@ -86,7 +84,7 @@ pub(crate) fn validate_physical_history_projection(
         }
 
         let mut expected_in_group = 0_usize;
-        let mut missing_start = 0_usize;
+        let mut retained = vec![false; group.len()];
         while let Some(actual) = physical.get(physical_offset) {
             match logical_eav_cmp(actual, &group[0]) {
                 std::cmp::Ordering::Less => {
@@ -108,16 +106,11 @@ pub(crate) fn validate_physical_history_projection(
                     "physical EAVT history contains a fact absent from authoritative replay",
                 ));
             }
-            validate_history_omission(
-                &group[missing_start..expected_in_group],
-                &opportunities,
-                through_t,
-            )?;
+            retained[expected_in_group] = true;
             expected_in_group += 1;
-            missing_start = expected_in_group;
             physical_offset += 1;
         }
-        validate_history_omission(&group[missing_start..], &opportunities, through_t)?;
+        validate_history_omission(group, &retained, &opportunities, through_t)?;
     }
 
     if physical_offset != physical.len() {
@@ -218,40 +211,82 @@ fn no_history_opportunities(
 }
 
 fn validate_history_omission(
-    omitted: &[Datom],
+    group: &[Datom],
+    retained: &[bool],
     opportunities: &BTreeMap<u32, Vec<(u64, u64)>>,
     through_t: u64,
 ) -> Result<(), SemanticError> {
-    let mut retractions = Vec::<&Datom>::new();
-    for datom in omitted {
-        if !datom.added {
-            retractions.push(datom);
-            continue;
+    // Logical numeric ordering can group different stored representations.
+    // Retractions withdraw an exact stored EAV, so validate each separately.
+    let mut positions: Vec<_> = (0..group.len()).collect();
+    positions.sort_by(|a, b| {
+        group[*a]
+            .value
+            .stored_cmp(&group[*b].value)
+            .then_with(|| group[*a].cmp_in(&group[*b], IndexOrder::Eavt))
+    });
+    let mut start = 0;
+    while start < positions.len() {
+        let mut end = start + 1;
+        while end < positions.len()
+            && group[positions[start]]
+                .value
+                .stored_eq(&group[positions[end]].value)
+        {
+            end += 1;
         }
-        let Some(retraction) = retractions.pop() else {
-            return Err(integrity_fault(
-                "physical EAVT history omission is not reducible noHistory history",
-            ));
-        };
-        let retraction_t = crate::tx_to_t(retraction.tx)?;
-        let permitted = opportunities
-            .get(&retraction.attribute)
-            .is_some_and(|intervals| {
-                let candidate = intervals.partition_point(|(_, end)| *end < retraction_t);
-                intervals
-                    .get(candidate)
-                    .is_some_and(|(start, _)| *start <= through_t)
-            });
-        if !permitted {
-            return Err(integrity_fault(
-                "physical EAVT history omission had no noHistory=true opportunity",
-            ));
+        let stored = &positions[start..end];
+        let mut at = 0;
+        // Assertions preceding the newest retraction are still current.
+        while at < stored.len() && group[stored[at]].added {
+            if !retained[stored[at]] {
+                return Err(integrity_fault(
+                    "physical history omits an unwithdrawn assertion",
+                ));
+            }
+            at += 1;
         }
-    }
-    if !retractions.is_empty() {
-        return Err(integrity_fault(
-            "physical EAVT history omits an unpaired authoritative retraction",
-        ));
+        while at < stored.len() {
+            let retraction_index = stored[at];
+            let retraction = &group[retraction_index];
+            let mut next = at + 1;
+            while next < stored.len() && group[stored[next]].added {
+                next += 1;
+            }
+            let assertions = &stored[at + 1..next];
+            let kept = retained[retraction_index];
+            if assertions
+                .iter()
+                .any(|i| retained[*i] != kept || group[*i].tx >= retraction.tx)
+            {
+                return Err(integrity_fault(
+                    "physical history must retain or omit a retraction with all withdrawn source contributions",
+                ));
+            }
+            if !kept {
+                if assertions.is_empty() {
+                    return Err(integrity_fault(
+                        "physical history omits an unpaired retraction",
+                    ));
+                }
+                let retraction_t = crate::tx_to_t(retraction.tx)?;
+                let permitted = opportunities
+                    .get(&retraction.attribute)
+                    .is_some_and(|intervals| {
+                        let candidate = intervals.partition_point(|(_, end)| *end < retraction_t);
+                        intervals
+                            .get(candidate)
+                            .is_some_and(|(start, _)| *start <= through_t)
+                    });
+                if !permitted {
+                    return Err(integrity_fault(
+                        "physical EAVT history omission had no noHistory=true opportunity",
+                    ));
+                }
+            }
+            at = next;
+        }
+        start = end;
     }
     Ok(())
 }
@@ -262,4 +297,63 @@ fn integrity_fault(message: impl Into<String>) -> SemanticError {
         "integrity/tree-history-projection-mismatch",
         message,
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn event(t: u64, source: u64, added: bool) -> Datom {
+        Datom {
+            entity: 100,
+            attribute: 99,
+            value: crate::Value::Long(1916),
+            tx: crate::t_to_tx(t).unwrap(),
+            source,
+            added,
+        }
+    }
+
+    #[test]
+    fn history_omission_preserves_complete_global_withdrawals() {
+        let group = vec![
+            event(3, 102, false),
+            event(2, 101, true),
+            event(1, 100, true),
+        ];
+        let opportunities = BTreeMap::from([(99, vec![(4, 5)])]);
+        for kept in [[true, true, true], [false, false, false]] {
+            validate_history_omission(&group, &kept, &opportunities, 5).unwrap();
+        }
+        for kept in [
+            [false, true, false],
+            [false, false, true],
+            [true, false, false],
+            [true, true, false],
+        ] {
+            assert!(validate_history_omission(&group, &kept, &opportunities, 5).is_err());
+        }
+        assert!(validate_history_omission(&group, &[false; 3], &BTreeMap::new(), 5).is_err());
+    }
+
+    #[test]
+    fn history_omission_keeps_new_assertions_and_separates_withdrawals() {
+        let group = vec![
+            event(6, 100, true),
+            event(5, 102, false),
+            event(4, 101, true),
+            event(3, 102, false),
+            event(2, 101, true),
+            event(1, 100, true),
+        ];
+        let opportunities = BTreeMap::from([(99, vec![(0, 6)])]);
+        for kept in [
+            [true, false, false, true, true, true],
+            [true, true, true, false, false, false],
+            [true, false, false, false, false, false],
+        ] {
+            validate_history_omission(&group, &kept, &opportunities, 6).unwrap();
+        }
+        assert!(validate_history_omission(&group, &[false; 6], &opportunities, 6).is_err());
+    }
 }

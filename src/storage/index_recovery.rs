@@ -126,13 +126,15 @@ pub(crate) fn prepare_recovery(
     let protection = crate::storage::protection::protection(store, &[])?;
     store.set_write_protection(Some(protection.clone()))?;
     let result = (|| {
-        let mut trees = Vec::with_capacity(8);
+        let mut trees = Vec::with_capacity(12);
         for history in [false, true] {
             for order in [
                 IndexOrder::Eavt,
                 IndexOrder::Aevt,
                 IndexOrder::Avet,
                 IndexOrder::Vaet,
+                IndexOrder::Saevt,
+                IndexOrder::Savet,
             ] {
                 control()?;
                 let datoms = database.datoms(

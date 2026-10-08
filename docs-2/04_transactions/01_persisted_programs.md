@@ -89,8 +89,11 @@ Programs emit ordinary transaction forms without attribution arguments.
 resulting facts receive the enclosing transaction's source. `EmitCall` passes
 the called program's ordinary application arguments. The function binding's
 source describes who installed the binding; the enclosing transaction's source
-attributes its emitted writes. That transaction source participates in canonical
-request identity. EDB generates the transaction timestamp automatically after
+attributes its emitted writes. Matching binding contributions from several
+sources still resolve one distinct `:db/fn` value. Database read instructions
+likewise count distinct values across source contributions. The transaction
+source participates in canonical request identity. EDB generates the transaction
+timestamp automatically after
 selecting its instant, without reading the clock during program expansion.
 Ensure and partition instructions retain their existing operands because they
 do not emit datoms.

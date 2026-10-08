@@ -65,15 +65,23 @@ impl DatabaseValue {
     }
 
     pub fn values(&self, entity: u64, attribute: u32) -> Result<Vec<Value>, SemanticError> {
-        Ok(self
-            .datoms_with_prefix(&IndexPrefix::Eavt {
-                entity,
-                attribute: Some(attribute),
-                value: None,
-            })?
-            .into_iter()
-            .map(|datom| datom.value)
-            .collect())
+        let mut values: Vec<Value> = Vec::new();
+        for datom in self.prefix_cursor(&IndexPrefix::Eavt {
+            entity,
+            attribute: Some(attribute),
+            value: None,
+        })? {
+            let value = datom?.value;
+            if !values
+                .iter()
+                .rev()
+                .take_while(|prior| prior.index_cmp(&value).is_eq())
+                .any(|prior| prior.stored_eq(&value))
+            {
+                values.push(value);
+            }
+        }
+        Ok(values)
     }
 
     /// Resolve a lookup ref against this exact value. `:db/ident` follows the
@@ -113,8 +121,7 @@ impl DatabaseValue {
             .map(|datom| datom.entity))
     }
 
-    /// Normalize a zero-to-four-component EAVT boundary against this exact
-    /// database value.
+    /// Normalize a zero-to-five-component EAVT boundary against this exact value.
     pub fn eavt_boundary(
         &self,
         components: IndexComponents<
@@ -122,17 +129,20 @@ impl DatabaseValue {
             AttributeName,
             RawIndexValue,
             IndexTransaction,
+            EntityIdentifier,
         >,
     ) -> Result<IndexBoundary, SemanticError> {
         let components = match components {
             IndexComponents::Empty => IndexComponents::Empty,
             IndexComponents::One(entity) => {
-                IndexComponents::One(self.require_index_entity(&entity)?)
+                let entity = self.require_index_entity(&entity)?;
+                IndexComponents::One(entity)
             }
-            IndexComponents::Two(entity, attribute) => IndexComponents::Two(
-                self.require_index_entity(&entity)?,
-                self.resolve_attribute(&attribute)?,
-            ),
+            IndexComponents::Two(entity, attribute) => {
+                let entity = self.require_index_entity(&entity)?;
+                let attribute = self.resolve_attribute(&attribute)?;
+                IndexComponents::Two(entity, attribute)
+            }
             IndexComponents::Three(entity, attribute, value) => {
                 let entity = self.require_index_entity(&entity)?;
                 let attribute = self.resolve_attribute(&attribute)?;
@@ -145,12 +155,18 @@ impl DatabaseValue {
                 let value = self.normalize_index_value(attribute, value)?;
                 IndexComponents::Four(entity, attribute, value, transaction)
             }
+            IndexComponents::Five(entity, attribute, value, transaction, source) => {
+                let entity = self.require_index_entity(&entity)?;
+                let attribute = self.resolve_attribute(&attribute)?;
+                let value = self.normalize_index_value(attribute, value)?;
+                let source = self.require_index_entity(&source)?;
+                IndexComponents::Five(entity, attribute, value, transaction, source)
+            }
         };
         Self::validated_boundary(IndexBoundary::Eavt(components))
     }
 
-    /// Normalize a zero-to-four-component AEVT boundary against this exact
-    /// database value.
+    /// Normalize a zero-to-five-component AEVT boundary against this exact value.
     pub fn aevt_boundary(
         &self,
         components: IndexComponents<
@@ -158,17 +174,20 @@ impl DatabaseValue {
             EntityIdentifier,
             RawIndexValue,
             IndexTransaction,
+            EntityIdentifier,
         >,
     ) -> Result<IndexBoundary, SemanticError> {
         let components = match components {
             IndexComponents::Empty => IndexComponents::Empty,
             IndexComponents::One(attribute) => {
-                IndexComponents::One(self.resolve_attribute(&attribute)?)
+                let attribute = self.resolve_attribute(&attribute)?;
+                IndexComponents::One(attribute)
             }
-            IndexComponents::Two(attribute, entity) => IndexComponents::Two(
-                self.resolve_attribute(&attribute)?,
-                self.require_index_entity(&entity)?,
-            ),
+            IndexComponents::Two(attribute, entity) => {
+                let attribute = self.resolve_attribute(&attribute)?;
+                let entity = self.require_index_entity(&entity)?;
+                IndexComponents::Two(attribute, entity)
+            }
             IndexComponents::Three(attribute, entity, value) => {
                 let attribute = self.resolve_attribute(&attribute)?;
                 let entity = self.require_index_entity(&entity)?;
@@ -181,12 +200,18 @@ impl DatabaseValue {
                 let value = self.normalize_index_value(attribute, value)?;
                 IndexComponents::Four(attribute, entity, value, transaction)
             }
+            IndexComponents::Five(attribute, entity, value, transaction, source) => {
+                let attribute = self.resolve_attribute(&attribute)?;
+                let entity = self.require_index_entity(&entity)?;
+                let value = self.normalize_index_value(attribute, value)?;
+                let source = self.require_index_entity(&source)?;
+                IndexComponents::Five(attribute, entity, value, transaction, source)
+            }
         };
         Self::validated_boundary(IndexBoundary::Aevt(components))
     }
 
-    /// Normalize a zero-to-four-component AVET boundary and require the
-    /// qualified attribute's logical membership and physical readiness.
+    /// Normalize a zero-to-five-component AVET boundary against this exact value.
     pub fn avet_boundary(
         &self,
         components: IndexComponents<
@@ -194,12 +219,14 @@ impl DatabaseValue {
             RawIndexValue,
             EntityIdentifier,
             IndexTransaction,
+            EntityIdentifier,
         >,
     ) -> Result<IndexBoundary, SemanticError> {
         let components = match components {
             IndexComponents::Empty => IndexComponents::Empty,
             IndexComponents::One(attribute) => {
-                IndexComponents::One(self.resolve_ready_avet_attribute(&attribute)?)
+                let attribute = self.resolve_ready_avet_attribute(&attribute)?;
+                IndexComponents::One(attribute)
             }
             IndexComponents::Two(attribute, value) => {
                 let attribute = self.resolve_ready_avet_attribute(&attribute)?;
@@ -218,13 +245,18 @@ impl DatabaseValue {
                 let entity = self.require_index_entity(&entity)?;
                 IndexComponents::Four(attribute, value, entity, transaction)
             }
+            IndexComponents::Five(attribute, value, entity, transaction, source) => {
+                let attribute = self.resolve_ready_avet_attribute(&attribute)?;
+                let value = self.normalize_index_value(attribute, value)?;
+                let entity = self.require_index_entity(&entity)?;
+                let source = self.require_index_entity(&source)?;
+                IndexComponents::Five(attribute, value, entity, transaction, source)
+            }
         };
         Self::validated_boundary(IndexBoundary::Avet(components))
     }
 
-    /// Normalize a zero-to-four-component VAET boundary. Its leading value is
-    /// always an entity reference, independent of whether an attribute suffix
-    /// is present.
+    /// Normalize a zero-to-five-component VAET boundary against this exact value.
     pub fn vaet_boundary(
         &self,
         components: IndexComponents<
@@ -232,28 +264,133 @@ impl DatabaseValue {
             AttributeName,
             EntityIdentifier,
             IndexTransaction,
+            EntityIdentifier,
         >,
     ) -> Result<IndexBoundary, SemanticError> {
         let components = match components {
             IndexComponents::Empty => IndexComponents::Empty,
-            IndexComponents::One(value) => IndexComponents::One(self.normalize_vaet_value(value)?),
-            IndexComponents::Two(value, attribute) => IndexComponents::Two(
-                self.normalize_vaet_value(value)?,
-                self.resolve_attribute(&attribute)?,
-            ),
-            IndexComponents::Three(value, attribute, entity) => IndexComponents::Three(
-                self.normalize_vaet_value(value)?,
-                self.resolve_attribute(&attribute)?,
-                self.require_index_entity(&entity)?,
-            ),
-            IndexComponents::Four(value, attribute, entity, transaction) => IndexComponents::Four(
-                self.normalize_vaet_value(value)?,
-                self.resolve_attribute(&attribute)?,
-                self.require_index_entity(&entity)?,
-                transaction,
-            ),
+            IndexComponents::One(value) => {
+                let value = self.normalize_vaet_value(value)?;
+                IndexComponents::One(value)
+            }
+            IndexComponents::Two(value, attribute) => {
+                let value = self.normalize_vaet_value(value)?;
+                let attribute = self.resolve_attribute(&attribute)?;
+                IndexComponents::Two(value, attribute)
+            }
+            IndexComponents::Three(value, attribute, entity) => {
+                let value = self.normalize_vaet_value(value)?;
+                let attribute = self.resolve_attribute(&attribute)?;
+                let entity = self.require_index_entity(&entity)?;
+                IndexComponents::Three(value, attribute, entity)
+            }
+            IndexComponents::Four(value, attribute, entity, transaction) => {
+                let value = self.normalize_vaet_value(value)?;
+                let attribute = self.resolve_attribute(&attribute)?;
+                let entity = self.require_index_entity(&entity)?;
+                IndexComponents::Four(value, attribute, entity, transaction)
+            }
+            IndexComponents::Five(value, attribute, entity, transaction, source) => {
+                let value = self.normalize_vaet_value(value)?;
+                let attribute = self.resolve_attribute(&attribute)?;
+                let entity = self.require_index_entity(&entity)?;
+                let source = self.require_index_entity(&source)?;
+                IndexComponents::Five(value, attribute, entity, transaction, source)
+            }
         };
         Self::validated_boundary(IndexBoundary::Vaet(components))
+    }
+
+    /// Normalize a zero-to-five-component SAEVT boundary against this exact value.
+    pub fn saevt_boundary(
+        &self,
+        components: IndexComponents<
+            EntityIdentifier,
+            AttributeName,
+            EntityIdentifier,
+            RawIndexValue,
+            IndexTransaction,
+        >,
+    ) -> Result<IndexBoundary, SemanticError> {
+        let components = match components {
+            IndexComponents::Empty => IndexComponents::Empty,
+            IndexComponents::One(source) => {
+                let source = self.require_index_entity(&source)?;
+                IndexComponents::One(source)
+            }
+            IndexComponents::Two(source, attribute) => {
+                let source = self.require_index_entity(&source)?;
+                let attribute = self.resolve_attribute(&attribute)?;
+                IndexComponents::Two(source, attribute)
+            }
+            IndexComponents::Three(source, attribute, entity) => {
+                let source = self.require_index_entity(&source)?;
+                let attribute = self.resolve_attribute(&attribute)?;
+                let entity = self.require_index_entity(&entity)?;
+                IndexComponents::Three(source, attribute, entity)
+            }
+            IndexComponents::Four(source, attribute, entity, value) => {
+                let source = self.require_index_entity(&source)?;
+                let attribute = self.resolve_attribute(&attribute)?;
+                let entity = self.require_index_entity(&entity)?;
+                let value = self.normalize_index_value(attribute, value)?;
+                IndexComponents::Four(source, attribute, entity, value)
+            }
+            IndexComponents::Five(source, attribute, entity, value, transaction) => {
+                let source = self.require_index_entity(&source)?;
+                let attribute = self.resolve_attribute(&attribute)?;
+                let entity = self.require_index_entity(&entity)?;
+                let value = self.normalize_index_value(attribute, value)?;
+                IndexComponents::Five(source, attribute, entity, value, transaction)
+            }
+        };
+        Self::validated_boundary(IndexBoundary::Saevt(components))
+    }
+
+    /// Normalize a zero-to-five-component SAVET boundary against this exact value.
+    pub fn savet_boundary(
+        &self,
+        components: IndexComponents<
+            EntityIdentifier,
+            AttributeName,
+            RawIndexValue,
+            EntityIdentifier,
+            IndexTransaction,
+        >,
+    ) -> Result<IndexBoundary, SemanticError> {
+        let components = match components {
+            IndexComponents::Empty => IndexComponents::Empty,
+            IndexComponents::One(source) => {
+                let source = self.require_index_entity(&source)?;
+                IndexComponents::One(source)
+            }
+            IndexComponents::Two(source, attribute) => {
+                let source = self.require_index_entity(&source)?;
+                let attribute = self.resolve_ready_avet_attribute(&attribute)?;
+                IndexComponents::Two(source, attribute)
+            }
+            IndexComponents::Three(source, attribute, value) => {
+                let source = self.require_index_entity(&source)?;
+                let attribute = self.resolve_ready_avet_attribute(&attribute)?;
+                let value = self.normalize_index_value(attribute, value)?;
+                IndexComponents::Three(source, attribute, value)
+            }
+            IndexComponents::Four(source, attribute, value, entity) => {
+                let source = self.require_index_entity(&source)?;
+                let attribute = self.resolve_ready_avet_attribute(&attribute)?;
+                let value = self.normalize_index_value(attribute, value)?;
+                let entity = self.require_index_entity(&entity)?;
+                IndexComponents::Four(source, attribute, value, entity)
+            }
+            IndexComponents::Five(source, attribute, value, entity, transaction) => {
+                let source = self.require_index_entity(&source)?;
+                let attribute = self.resolve_ready_avet_attribute(&attribute)?;
+                let value = self.normalize_index_value(attribute, value)?;
+                let entity = self.require_index_entity(&entity)?;
+                IndexComponents::Five(source, attribute, value, entity, transaction)
+            }
+        };
+        Self::validated_boundary(IndexBoundary::Savet(components))
     }
 
     pub(super) fn validated_boundary(

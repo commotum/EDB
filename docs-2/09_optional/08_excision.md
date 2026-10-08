@@ -139,7 +139,7 @@ Bind `$` to your database and `?e` to `17592186044458`, using the [EDN query API
 
 ## How it Works
 
-After the excision request, the background worker builds an inactive successor generation. It rewrites the transaction log without matching datoms, prepares all eight current/history indexes and fulltext search, and stages sanitized receipts. The completed root and excision completion metadata become visible together. No partially completed successor is activated. Bounded persisted checkpoints allow interrupted work to resume.
+After the excision request, the background worker builds an inactive successor generation. It rewrites the transaction log without matching datoms, preserving each surviving assertion and retraction with its original transaction and source. It prepares all twelve current/history indexes and fulltext search, and stages sanitized receipts. The completed root and excision completion metadata become visible together. No partially completed successor is activated. Bounded persisted checkpoints allow interrupted work to resume.
 
 Activation is one guarded publication of the replacement log, indexes, metadata and receipts. The writer verifies that the source is still current, the candidate is exactly the next generation, and the database basis, allocation coordinates and last transaction time are unchanged. Activation creates no additional history transaction. The same publication clears the excision work checkpoint and invalidates restore checkpoints and completed restore receipts that could otherwise retain or return the old generation.
 

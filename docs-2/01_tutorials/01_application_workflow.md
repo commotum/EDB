@@ -8,6 +8,10 @@ public APIs, and never provisions PostgreSQL or starts a writer.
 Each application request supplies one required `source: EntityRef` alongside
 its transaction data. Every assertion and retraction it produces carries that
 source, including generated changes and the automatic `:db/txInstant` assertion.
+The schema request establishes the ordinary `:application.source/demo` entity
+through a tempid and supplies that tempid as its source. Later requests supply
+its ident. The source is independent of project ownership and other domain
+relationships.
 
 Build both programs:
 
@@ -255,6 +259,9 @@ additional time and foreground SQL after the baseline counters. Its generated
 hints are generated locally; the sample does not transport them. The remote SDK
 provides the separate versioned hint channel described below.
 
+`SOURCE_OK` verifies application receipts and speculative results carry that
+ordinary source, with exactly one automatic timestamp each. It also checks
+source-selected current facts and attributed assertion/retraction history.
 `APPLICATION_OK` reports the semantic checks. One explicit `QUERY_WARMUP`
 calculation reports its own time and SQL before the 20-calculation
 loop. The configured eight-entry cache is used throughout. `QUERY_SQL` measures that

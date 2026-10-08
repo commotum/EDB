@@ -325,13 +325,16 @@ which will never see or consider datoms from the incorrect transaction. It
 remains a history value; it cannot be passed to Pull or entity navigation.
 
 Filtering a transaction excludes both its assertions and its retractions.
-Predicates run **before** current-value retraction collapse. Consequently,
-excluding `tx4` from a point-in-time view leaves the old assertion of 50 visible,
-as well as the later assertion of 100: the retraction of 50 was part of `tx4`.
-Even a cardinality-one attribute can therefore have multiple visible values
-under an arbitrary custom filter. Filtering does not repair the transaction
-history or transact a correction. A later retraction of 9999 in `tx5` also remains
-visible in the corrected history; it belongs to a different transaction.
+In a point-in-time view, EDB resolves current visibility across all sources
+**before** applying custom predicates. Excluding `tx4` therefore cannot restore
+the withdrawn assertion of 50; the current count in this example remains 100.
+Likewise, selecting one source cannot expose a contribution withdrawn by another
+source. An `as_of` boundary determines which transactions participate in that
+visibility calculation; `since` and custom predicates select surviving
+assertions. History predicates select retained assertions and retractions
+directly. Filtering does not repair the transaction history or transact a
+correction. The retraction of 9999 in `tx5` remains visible in the corrected
+history; it belongs to a different transaction.
 
 Retraction collapse matches entity, attribute and stored value, regardless of
 the original asserting source. In particular, top-level decimal values with

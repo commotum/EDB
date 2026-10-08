@@ -15,20 +15,23 @@ impl Database {
         &self,
         forms: &[TxForm],
         functions: &TxFunctions,
+        source: &EntityRef,
     ) -> Result<Vec<TxOp>, SemanticError> {
-        self.normalize_forms_with_limit(forms, functions, usize::MAX)
+        self.normalize_forms_with_limit(forms, functions, source, usize::MAX)
     }
 
     pub(crate) fn normalize_forms_with_limit(
         &self,
         forms: &[TxForm],
         functions: &TxFunctions,
+        source: &EntityRef,
         max_primitive_ops: usize,
     ) -> Result<Vec<TxOp>, SemanticError> {
         normalize_forms_against(
             &self.database_value(),
             forms,
             Some(functions),
+            source,
             max_primitive_ops,
         )
     }
@@ -40,11 +43,13 @@ impl Database {
         forms: &[TxForm],
         functions: &TxFunctions,
         tx_instant: i64,
+        source: EntityRef,
     ) -> Result<TxReport, SemanticError> {
         self.with_forms_with_defaults(
             forms,
             functions,
             tx_instant,
+            source,
             &crate::TransactionDefaults::default(),
         )
     }
@@ -54,13 +59,15 @@ impl Database {
         forms: &[TxForm],
         functions: &TxFunctions,
         tx_instant: i64,
+        source: EntityRef,
         defaults: &crate::TransactionDefaults,
     ) -> Result<TxReport, SemanticError> {
-        let ops = self.normalize_forms(forms, functions)?;
+        let ops = self.normalize_forms(forms, functions, &source)?;
         let assessed = assess_operations(
             &self.database_value(),
             &ops,
             tx_instant,
+            &source,
             defaults,
             Some(functions),
         )?;
@@ -76,11 +83,13 @@ impl DatabaseValue {
         forms: &[TxForm],
         functions: &TxFunctions,
         tx_instant: i64,
+        source: EntityRef,
     ) -> Result<crate::SpeculativeTransactionReport, SemanticError> {
         self.with_functions_and_defaults(
             forms,
             functions,
             tx_instant,
+            source,
             &crate::TransactionDefaults::default(),
         )
     }
@@ -90,11 +99,13 @@ impl DatabaseValue {
         forms: &[TxForm],
         functions: &TxFunctions,
         tx_instant: i64,
+        source: EntityRef,
         defaults: &crate::TransactionDefaults,
     ) -> Result<crate::SpeculativeTransactionReport, SemanticError> {
         let base = self.speculation_base()?;
-        let ops = normalize_forms_against(&base, forms, Some(functions), usize::MAX)?;
-        let assessed = assess_operations(&base, &ops, tx_instant, defaults, Some(functions))?;
+        let ops = normalize_forms_against(&base, forms, Some(functions), &source, usize::MAX)?;
+        let assessed =
+            assess_operations(&base, &ops, tx_instant, &source, defaults, Some(functions))?;
         Ok(crate::SpeculativeTransactionReport {
             db_before: self.clone(),
             db_after: assessed.db_after.with_speculation_view(self),
@@ -108,12 +119,14 @@ impl DatabaseValue {
         &self,
         ops: &[TxOp],
         tx_instant: i64,
+        source: EntityRef,
         defaults: &crate::TransactionDefaults,
     ) -> Result<crate::SpeculativeTransactionReport, SemanticError> {
         validate_ops_input(ops)?;
         self.with_forms_with_defaults(
             &ops.iter().cloned().map(TxForm::Op).collect::<Vec<_>>(),
             tx_instant,
+            source,
             defaults,
         )
     }
@@ -124,11 +137,13 @@ impl DatabaseValue {
         &self,
         ops: &[TxOp],
         tx_instant: i64,
+        source: EntityRef,
     ) -> Result<crate::SpeculativeTransactionReport, SemanticError> {
         validate_ops_input(ops)?;
         self.with_forms(
             &ops.iter().cloned().map(TxForm::Op).collect::<Vec<_>>(),
             tx_instant,
+            source,
         )
     }
 
@@ -141,19 +156,22 @@ impl DatabaseValue {
         &self,
         forms: &[TxForm],
         tx_instant: i64,
+        source: EntityRef,
     ) -> Result<crate::SpeculativeTransactionReport, SemanticError> {
-        self.with_forms_with_limits(forms, tx_instant, SpeculationLimits::default())
+        self.with_forms_with_limits(forms, tx_instant, source, SpeculationLimits::default())
     }
 
     pub fn with_forms_with_limits(
         &self,
         forms: &[TxForm],
         tx_instant: i64,
+        source: EntityRef,
         limits: SpeculationLimits,
     ) -> Result<crate::SpeculativeTransactionReport, SemanticError> {
         self.with_forms_with_limits_and_defaults(
             forms,
             tx_instant,
+            source,
             limits,
             &crate::TransactionDefaults::default(),
         )
@@ -163,11 +181,13 @@ impl DatabaseValue {
         &self,
         forms: &[TxForm],
         tx_instant: i64,
+        source: EntityRef,
         defaults: &crate::TransactionDefaults,
     ) -> Result<crate::SpeculativeTransactionReport, SemanticError> {
         self.with_forms_with_limits_and_defaults(
             forms,
             tx_instant,
+            source,
             SpeculationLimits::default(),
             defaults,
         )
@@ -178,12 +198,14 @@ impl DatabaseValue {
         &self,
         forms: &[TxForm],
         tx_instant: i64,
+        source: EntityRef,
         limits: SpeculationLimits,
         defaults: &crate::TransactionDefaults,
     ) -> Result<crate::SpeculativeTransactionReport, SemanticError> {
         self.with_forms_with_execution_options(
             forms,
             tx_instant,
+            source,
             limits,
             &crate::TransactionExecutionOptions {
                 defaults: defaults.clone(),
@@ -199,10 +221,11 @@ impl DatabaseValue {
         &self,
         forms: &[TxForm],
         tx_instant: i64,
+        source: EntityRef,
         limits: SpeculationLimits,
         options: &crate::TransactionExecutionOptions,
     ) -> Result<crate::SpeculativeTransactionReport, SemanticError> {
-        let assessed = assess_forms(self, forms, tx_instant, limits, options)?;
+        let assessed = assess_forms(self, forms, tx_instant, &source, limits, options)?;
         Ok(crate::SpeculativeTransactionReport {
             db_before: self.clone(),
             db_after: assessed.db_after.with_speculation_view(self),
@@ -218,9 +241,10 @@ impl DatabaseValue {
     pub(crate) fn normalize_persisted_forms_with_limit(
         &self,
         forms: &[TxForm],
+        source: &EntityRef,
         max_primitive_ops: usize,
     ) -> Result<Vec<TxOp>, SemanticError> {
-        normalize_forms_against(self, forms, None, max_primitive_ops)
+        normalize_forms_against(self, forms, None, source, max_primitive_ops)
     }
 }
 
@@ -230,6 +254,7 @@ pub(crate) fn assess_operations(
     base: &DatabaseValue,
     ops: &[TxOp],
     tx_instant: i64,
+    source: &EntityRef,
     defaults: &crate::TransactionDefaults,
     functions: Option<&TxFunctions>,
 ) -> Result<crate::transaction::assess::TieredAssessment, SemanticError> {
@@ -238,6 +263,7 @@ pub(crate) fn assess_operations(
             base,
             ops,
             tx_instant,
+            source,
             crate::transaction::assess::AssessmentLimits {
                 max_read_datoms: u64::MAX,
                 max_read_bytes: u64::MAX,
@@ -276,10 +302,18 @@ pub(crate) fn assess_forms(
     base: &DatabaseValue,
     forms: &[TxForm],
     tx_instant: i64,
+    source: &EntityRef,
     limits: SpeculationLimits,
     options: &crate::TransactionExecutionOptions,
 ) -> Result<ValidatedTransaction, SemanticError> {
-    assess_forms_with_clock(base, forms, TxClock::Fixed(tx_instant), limits, options)
+    assess_forms_with_clock(
+        base,
+        forms,
+        TxClock::Fixed(tx_instant),
+        source,
+        limits,
+        options,
+    )
 }
 
 /// Durable admission selects the transaction clock only after functions and
@@ -289,6 +323,7 @@ pub(crate) fn assess_durable_forms(
     forms: &[TxForm],
     server_now: i64,
     option_override: Option<i64>,
+    source: &EntityRef,
     limits: SpeculationLimits,
     options: &crate::TransactionExecutionOptions,
 ) -> Result<ValidatedTransaction, SemanticError> {
@@ -299,6 +334,7 @@ pub(crate) fn assess_durable_forms(
             server_now,
             option_override,
         },
+        source,
         limits,
         options,
     )
@@ -316,6 +352,7 @@ fn assess_forms_with_clock(
     base: &DatabaseValue,
     forms: &[TxForm],
     clock: TxClock,
+    source: &EntityRef,
     limits: SpeculationLimits,
     options: &crate::TransactionExecutionOptions,
 ) -> Result<ValidatedTransaction, SemanticError> {
@@ -327,6 +364,7 @@ fn assess_forms_with_clock(
     };
     use std::sync::Mutex;
     validate_forms_input(forms)?;
+    super::input::validate_entity_input(source)?;
     if limits.max_operations == 0
         || limits.max_read_datoms == 0
         || limits.max_read_bytes == 0
@@ -400,7 +438,8 @@ fn assess_forms_with_clock(
             &options.native,
         )?
     };
-    let ops = before.normalize_persisted_forms_with_limit(&expanded, limits.max_operations)?;
+    let ops =
+        before.normalize_persisted_forms_with_limit(&expanded, source, limits.max_operations)?;
     drop(expansion_phase);
     let _assessment_phase = operation.phase(crate::OperationKind::TransactionAssessment);
     let tx_instant = match clock {
@@ -415,6 +454,7 @@ fn assess_forms_with_clock(
         &before,
         &ops,
         tx_instant,
+        source,
         crate::transaction::assess::AssessmentLimits {
             max_read_datoms: remaining.datoms,
             max_read_bytes: remaining.retained_bytes,

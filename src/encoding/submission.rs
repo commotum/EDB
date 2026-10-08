@@ -13,7 +13,7 @@ use crate::{DatabaseIdentity, ServiceTransactionReport, TransactionRequest};
 
 const REQUEST: u8 = 11;
 const RESPONSE: u8 = 12;
-pub(super) const VERSION: u8 = 6;
+pub(super) const VERSION: u8 = 7;
 
 pub(crate) struct WireReport {
     pub before: ExactEndpoint,
@@ -38,6 +38,7 @@ pub(crate) fn encode_submission(
     put_string(&mut body, identity.database_id())?;
     put_string(&mut body, identity.lineage_id())?;
     put_string(&mut body, &request.request_key)?;
+    encode_entity_ref(&mut body, &request.source)?;
     body.push(u8::from(request.compare_basis_t.is_some()));
     if let Some(value) = request.compare_basis_t {
         put_u64(&mut body, value);
@@ -68,6 +69,7 @@ pub(crate) fn decode_submission(
     }
     let identity = DatabaseIdentity::new(cursor.string()?, cursor.string()?);
     let request_key = cursor.string()?;
+    let source = decode_entity_ref(&mut cursor)?;
     let compare_basis_t = if cursor.boolean()? {
         Some(cursor.u64()?)
     } else {
@@ -91,6 +93,7 @@ pub(crate) fn decode_submission(
         TransactionRequest {
             request_key,
             forms,
+            source,
             compare_basis_t,
             tx_instant_override,
         },
@@ -487,4 +490,74 @@ pub(crate) fn decode_submission_outcome(bytes: &[u8]) -> Result<WireOutcome, Sem
     };
     cursor.finish()?;
     Ok(result)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn request_roundtrip_preserves_explicit_source_and_identity() {
+        let identity = DatabaseIdentity::new("catalog", "lineage");
+        for source in [
+            EntityRef::Id(99),
+            EntityRef::Edn(r#"[:source/name "julia"]"#.into()),
+            EntityRef::Ident(Keyword::new("contributor", "julia")),
+            EntityRef::Temp("contributor".into()),
+            EntityRef::Lookup {
+                attribute: crate::DB_IDENT as u32,
+                value: Value::Keyword(Keyword::new("contributor", "julia")),
+            },
+        ] {
+            let request = TransactionRequest::new("key", Vec::new(), source.clone())
+                .comparing_basis(12)
+                .with_tx_instant(34);
+            let (_, decoded) =
+                decode_submission(&encode_submission(&identity, &request).unwrap()).unwrap();
+            assert_eq!(decoded.source, source);
+            assert_eq!(decoded.request_key, "key");
+            assert_eq!(decoded.compare_basis_t, Some(12));
+            assert_eq!(decoded.tx_instant_override, Some(34));
+        }
+        let a = crate::submission_request_digest(&[], &EntityRef::Id(99), None, None).unwrap();
+        let b = crate::submission_request_digest(&[], &EntityRef::Id(98), None, None).unwrap();
+        assert_ne!(a, b);
+    }
+
+    #[test]
+    fn old_submission_version_is_rejected_without_inventing_source() {
+        let old = encode_blob(REQUEST, &[VERSION - 1]).unwrap();
+        assert_eq!(
+            decode_submission(&old).unwrap_err().code,
+            "transport/version"
+        );
+    }
+}
+
+#[cfg(test)]
+#[test]
+fn deferred_edn_source_identity_is_canonical_without_database_resolution() {
+    let a = crate::submission_request_digest(
+        &[],
+        &EntityRef::Edn(r#"[:source/name "julia"]"#.into()),
+        None,
+        None,
+    )
+    .unwrap();
+    let b = crate::submission_request_digest(
+        &[],
+        &EntityRef::Edn("[  :source/name   \"julia\"  ]".into()),
+        None,
+        None,
+    )
+    .unwrap();
+    assert_eq!(a, b);
+    let changed = crate::submission_request_digest(
+        &[],
+        &EntityRef::Edn(r#"[:source/name "jake"]"#.into()),
+        None,
+        None,
+    )
+    .unwrap();
+    assert_ne!(a, changed);
 }

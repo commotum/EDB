@@ -101,13 +101,15 @@ impl BlockDatabase {
                 )?,
             )
         };
-        let mut trees = Vec::with_capacity(8);
+        let mut trees = Vec::with_capacity(12);
         for history in [false, true] {
             for order in [
                 IndexOrder::Eavt,
                 IndexOrder::Aevt,
                 IndexOrder::Avet,
                 IndexOrder::Vaet,
+                IndexOrder::Saevt,
+                IndexOrder::Savet,
             ] {
                 let built = crate::index::tree::build_tree(
                     order,

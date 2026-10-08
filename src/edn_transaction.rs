@@ -1,7 +1,7 @@
 //! EDN transaction syntax, retained unresolved until the authoritative db-before.
 //!
-//! This is an additive request representation, not a durable datom encoding or
-//! another transaction evaluator. Existing typed requests keep their old hashes.
+//! Forms remain unresolved until assessment. Source belongs to the enclosing
+//! request and is resolved alongside its ordinary entity references.
 use crate::edn::{EdnValue, read_edn, write_edn};
 use crate::{
     Attribute, AttributeRef, CallableRef, Cardinality, Database, DatabaseValue, EntityMap,
@@ -130,9 +130,41 @@ pub fn read_edn_transaction(text: &str) -> Result<Vec<TxForm>, SemanticError> {
         .collect()
 }
 
+/// Canonicalize an unresolved entity reference without inspecting a database.
+/// Lookup values retain their EDN shape until the authoritative schema is known.
+pub(crate) fn canonical_entity_ref(text: &str) -> Result<String, SemanticError> {
+    let value = read_edn(text)?;
+    let valid = match &value {
+        EdnValue::Long(id) => *id >= 0,
+        EdnValue::Keyword(_) => true,
+        EdnValue::String(id) => !id.is_empty() && !id.starts_with(':'),
+        EdnValue::List(values) | EdnValue::Vector(values) => values.len() == 2,
+        EdnValue::Tagged(tag, _) => tag.qualified_name() == "edb/ref",
+        _ => false,
+    };
+    if !valid {
+        return Err(error(
+            "edn/entity",
+            "entity requires an ID, ident, tempid string or lookup reference",
+        ));
+    }
+    write_edn(&canonicalize(value)?)
+}
+
+pub(crate) fn lower_entity_ref(
+    database: &DatabaseValue,
+    text: &str,
+) -> Result<EntityRef, SemanticError> {
+    Adapter { database }.entity(&read_edn(text)?)
+}
+
 impl TransactionRequest {
-    pub fn from_edn(request_key: impl Into<String>, text: &str) -> Result<Self, SemanticError> {
-        Ok(Self::from_forms(request_key, read_edn_transaction(text)?))
+    pub fn from_edn(
+        request_key: impl Into<String>,
+        text: &str,
+        source: EntityRef,
+    ) -> Result<Self, SemanticError> {
+        Ok(Self::from_forms(request_key, read_edn_transaction(text)?, source))
     }
 }
 
@@ -141,17 +173,19 @@ impl DatabaseValue {
         &self,
         text: &str,
         tx_instant: i64,
+        source: EntityRef,
         defaults: &crate::TransactionDefaults,
     ) -> Result<crate::SpeculativeTransactionReport, SemanticError> {
-        self.with_forms_with_defaults(&read_edn_transaction(text)?, tx_instant, defaults)
+        self.with_forms_with_defaults(&read_edn_transaction(text)?, tx_instant, source, defaults)
     }
 
     pub fn with_edn(
         &self,
         text: &str,
         tx_instant: i64,
+        source: EntityRef,
     ) -> Result<crate::SpeculativeTransactionReport, SemanticError> {
-        self.with_forms(&read_edn_transaction(text)?, tx_instant)
+        self.with_forms(&read_edn_transaction(text)?, tx_instant, source)
     }
 
     /// The existing operation/read/program admission applies to the complete
@@ -161,9 +195,10 @@ impl DatabaseValue {
         &self,
         text: &str,
         tx_instant: i64,
+        source: EntityRef,
         limits: crate::SpeculationLimits,
     ) -> Result<crate::SpeculativeTransactionReport, SemanticError> {
-        self.with_forms_with_limits(&read_edn_transaction(text)?, tx_instant, limits)
+        self.with_forms_with_limits(&read_edn_transaction(text)?, tx_instant, source, limits)
     }
 }
 
@@ -172,21 +207,29 @@ impl Database {
         &self,
         text: &str,
         tx_instant: i64,
+        source: EntityRef,
         defaults: &crate::TransactionDefaults,
     ) -> Result<crate::TxReport, SemanticError> {
         self.with_forms_with_defaults(
             &read_edn_transaction(text)?,
             &TxFunctions::new(),
             tx_instant,
+            source,
             defaults,
         )
     }
 
-    pub fn with_edn(&self, text: &str, tx_instant: i64) -> Result<crate::TxReport, SemanticError> {
+    pub fn with_edn(
+        &self,
+        text: &str,
+        tx_instant: i64,
+        source: EntityRef,
+    ) -> Result<crate::TxReport, SemanticError> {
         self.with_forms(
             &read_edn_transaction(text)?,
             &TxFunctions::new(),
             tx_instant,
+            source,
         )
     }
 }

@@ -74,6 +74,8 @@ pub const DB_ENTITY_ATTRS: u64 = 69;
 pub const DB_ENTITY_PREDS: u64 = 70;
 pub const DB_ATTR_PREDS: u64 = 71;
 pub const DB_TUPLE_DISCONTINUED: u64 = 72;
+/// Ordinary entity attributing canonical vocabulary and internal bootstrap facts.
+pub const DB_SOURCE_SYSTEM: u64 = 73;
 
 /// Convert a schema entity ID into the compact attribute ID used by datoms.
 ///
@@ -461,6 +463,7 @@ fn assertion(entity: u64, attribute: u64, value: Value, tx: u64) -> Datom {
         attribute: attr_id(attribute),
         value,
         tx,
+        source: DB_SOURCE_SYSTEM,
         added: true,
     }
 }
@@ -537,4 +540,5 @@ const SYSTEM_IDENT_SPECS: &[(u64, &str, &str)] = &[
     (DB_ENTITY_PREDS, "db.entity", "preds"),
     (DB_ATTR_PREDS, "db.attr", "preds"),
     (DB_TUPLE_DISCONTINUED, "db.tuple", "discontinued"),
+    (DB_SOURCE_SYSTEM, "db.source", "system"),
 ];

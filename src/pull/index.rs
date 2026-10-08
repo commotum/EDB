@@ -96,7 +96,8 @@ impl DatabaseValue {
                 IndexComponents::One(attribute) => (*attribute, true, false, None),
                 IndexComponents::Two(attribute, value)
                 | IndexComponents::Three(attribute, value, _)
-                | IndexComponents::Four(attribute, value, _, _) => {
+                | IndexComponents::Four(attribute, value, _, _)
+                | IndexComponents::Five(attribute, value, _, _, _) => {
                     (*attribute, true, true, Some(value))
                 }
             },
@@ -105,7 +106,8 @@ impl DatabaseValue {
                 IndexComponents::One(attribute) => (*attribute, false, false, None),
                 IndexComponents::Two(attribute, _) => (*attribute, false, true, None),
                 IndexComponents::Three(attribute, _, value)
-                | IndexComponents::Four(attribute, _, value, _) => {
+                | IndexComponents::Four(attribute, _, value, _)
+                | IndexComponents::Five(attribute, _, value, _, _) => {
                     (*attribute, false, true, Some(value))
                 }
             },

@@ -54,6 +54,38 @@ impl PartialEq for StoredEav {
 }
 impl Eq for StoredEav {}
 
+#[derive(Clone, Debug)]
+struct StoredEavs(Arc<Datom>);
+impl Ord for StoredEavs {
+    fn cmp(&self, other: &Self) -> Ordering {
+        compare_eav(&self.0, &other.0).then(self.0.source.cmp(&other.0.source))
+    }
+}
+impl PartialOrd for StoredEavs {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+impl PartialEq for StoredEavs {
+    fn eq(&self, other: &Self) -> bool {
+        self.cmp(other).is_eq()
+    }
+}
+impl Eq for StoredEavs {}
+
+#[derive(Clone, Debug, Default)]
+pub(crate) struct EavsSet(SharedMap<StoredEavs, ()>);
+impl EavsSet {
+    pub(crate) fn contains(&self, datom: &Datom) -> bool {
+        self.0
+            .get_by(|key| compare_eav(&key.0, datom).then(key.0.source.cmp(&datom.source)))
+            .is_some()
+    }
+    pub(crate) fn insert(&mut self, datom: Arc<Datom>) {
+        self.0.insert(StoredEavs(datom), ());
+    }
+}
+
 #[derive(Clone, Debug, Default)]
 pub(crate) struct EavSet(SharedMap<StoredEav, ()>);
 impl EavSet {
@@ -67,19 +99,21 @@ impl EavSet {
 
 #[derive(Clone, Debug, Default)]
 pub(crate) struct OverlayIndexes {
-    history: [SharedMap<IndexKey, ()>; 4],
-    current: [SharedMap<IndexKey, ()>; 4],
-    current_eav: EavSet,
+    history: [SharedMap<IndexKey, ()>; 6],
+    current: [SharedMap<IndexKey, ()>; 6],
+    current_eav: SharedMap<StoredEavs, ()>,
     pub(crate) removals: EavSet,
     pub(crate) entids: SharedMap<Keyword, u64>,
     pub(crate) idents: SharedMap<u64, Keyword>,
 }
 
-const ORDERS: [IndexOrder; 4] = [
+const ORDERS: [IndexOrder; 6] = [
     IndexOrder::Eavt,
     IndexOrder::Aevt,
     IndexOrder::Avet,
     IndexOrder::Vaet,
+    IndexOrder::Saevt,
+    IndexOrder::Savet,
 ];
 
 impl OverlayIndexes {
@@ -99,12 +133,12 @@ impl OverlayIndexes {
         // A transaction's assertions win over its retractions for the same
         // physical E/A/V, independent of canonical assertion-first ordering.
         for datom in datoms.iter().filter(|datom| !datom.added) {
-            self.remove_current(datom);
+            self.remove_current(datom, true);
             self.removals.insert(datom.clone());
         }
         for datom in datoms.iter().filter(|datom| datom.added) {
-            self.remove_current(datom);
-            self.current_eav.insert(datom.clone());
+            self.remove_current(datom, false);
+            self.current_eav.insert(StoredEavs(datom.clone()), ());
             for (index, order) in ORDERS.into_iter().enumerate() {
                 self.current[index].insert(
                     IndexKey {
@@ -123,20 +157,27 @@ impl OverlayIndexes {
         }
     }
 
-    fn remove_current(&mut self, datom: &Datom) {
-        let old = self
+    fn remove_current(&mut self, datom: &Datom, all_sources: bool) {
+        let mut cursor = self
             .current_eav
-            .0
-            .get_by(|key| compare_eav(&key.0, datom))
-            .map(|(key, _)| key.clone());
-        if let Some(old) = old {
+            .seek(|key| compare_eav(&key.0, datom), false);
+        let mut old = Vec::new();
+        while let Some((key, ())) = cursor.next() {
+            if !compare_eav(&key.0, datom).is_eq() {
+                break;
+            }
+            if all_sources || key.0.source == datom.source {
+                old.push(key);
+            }
+        }
+        for old in old {
             for (index, order) in ORDERS.into_iter().enumerate() {
                 self.current[index].remove(&IndexKey {
                     datom: old.0.clone(),
                     order,
                 });
             }
-            self.current_eav.0.remove(&old);
+            self.current_eav.remove(&old);
         }
     }
 

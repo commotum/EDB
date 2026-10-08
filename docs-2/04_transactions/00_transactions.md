@@ -25,7 +25,9 @@ the shared record through separate transactions. Unrelated omitted facts remain
 unchanged.
 
 `TransactionRequest` pairs that intent with a caller-owned request key and a
-required `source: EntityRef`. Keep the complete request, including its source,
+required `source: EntityRef`. The source uses ordinary entity-reference resolution,
+including a tempid established in entity position in the same transaction.
+Keep the complete request, including its source,
 explicit basis/time options and generated UUIDs, until its outcome is known.
 An application outbox can preserve it across process failure. A transaction
 callback must compute from supplied data, not perform external side effects

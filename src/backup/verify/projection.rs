@@ -64,7 +64,12 @@ pub(super) fn verify_index(
 ) -> Result<(), SemanticError> {
     let current = database.datoms(View::Current, IndexOrder::Eavt);
     let replayed = database.datoms(View::History, IndexOrder::Eavt);
-    let physical = read_tree(reader, &index.trees[4])?;
+    let history_eavt = index
+        .trees
+        .iter()
+        .find(|tree| tree.history && tree.order == IndexOrder::Eavt)
+        .ok_or_else(|| fault("backup/missing-history-tree", "Index omits EAVT history"))?;
+    let physical = read_tree(reader, history_eavt)?;
     validate_physical_history_projection(&replayed, &physical, database.basis_t())
         .map_err(|e| fault("backup/tree-semantic-mismatch", e.message))?;
     for tree in &index.trees {
@@ -75,9 +80,16 @@ pub(super) fn verify_index(
         let source = if tree.history { &physical } else { &current };
         let mut expected = derive_index_projection(database, source, tree.order)?;
         let mut actual = read_tree(reader, tree)?;
-        if tree.order == IndexOrder::Avet {
-            let pending =
-                verify_pending(reader, index, database, &actual, &replayed, tree.history)?;
+        if matches!(tree.order, IndexOrder::Avet | IndexOrder::Savet) {
+            let pending = verify_pending(
+                reader,
+                index,
+                database,
+                &actual,
+                &replayed,
+                tree.history,
+                tree.order,
+            )?;
             expected.retain(|d| !pending.contains(&d.attribute));
             actual.retain(|d| !pending.contains(&d.attribute));
         }
@@ -168,6 +180,7 @@ pub(super) fn verify_pending(
     actual: &[Datom],
     replayed: &[Datom],
     history: bool,
+    order: IndexOrder,
 ) -> Result<BTreeSet<u32>, SemanticError> {
     let mut pending = BTreeSet::new();
     for attribute in &index.pending_avet {
@@ -183,7 +196,11 @@ pub(super) fn verify_pending(
     }
     for work in &index.avet_work {
         if work.adding != crate::index::metadata::effective_avet(database.schema(), work.attribute)
-            || work.source != index.trees[usize::from(work.history) * 4 + 1]
+            || !index.trees.iter().any(|tree| {
+                tree.history == work.history
+                    && tree.order == IndexOrder::Aevt
+                    && *tree == work.source
+            })
         {
             return Err(fault(
                 "backup/avet-source",
@@ -195,7 +212,8 @@ pub(super) fn verify_pending(
         }
         pending.insert(work.attribute);
         if work.history == history && !work.clearing {
-            let expected = projection_prefix(reader, work)?;
+            let mut expected = projection_prefix(reader, work)?;
+            expected.sort_by(|left, right| left.cmp_in(right, order));
             let observed = actual
                 .iter()
                 .filter(|d| d.attribute == work.attribute)
@@ -290,6 +308,5 @@ pub(super) fn projection_prefix(
             "AVET continuation lies outside its authenticated source",
         ));
     }
-    output.sort_by(|a, b| a.cmp_in(b, IndexOrder::Avet));
     Ok(output)
 }

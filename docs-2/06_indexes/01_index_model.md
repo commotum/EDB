@@ -95,7 +95,8 @@ indexed without being unique.
 | `:release/year` | 1984 | 55 | 2367 | 99 | true |
 
 AVET adds another maintained ordering of an attribute's datoms. To maintain
-AVET and SAVET for an attribute, specify `:db/index true` or a value for `:db/unique` when
+AVET and SAVET for an attribute, specify `:db/index true` or a value for
+`:db/unique` when
 [installing](../03_schema/02_schema_reference.md) or
 [altering](../03_schema/03_changing_schema.md) the attribute. The table assumes
 both `:release/name` and `:release/year` are indexed. Reference type alone does
@@ -105,9 +106,9 @@ For durable databases, enabling an index can require background projection of
 existing datoms. `DatabaseValue::has_avet` reports whether the attribute's AVET
 projection, shared with SAVET, is usable in that exact captured value. Schema
 intent and physical readiness are different observations. Attribute-qualified
-AVET and SAVET boundaries and seeks reject unavailable projections, as do durable prefix cursors. An eager
-in-memory prefix for a known unindexed attribute instead returns no matches;
-an unrestricted scan omits unavailable attributes. See
+AVET and SAVET boundaries and seeks reject unavailable projections, as do
+durable prefix cursors. An eager in-memory prefix for a known unindexed attribute
+instead returns no matches; an unrestricted scan omits unavailable attributes. See
 [readiness and database views](04_index_apis.md#readiness-and-database-views)
 for the errors returned by each API. A later publication does not update an
 already captured value.
@@ -198,8 +199,11 @@ position can change without changing the index it traverses.
 
 Current and history indexes are distinct projections. A current view exposes
 source-bearing facts still asserted in the shared record at its basis; a history
-view exposes retained assertions and retractions. `:db/noHistory` can omit superseded facts from indexed history during
-consolidation, while the transaction log retains the transaction events.
+view exposes retained assertions and retractions. `:db/noHistory` can omit
+superseded facts from indexed history during consolidation, while the transaction
+log retains the transaction events. Omitting a retraction also omits all older
+source contributions it withdrew. Consolidation makes that decision from the
+complete E/A/V group and applies the same omissions to every history index.
 [Excision and storage retention](../08_operations/04_maintenance_controls.md)
 are separate policies and can remove retained information. See
 [database filters](../02_core_concepts/03_database_filters.md) for time windows.

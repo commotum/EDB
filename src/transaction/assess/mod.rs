@@ -85,17 +85,6 @@ pub(crate) struct TieredAssessment {
 }
 
 impl TieredAssessment {
-    fn is_partition_bootstrap_marker(&self, datom: &Datom) -> bool {
-        datom.attribute == crate::DB_INSTALL_PARTITION as u32
-            && self.db_before.schema().attribute(datom.attribute).is_err()
-            && self
-                .successor_schema
-                .attribute(datom.attribute)
-                .is_ok_and(|attribute| {
-                    attribute == &crate::model::vocabulary::partition_install_attribute()
-                })
-    }
-
     /// Resolve only predicates this assessed transaction can execute. Missing
     /// required attributes short-circuit before predicate bindings are looked up.
     pub(crate) fn predicate_requirements(
@@ -104,9 +93,6 @@ impl TieredAssessment {
         self.validate_ensure_attributes()?;
         let mut required = BTreeMap::new();
         for datom in self.tx_data.iter().filter(|datom| datom.added) {
-            if self.is_partition_bootstrap_marker(datom) {
-                continue;
-            }
             let attribute = self.db_before.schema().attribute(datom.attribute)?;
             for predicate in &attribute.predicates {
                 insert_predicate_role(
@@ -135,9 +121,6 @@ impl TieredAssessment {
         functions: Option<&TxFunctions>,
     ) -> Result<(), SemanticError> {
         for datom in self.tx_data.iter().filter(|datom| datom.added) {
-            if self.is_partition_bootstrap_marker(datom) {
-                continue;
-            }
             let attribute = self.db_before.schema().attribute(datom.attribute)?;
             for predicate in &attribute.predicates {
                 let result = functions
@@ -327,7 +310,7 @@ impl<'a> Reader<'a> {
     }
 
     fn values(&mut self, entity: u64, attribute: u32) -> Result<Vec<Value>, SemanticError> {
-        Ok(self
+        let mut values = self
             .prefix(&IndexPrefix::Eavt {
                 entity,
                 attribute: Some(attribute),
@@ -335,7 +318,27 @@ impl<'a> Reader<'a> {
             })?
             .into_iter()
             .map(|datom| datom.value)
-            .collect())
+            .collect::<Vec<_>>();
+        values.sort_by(Value::stored_cmp);
+        values.dedup_by(|right, left| left.stored_eq(right));
+        Ok(values)
+    }
+
+    fn contains_source(
+        &mut self,
+        entity: u64,
+        attribute: u32,
+        value: &Value,
+        source: u64,
+    ) -> Result<bool, SemanticError> {
+        Ok(self
+            .prefix(&IndexPrefix::Eavt {
+                entity,
+                attribute: Some(attribute),
+                value: Some(value.clone()),
+            })?
+            .into_iter()
+            .any(|datom| datom.source == source && datom.value.stored_eq(value)))
     }
 
     fn contains(
@@ -382,6 +385,7 @@ pub(crate) fn assess_tiered_with_remaining_limits_and_defaults(
     base: &DatabaseValue,
     ops: &[TxOp],
     tx_instant: i64,
+    source: &EntityRef,
     limits: AssessmentLimits,
     defaults: &crate::TransactionDefaults,
 ) -> Result<TieredAssessment, SemanticError> {
@@ -392,6 +396,7 @@ pub(crate) fn assess_tiered_with_remaining_limits_and_defaults(
     // behavior, so give it a private unbounded observer while Reader enforces
     // the caller's explicit assessment allowance.
     crate::transaction::input::validate_ops_input(ops)?;
+    crate::transaction::input::validate_entity_input(source)?;
     let default_partition = defaults.resolve(base.schema(), |name| base.entid(name))?;
     let base = if base.transaction_read_context().is_some() {
         base.clone()
@@ -403,6 +408,12 @@ pub(crate) fn assess_tiered_with_remaining_limits_and_defaults(
             )))
     };
     let base = &base;
+    let lowered_source = match source {
+        EntityRef::Edn(text) => Some(crate::edn_transaction::lower_entity_ref(base, text)?),
+        _ => None,
+    };
+    let source = lowered_source.as_ref().unwrap_or(source);
+    crate::transaction::input::validate_entity_input(source)?;
     if base
         .last_tx_instant()
         .is_some_and(|prior| tx_instant < prior)
@@ -430,6 +441,7 @@ pub(crate) fn assess_tiered_with_remaining_limits_and_defaults(
     validate_frontier(initial_allocation_start)?;
 
     let mut ordered = ops.to_vec();
+    crate::transaction::input::lower_ops_entity_refs(base, &mut ordered)?;
     ordered.sort_by(crate::transaction::canonical::compare_tx_op);
     validate_tx_instant_forms(&ordered, tx_instant)?;
     let mut reader = Reader::new(base, limits);
@@ -437,16 +449,18 @@ pub(crate) fn assess_tiered_with_remaining_limits_and_defaults(
         prepare_schema_information(&mut reader, &ordered, tx, initial_allocation_start)?;
     let mut reserved_allocation = base.reserved_allocation()?;
     if let Some(reserved) = &mut reserved_allocation {
-        crate::transaction::input::observe_reserved_transaction_inputs(reserved, &ordered)?;
+        crate::transaction::input::observe_reserved_transaction_inputs(reserved, &ordered, source)?;
     }
     let (tempids, eidx_frontier) = resolve_tempids(
         &mut reader,
         &ordered,
+        source,
         tx,
         allocation_start,
         default_partition,
         &mut reserved_allocation,
     )?;
+    let source = resolve_entity(&mut reader, source, tx, &tempids)?;
     let mut ensures = Vec::new();
     let mut touched = BTreeSet::new();
     for op in &ordered {
@@ -485,7 +499,7 @@ pub(crate) fn assess_tiered_with_remaining_limits_and_defaults(
     validate_schema_transition(&mut reader, &successor_schema, &logical)?;
     validate_delta_successor(&mut reader, &successor_schema, &logical)?;
     validate_ensure_attributes(&mut reader, &logical, &ensures)?;
-    let mut tx_data = material_changes(&mut reader, &logical, tx)?;
+    let mut tx_data = material_changes(&mut reader, &logical, tx, source)?;
     count_work(|work| &mut work.produced_datoms, tx_data.len());
     tx_data.sort_by(|left, right| left.cmp_in(right, IndexOrder::Eavt));
 
@@ -610,8 +624,12 @@ fn prepare_schema_information(
     ];
     let mut logical = Vec::new();
     for (attribute, install) in changes {
-        let desired =
-            crate::model::schema::attribute_information_datoms(&attribute, &candidate, tx)?;
+        let desired = crate::model::schema::attribute_information_datoms(
+            &attribute,
+            &candidate,
+            tx,
+            crate::DB_SOURCE_SYSTEM,
+        )?;
         let current = (!install)
             .then(|| reader.base.schema().attribute(attribute.id))
             .transpose()?;
@@ -639,9 +657,10 @@ fn prepare_schema_information(
             }
         }
         for datom in desired {
-            if property_changed(datom.attribute)
-                && !reader.contains(datom.entity, datom.attribute, &datom.value)?
-            {
+            // A changed property's asserted values can already be present
+            // under another source. Only the material boundary can decide
+            // whether this transaction's contribution is redundant.
+            if property_changed(datom.attribute) {
                 logical.push(LogicalDatom {
                     entity: datom.entity,
                     attribute: datom.attribute,
@@ -845,6 +864,7 @@ fn derive_successor_schema(
             attribute: crate::DB_INSTALL_PARTITION as u32,
             value: Value::Ref(u64::from(partition)),
             tx: 0,
+            source: crate::DB_SOURCE_SYSTEM,
             added: true,
         });
     }
@@ -856,6 +876,7 @@ fn derive_successor_schema(
             attribute: DB_INSTALL_ATTRIBUTE as u32,
             value: Value::Ref(u64::from(attribute.id)),
             tx: 0,
+            source: crate::DB_SOURCE_SYSTEM,
             added: true,
         });
         let discontinued_dependency = attribute.tuple_discontinued
@@ -877,6 +898,7 @@ fn derive_successor_schema(
                 attribute,
                 reader.base.schema(),
                 0,
+                crate::DB_SOURCE_SYSTEM,
             )?);
         }
     }
@@ -898,6 +920,7 @@ fn derive_successor_schema(
                     attribute: datom.attribute,
                     value: datom.value.clone(),
                     tx,
+                    source: crate::DB_SOURCE_SYSTEM,
                     added: true,
                 });
             }
@@ -954,6 +977,7 @@ fn derive_successor_schema(
                 attribute: datom.attribute,
                 value: datom.value.clone(),
                 tx,
+                source: crate::DB_SOURCE_SYSTEM,
                 added: true,
             }),
     );
@@ -968,6 +992,7 @@ fn ident_datom(entity: u64, ident: crate::Keyword, tx: u64) -> Datom {
         attribute: DB_IDENT as u32,
         value: Value::Keyword(ident),
         tx,
+        source: crate::DB_SOURCE_SYSTEM,
         added: true,
     }
 }
@@ -1159,7 +1184,8 @@ fn visit_successor_attribute(
     } else {
         reader.work.prefixes = reader.work.prefixes.saturating_add(1);
     }
-    let mut base_next = next_charged(reader, &mut cursor)?;
+    let mut previous = None;
+    let mut base_next = next_charged(reader, &mut cursor, &mut previous)?;
     let mut delta_next = 0;
 
     loop {
@@ -1167,7 +1193,7 @@ fn visit_successor_attribute(
             (None, None) => return Ok(()),
             (Some(base_datom), None) => {
                 visit(base_datom.entity, &base_datom.value)?;
-                base_next = next_charged(reader, &mut cursor)?;
+                base_next = next_charged(reader, &mut cursor, &mut previous)?;
             }
             (None, Some(delta_datom)) => {
                 if delta_datom.added {
@@ -1185,7 +1211,7 @@ fn visit_successor_attribute(
                 ) {
                     Ordering::Less => {
                         visit(base_datom.entity, &base_datom.value)?;
-                        base_next = next_charged(reader, &mut cursor)?;
+                        base_next = next_charged(reader, &mut cursor, &mut previous)?;
                     }
                     Ordering::Greater => {
                         if delta_datom.added {
@@ -1199,7 +1225,7 @@ fn visit_successor_attribute(
                         if delta_datom.added {
                             visit(base_datom.entity, &base_datom.value)?;
                         }
-                        base_next = next_charged(reader, &mut cursor)?;
+                        base_next = next_charged(reader, &mut cursor, &mut previous)?;
                         delta_next += 1;
                     }
                 }
@@ -1261,12 +1287,21 @@ fn compare_attribute_eav(
 fn next_charged(
     reader: &mut Reader<'_>,
     cursor: &mut impl Iterator<Item = Result<Datom, SemanticError>>,
+    previous: &mut Option<Datom>,
 ) -> Result<Option<Datom>, SemanticError> {
-    let next = cursor.next().transpose()?;
-    if let Some(datom) = &next {
-        reader.charge(datom)?;
+    for next in cursor {
+        let datom = next?;
+        reader.charge(&datom)?;
+        if previous
+            .as_ref()
+            .is_some_and(|prior| same_eav(prior, &datom))
+        {
+            continue;
+        }
+        *previous = Some(datom.clone());
+        return Ok(Some(datom));
     }
-    Ok(next)
+    Ok(None)
 }
 
 fn validate_many_to_one_successor(
@@ -1403,12 +1438,13 @@ fn same_eav(left: &Datom, right: &Datom) -> bool {
 fn resolve_tempids(
     reader: &mut Reader<'_>,
     ops: &[TxOp],
+    source: &EntityRef,
     tx: u64,
     allocation_start: u64,
     default_partition: u32,
     reserved: &mut Option<crate::reserved_allocation::ReservedAllocation>,
 ) -> Result<(BTreeMap<String, u64>, u64), SemanticError> {
-    let names = validated_entity_tempids(ops)?;
+    let names = validated_entity_tempids(ops, source)?;
     let base = reader.base;
     let policy = crate::partitions::PartitionPolicy::with_default(
         ops,
@@ -1911,6 +1947,10 @@ fn resolve_entity(
                 )
             }),
         EntityRef::Tx => Ok(tx),
+        EntityRef::Edn(text) => {
+            let lowered = crate::edn_transaction::lower_entity_ref(reader.base, text)?;
+            resolve_entity(reader, &lowered, tx, tempids)
+        }
     }
 }
 
@@ -2008,16 +2048,21 @@ fn resolve_entity_spec(
                 ":db.entity/attrs values must be attribute keywords",
             ));
         };
-        let attribute = reader.base.entid(&ident).ok_or_else(|| {
-            SemanticError::incorrect(
-                "transaction/unknown-spec-attribute",
-                format!(
-                    "entity spec names unknown attribute {}",
-                    ident.qualified_name()
-                ),
-            )
-        })?;
-        required.push(crate::schema_eid_to_attr_id(attribute)?);
+        let attribute = reader
+            .base
+            .entid(&ident)
+            .and_then(|entity| crate::schema_eid_to_attr_id(entity).ok())
+            .filter(|attribute| reader.base.schema().attribute(*attribute).is_ok())
+            .ok_or_else(|| {
+                SemanticError::incorrect(
+                    "transaction/unknown-spec-attribute",
+                    format!(
+                        "entity spec names unknown attribute {}",
+                        ident.qualified_name()
+                    ),
+                )
+            })?;
+        required.push(attribute);
     }
     required.sort_unstable();
     required.dedup();
@@ -2144,9 +2189,11 @@ fn derive_composites(
                     added: false,
                 });
             }
-            if let Some(new) = new
-                && old.as_ref().is_none_or(|old| !old.stored_eq(&new))
-            {
+            // Touching a constituent supplies the resulting composite under
+            // this transaction's source even when its value is unchanged.
+            // material_changes suppresses an existing contribution from the
+            // same source along with the redundant constituent assertion.
+            if let Some(new) = new {
                 reader.base.schema().validate_value(&composite, &new)?;
                 logical.push(LogicalDatom {
                     entity,
@@ -2420,6 +2467,7 @@ fn successor_owner_count(
             .cmp(&right.entity)
             .then_with(|| left.value.stored_cmp(&right.value))
     });
+    facts.dedup_by(|right, left| same_eav(left, right));
     let mut counts = BTreeMap::<u64, usize>::new();
     for fact in &facts {
         *counts.entry(fact.entity).or_default() += 1;
@@ -2449,11 +2497,16 @@ fn material_changes(
     reader: &mut Reader<'_>,
     logical: &[LogicalDatom],
     tx: u64,
+    source: u64,
 ) -> Result<Vec<Datom>, SemanticError> {
     let mut result = Vec::new();
     for datom in logical {
         count_work(|work| &mut work.redundancy_checks, 1);
-        let existed = reader.contains(datom.entity, datom.attribute, &datom.value)?;
+        let existed = if datom.added {
+            reader.contains_source(datom.entity, datom.attribute, &datom.value, source)?
+        } else {
+            reader.contains(datom.entity, datom.attribute, &datom.value)?
+        };
         if existed != datom.added
             || (datom.added && u64::from(datom.attribute) == DB_ALTER_ATTRIBUTE)
         {
@@ -2462,6 +2515,7 @@ fn material_changes(
                 attribute: datom.attribute,
                 value: datom.value.clone(),
                 tx,
+                source,
                 added: datom.added,
             });
         } else {
@@ -2543,7 +2597,9 @@ fn validate_entity_predicate_name(attribute: u32, value: &Value) -> Result<(), S
 
 fn is_derived_composite(schema: &Schema, attribute: u32) -> Result<bool, SemanticError> {
     let attribute = schema.attribute(attribute)?;
-    Ok(matches!(attribute.tuple, Some(TupleSpec::Composite(_))) && !attribute.tuple_discontinued)
+    // Discontinuation removes maintenance dependencies; the immutable
+    // composite definition still makes its value database-managed.
+    Ok(matches!(attribute.tuple, Some(TupleSpec::Composite(_))))
 }
 
 fn dedupe(datoms: &mut Vec<LogicalDatom>) {
@@ -2803,3 +2859,6 @@ impl UnionFind {
         }
     }
 }
+
+#[cfg(test)]
+mod tests;

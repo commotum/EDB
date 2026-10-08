@@ -97,12 +97,24 @@ pub(super) fn prepare_attribute(
         };
         // A filter callback may have canceled while accepting the last value.
         state.check(0)?;
-        state.charge_value_bytes(std::mem::size_of::<Value>())?;
-        values.push(if reverse {
+        let value = if reverse {
             Value::Ref(datom.entity)
         } else {
             datom.value
-        });
+        };
+        // EAVT groups forward values and VAET groups incoming holders. Source
+        // contributions remain physical datoms, but select one logical value
+        // before counting the limit or expanding a referenced entity.
+        if values
+            .iter()
+            .rev()
+            .take_while(|prior: &&Value| prior.index_cmp(&value).is_eq())
+            .any(|prior| prior.stored_eq(&value))
+        {
+            continue;
+        }
+        state.charge_value_bytes(std::mem::size_of::<Value>())?;
+        values.push(value);
     }
     if values.is_empty() {
         return Ok(PreparedAttribute::Complete(key, None));

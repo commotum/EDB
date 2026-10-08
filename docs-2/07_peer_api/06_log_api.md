@@ -229,6 +229,46 @@ error. In a query, valid genesis or future coordinates produce an empty
 `tx-data` relation. Query functions accumulate their results under query resource limits;
 use a native log cursor when you need incremental range consumption.
 
+## Source activity
+
+A source's timeline combines its timestamp assertions with the captured log.
+Capture a database value once and call `db.log_value()` to obtain the log at
+that same basis. Every submitted transaction contributes one immutable
+`:db/txInstant` assertion with its source, including empty transactions.
+Reverse traversal of SAEVT's `[source :db/txInstant]` range selects the newest
+transaction entities first; their timestamps supply the displayed dates.
+
+```rust
+use edb_core::{
+    DatabaseValue, DB_TX_INSTANT, IndexBoundary, IndexComponents,
+    IndexTransaction, SemanticError,
+};
+
+fn print_source_activity(db: &DatabaseValue, source: u64) -> Result<(), SemanticError> {
+    let log = db.log_value()?;
+    let mut timestamps = db.reverse_seek_cursor(&IndexBoundary::Saevt(
+        IndexComponents::Two(source, DB_TX_INSTANT as u32),
+    ))?;
+    while let Some(timestamp) = timestamps.next().transpose()? {
+        if timestamp.source != source || timestamp.attribute != DB_TX_INSTANT as u32 {
+            break;
+        }
+        let data = log.tx_data(IndexTransaction::Tx(timestamp.entity))?;
+        println!("date={:?} transaction={} data={data:?}", timestamp.value, timestamp.entity);
+    }
+    Ok(())
+}
+```
+
+Keep both captured values while paging. Resume reverse traversal at
+`IndexComponents::Three(source, DB_TX_INSTANT as u32, last_transaction_entity)`
+and skip that entity, since the boundary includes it. Stop when source or
+attribute leaves the selected range. Transaction entity order distinguishes
+transactions that share an instant and keeps page boundaries stable when the
+connection advances. Retrieve each selected transaction with
+`log.tx_data(IndexTransaction::Tx(entity))`. Replacing or retracting its domain
+facts does not remove the earlier transaction from this timeline.
+
 ## Retained log data
 
 The log includes assertions and retractions that `:db/noHistory` consolidation

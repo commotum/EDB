@@ -874,6 +874,11 @@ Short E, E/A, E/A/V, and E/A/V/Tx patterns omit trailing positions. Bind S and
 include it in `:find` or `:with` when contributions from different sources to
 the same E/A/V should remain distinct in the result.
 
+Current and as-of patterns resolve visibility across all sources before
+matching S. A retraction by another source withdraws the value from every
+source's current contributions; constraining S cannot restore an earlier
+assertion. History patterns retain the source of each assertion and retraction.
+
 A database resolves attribute keywords, idents and lookup references against
 its schema and current identity view. Raw relation sources contain literal data:
 an attribute keyword or lookup-reference-shaped value is matched as data and
@@ -960,7 +965,7 @@ You can use a registered pure function as a predicate. Only `false` and `nil` re
 
 The predicates `=`, `!=` (also `not=`), `<=`, `<`, `>`, and `>=` are special:
 direct constraints on a data pattern's value can take advantage of a ready AVET
-index. Bounds may be literals or already-bound inputs. This can avoid examining
+index, or SAVET when its source is bound. Bounds may be literals or already-bound inputs. This can avoid examining
 every value that would be considered by an equivalent string predicate:
 
 ```edn

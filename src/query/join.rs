@@ -171,7 +171,8 @@ pub(super) fn pattern_terms(pattern: &DataPattern) -> Vec<(usize, &Term)> {
         (2, &pattern.value),
     ];
     terms.extend(pattern.transaction.iter().map(|term| (3, term)));
-    terms.extend(pattern.added.iter().map(|term| (4, term)));
+    terms.extend(pattern.fact_source.iter().map(|term| (4, term)));
+    terms.extend(pattern.added.iter().map(|term| (5, term)));
     terms
 }
 
@@ -233,8 +234,8 @@ pub(super) fn evaluate_raw(
     relation: RawRelation<'_>,
     state: &mut State<'_>,
 ) -> Result<(Vec<Row>, String), SemanticError> {
-    terms.retain(|(_, term)| !matches!(term, Term::Blank));
     let width = terms.last().map_or(0, |(column, _)| column + 1);
+    terms.retain(|(_, term)| !matches!(term, Term::Blank));
     let shared: Vec<_> = terms
         .iter()
         .copied()

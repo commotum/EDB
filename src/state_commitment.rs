@@ -2,7 +2,7 @@
 //!
 //! Transaction hashes authenticate the chronological log, but a materialized
 //! index can copy the right terminal transaction hash while containing
-//! different facts.  The v2 commitment below authenticates the semantic
+//! different facts.  The v3 commitment below authenticates the semantic
 //! current logical set without depending on physical index segments, fanout,
 //! insertion order, or the timing of noHistory consolidation. The separately
 //! bound transaction hash authenticates chronological log identity.
@@ -29,16 +29,16 @@ use sha2::{Digest as _, Sha256};
 use std::cmp::Ordering;
 use std::sync::Arc;
 
-const EMPTY_DOMAIN: &[u8] = b"edb/semantic-set/v2/empty\0";
-const LEAF_DOMAIN: &[u8] = b"edb/semantic-set/v2/leaf\0";
-const PRIORITY_DOMAIN: &[u8] = b"edb/semantic-set/v2/priority\0";
-const NODE_DOMAIN: &[u8] = b"edb/semantic-set/v2/node\0";
+const EMPTY_DOMAIN: &[u8] = b"edb/semantic-set/v3/empty\0";
+const LEAF_DOMAIN: &[u8] = b"edb/semantic-set/v3/leaf\0";
+const PRIORITY_DOMAIN: &[u8] = b"edb/semantic-set/v3/priority\0";
+const NODE_DOMAIN: &[u8] = b"edb/semantic-set/v3/node\0";
 
-pub(crate) const SEMANTIC_STATE_VERSION: u32 = 2;
+pub(crate) const SEMANTIC_STATE_VERSION: u32 = 3;
 
 /// Canonical identity of one committed datom. The attribute prefix provides a
 /// stable range key for future authenticated physical-tree proofs; the digest
-/// commits to every stored field, including transaction, assertion bit and
+/// commits to every stored field, including transaction, source, assertion bit and
 /// typed value bytes.
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
 pub(crate) struct SemanticDatomKey {
@@ -223,11 +223,11 @@ fn apply_current_change(
     datom: &Datom,
     work: &mut CommitmentWork,
 ) -> Result<(), SemanticError> {
-    let prior = exact_current_datom(before, datom)?;
+    let prior = exact_current_datoms(before, datom)?;
     if datom.added {
-        match prior {
+        match prior.iter().find(|prior| prior.source == datom.source) {
             Some(prior) if u64::from(datom.attribute) == crate::DB_ALTER_ATTRIBUTE => {
-                set.remove(&prior, work)?;
+                set.remove(prior, work)?;
                 set.insert(datom, work)?;
             }
             None => {
@@ -235,16 +235,18 @@ fn apply_current_change(
             }
             Some(_) => {}
         }
-    } else if let Some(prior) = prior {
-        set.remove(&prior, work)?;
+    } else {
+        for prior in prior {
+            set.remove(&prior, work)?;
+        }
     }
     Ok(())
 }
 
-fn exact_current_datom(
+fn exact_current_datoms(
     database: &Database,
     candidate: &Datom,
-) -> Result<Option<Datom>, SemanticError> {
+) -> Result<Vec<Datom>, SemanticError> {
     Ok(database
         .datoms_with_prefix(&IndexPrefix::Eavt {
             entity: candidate.entity,
@@ -252,8 +254,9 @@ fn exact_current_datom(
             value: Some(candidate.value.clone()),
         })?
         .iter()
-        .find(|datom| datom.value.stored_eq(&candidate.value))
-        .cloned())
+        .filter(|datom| datom.value.stored_eq(&candidate.value))
+        .cloned()
+        .collect())
 }
 
 fn insert(
@@ -398,7 +401,7 @@ pub(crate) fn semantic_key_priority(key: SemanticDatomKey) -> Digest {
     )
 }
 
-/// Reproduce the exact v2 node digest from a canonical logical node. Durable
+/// Reproduce the exact v3 node digest from a canonical logical node. Durable
 /// implementations use this boundary instead of copying the domain separator
 /// or field ordering and silently creating a second commitment format.
 pub(crate) fn semantic_node_hash(

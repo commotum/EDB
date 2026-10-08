@@ -75,6 +75,7 @@ impl PostgresOperator {
         ident: crate::Keyword,
         program: &crate::Program,
         dependencies: &[crate::Program],
+        source: crate::EntityRef,
         timeout: Duration,
     ) -> Result<crate::ServiceTransactionReport, SemanticError> {
         deployment::install(
@@ -84,6 +85,7 @@ impl PostgresOperator {
             ident,
             program,
             dependencies,
+            source,
             timeout,
         )
     }

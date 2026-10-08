@@ -367,9 +367,14 @@ fn writer(database: &str, records: usize, payload: usize) -> Result<()> {
                 });
             }
         }
-        service
-            .client()
-            .transact(TransactionRequest::new(format!("seed-{begin}"), ops), WAIT)?;
+        service.client().transact(
+            TransactionRequest::new(
+                format!("seed-{begin}"),
+                ops,
+                edb_core::EntityRef::Id(edb_core::DB_SOURCE_SYSTEM),
+            ),
+            WAIT,
+        )?;
     }
     // Make the seed a durable indexed base before opening cold peers: recent
     // novelty must not accidentally substitute for the cache-exceeding scan.
@@ -412,6 +417,7 @@ fn writer(database: &str, records: usize, payload: usize) -> Result<()> {
                             attribute: BALANCE,
                             value: Value::Long(sequence).into(),
                         }],
+                        edb_core::EntityRef::Id(edb_core::DB_SOURCE_SYSTEM),
                     ),
                     WAIT,
                 )?;

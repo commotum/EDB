@@ -25,7 +25,7 @@ A *datom* is an immutable atomic fact that represents the addition or retraction
 - a source entity id (S)
 - a boolean (Op) indicating whether the datom is being added or retracted
 
-The application explicitly supplies one source for each transaction, including transactions with empty data. Every assertion or retraction it produces carries that source, including function results, generated changes, and the automatic transaction timestamp. A source is an ordinary entity that can represent a person, institution, publication, LLM, or another contributor of database statements. Its description uses the same installed attributes as other entities, with its own history and attribution. Different sources contribute to the same record through separate transactions.
+The application explicitly supplies one source for each transaction, including transactions with empty data. Every assertion or retraction it produces carries that source, including function results, generated changes, and the automatic transaction timestamp. A source is an ordinary entity that can represent a person, institution, publication, LLM, or another contributor of database statements. Its description uses the same installed attributes as other entities, with its own history and attribution. Different sources contribute to the same record through separate transactions. Canonical genesis attributes its vocabulary and schema facts to the ordinary entity `:db.source/system`; internal bootstrap transactions use that source as well.
 
 ### Example Datom
 

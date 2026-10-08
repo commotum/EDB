@@ -236,6 +236,7 @@ pub(super) struct RangeDatoms<'a> {
     database: &'a DatabaseValue,
     cursor: DatabaseValueScanCursor<'a>,
     attribute: u32,
+    source: Option<u64>,
     span: Span,
     remaining: std::vec::IntoIter<Span>,
 }
@@ -252,6 +253,7 @@ impl<'a> Datoms<'a> {
         database: &'a DatabaseValue,
         attribute: u32,
         range: Range,
+        source: Option<u64>,
     ) -> Result<Self, SemanticError> {
         let mut remaining = range.spans.into_iter();
         let Some(span) = remaining.next() else {
@@ -259,8 +261,9 @@ impl<'a> Datoms<'a> {
         };
         Ok(Self::Range(Box::new(RangeDatoms {
             database,
-            cursor: start_cursor(database, attribute, &span)?,
+            cursor: start_cursor(database, attribute, &span, source)?,
             attribute,
+            source,
             span,
             remaining,
         })))
@@ -280,6 +283,7 @@ impl<'a> Datoms<'a> {
                     database,
                     cursor,
                     attribute,
+                    source,
                     span,
                     remaining,
                 } = range.as_mut();
@@ -290,7 +294,9 @@ impl<'a> Datoms<'a> {
                     let next = cursor.next_with_control(&mut |datom| {
                         examine(datom, state)?;
                         Ok(datom.is_none_or(|datom| {
-                            datom.attribute == *attribute && span.below_upper(&datom.value)
+                            datom.attribute == *attribute
+                                && source.is_none_or(|source| datom.source == source)
+                                && span.below_upper(&datom.value)
                         }))
                     });
                     match next {
@@ -301,7 +307,7 @@ impl<'a> Datoms<'a> {
                         Some(Err(error)) => return Some(Err(error)),
                         None => {
                             *span = remaining.next()?;
-                            match start_cursor(database, *attribute, span) {
+                            match start_cursor(database, *attribute, span, *source) {
                                 Ok(next) => {
                                     *cursor = next;
                                     state.stats.index_seeks += 1;
@@ -330,11 +336,14 @@ fn start_cursor<'a>(
     database: &'a DatabaseValue,
     attribute: u32,
     span: &Span,
+    source: Option<u64>,
 ) -> Result<DatabaseValueScanCursor<'a>, SemanticError> {
-    database.query_avet_start_cursor(
-        attribute,
-        span.lower
-            .as_ref()
-            .map(|lower| (lower.stored(), lower.inclusive)),
-    )
+    let lower = span
+        .lower
+        .as_ref()
+        .map(|lower| (lower.stored(), lower.inclusive));
+    match source {
+        Some(source) => database.query_savet_start_cursor(source, attribute, lower),
+        None => database.query_avet_start_cursor(attribute, lower),
+    }
 }

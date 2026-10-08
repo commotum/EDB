@@ -120,8 +120,8 @@ impl PgBlockStore {
 
     /// Add provider-level runtime grants to pre-existing dedicated roles.
     /// Writers may insert/protect objects, but only operators may delete them.
-    /// Peers read objects; both roles maintain opaque references, including
-    /// ephemeral reference cleanup. These are trusted storage credentials, not
+    /// Peers read objects and references; writers maintain opaque references,
+    /// including ephemeral cleanup. These are trusted storage credentials, not
     /// per-database authorization. Existing grants and role memberships can
     /// broaden access; this helper neither audits nor revokes them.
     pub fn grant_runtime_privileges(

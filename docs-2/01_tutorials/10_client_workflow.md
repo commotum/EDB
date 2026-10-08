@@ -105,7 +105,7 @@ native connection with `Connection::connect_configured`. This takes:
 Create the connection in `src/main.rs`:
 
 ```rust
-use edb_core::{Connection, EntityRef, Keyword, TransactionRequest, postgres_config_from_env};
+use edb_core::{Connection, EntityRef, TransactionRequest, postgres_config_from_env};
 use edb_core::edn::write_edn;
 use edb_core::edn_value::transaction_report_to_edn;
 use std::time::Duration;
@@ -160,7 +160,7 @@ Insert this code before `Ok(())` in `main`:
 ```rust
 let endpoint = std::env::var("EDB_TUTORIAL_ENDPOINT")?;
 let movie_schema = std::fs::read_to_string("movie-schema.edn")?;
-let source = EntityRef::Ident(Keyword::new("db.source", "system"));
+let source = EntityRef::from_edn(":db.source/system")?;
 let request = TransactionRequest::from_edn("tutorial-movie-schema", &movie_schema, source)?;
 let committed = conn.transact_socket(&endpoint, request, Duration::from_secs(30))?;
 

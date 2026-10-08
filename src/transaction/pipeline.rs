@@ -513,11 +513,13 @@ pub(crate) fn select_tx_instant(
             value: TxValue::Scalar(Value::Instant(instant)),
         } = op
             && *attribute == crate::DB_TX_INSTANT as u32
-            && data_override.replace(*instant).is_some()
+            && data_override
+                .replace(*instant)
+                .is_some_and(|previous| previous != *instant)
         {
             return Err(SemanticError::incorrect(
                 "transaction/multiple-tx-instants",
-                ":db/txInstant may be specified only once",
+                ":db/txInstant additions must specify the same instant",
             ));
         }
     }

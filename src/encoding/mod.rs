@@ -1622,7 +1622,7 @@ fn encode_entity_map(
     if depth > 32 {
         return Err(SemanticError::incorrect(
             "transaction/map-depth",
-            "entity maps may contain at most 32 nested collection levels",
+            "entity maps may contain at most 32 nested maps",
         ));
     }
     match &map.id {
@@ -1642,7 +1642,7 @@ fn encode_entity_map(
         .map(|(attribute, value)| {
             let mut encoded = Vec::new();
             encode_attribute_ref(&mut encoded, attribute)?;
-            encode_map_value(&mut encoded, value, depth + 1)?;
+            encode_map_value(&mut encoded, value, depth)?;
             Ok(encoded)
         })
         .collect::<Result<Vec<_>, SemanticError>>()?;
@@ -1684,12 +1684,6 @@ fn encode_map_value(
     value: &MapValue,
     depth: usize,
 ) -> Result<(), SemanticError> {
-    if depth > 32 {
-        return Err(SemanticError::incorrect(
-            "transaction/map-depth",
-            "entity maps may contain at most 32 nested collection levels",
-        ));
-    }
     match value {
         MapValue::Value(value) => {
             output.push(0);
@@ -1704,8 +1698,14 @@ fn encode_map_value(
             let mut values = values
                 .iter()
                 .map(|value| {
+                    if matches!(value, MapValue::Many(_)) {
+                        return Err(SemanticError::incorrect(
+                            "transaction/nested-collection",
+                            "map value collections cannot contain collections",
+                        ));
+                    }
                     let mut encoded = Vec::new();
-                    encode_map_value(&mut encoded, value, depth + 1)?;
+                    encode_map_value(&mut encoded, value, depth)?;
                     Ok(encoded)
                 })
                 .collect::<Result<Vec<_>, SemanticError>>()?;

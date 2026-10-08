@@ -370,6 +370,11 @@ impl<'a> Reader<'a> {
         }
         self.base.schema().validate_value(descriptor, value)?;
         count_work(|work| &mut work.identity_lookups, 1);
+        if u64::from(attribute) == DB_IDENT {
+            // Ident aliases belong to this captured dictionary, even when a
+            // rename has withdrawn their earlier :db/ident fact from AVET.
+            return self.base.lookup(attribute, value);
+        }
         Ok(self
             .prefix(&IndexPrefix::Avet {
                 attribute,
@@ -1488,30 +1493,8 @@ fn resolve_tempids(
     }
     union_identity_assertions(&mut union, &identities);
 
-    let mut existing_by_root = BTreeMap::new();
-    for (temp, attribute, value, unique) in &identities {
-        let Some(value) = value.resolved() else {
-            continue;
-        };
-        if let Some(existing) = reader.lookup(*attribute, value)? {
-            if *unique == Unique::Value {
-                return Err(SemanticError::conflict(
-                    "transaction/unique-value-conflict",
-                    format!("unique value is already held by entity {existing}"),
-                ));
-            }
-            count_work(|work| &mut work.upsert_resolutions, 1);
-            let root = union.root(*temp);
-            if let Some(previous) = existing_by_root.insert(root, existing)
-                && previous != existing
-            {
-                return Err(SemanticError::conflict(
-                    "transaction/upsert-conflict",
-                    format!("one tempid resolves to both {previous} and {existing}"),
-                ));
-            }
-        }
-    }
+    let existing_by_root =
+        resolve_identity_dependencies(reader, &identities, &positions, &names, &mut union)?;
 
     let mut partitions = BTreeMap::new();
     for (index, name) in names.iter().enumerate() {
@@ -1568,6 +1551,176 @@ fn resolve_tempids(
     }
     validate_frontier(next)?;
     Ok((result, next))
+}
+
+/// Root unification and newly known existing identities wake only claims that
+/// refer to affected names. Symbolic root names decrease monotonically; binding
+/// happens once. Each fully resolved claim performs one charged db-before lookup.
+fn resolve_identity_dependencies(
+    reader: &mut Reader<'_>,
+    identities: &[(usize, u32, UpsertIdentityValue, Unique)],
+    positions: &BTreeMap<String, usize>,
+    names: &[String],
+    union: &mut UnionFind,
+) -> Result<BTreeMap<usize, u64>, SemanticError> {
+    let mut dependents = vec![Vec::new(); positions.len()];
+    for (index, (_, _, value, _)) in identities.iter().enumerate() {
+        value.visit_temp_refs(&mut |name| dependents[positions[name]].push(index));
+    }
+    let mut pending = (0..identities.len()).collect::<BTreeSet<_>>();
+    let mut previous_keys: Vec<Option<UpsertIdentityValue>> = vec![None; identities.len()];
+    let mut bindings = vec![None; positions.len()];
+    let mut identity_keys: BTreeMap<IdentityClaimKey, BTreeSet<usize>> = BTreeMap::new();
+    while let Some(index) = pending.pop_first() {
+        let (temp, attribute, key, unique) = &identities[index];
+        let key = key.canonical_refs(&mut |name| {
+            let root = union.root(positions[name]);
+            match bindings[root] {
+                Some(entity) => UpsertIdentityValue::Resolved(Value::Ref(entity)),
+                None => UpsertIdentityValue::TempRef(names[root].clone()),
+            }
+        });
+        if previous_keys[index]
+            .as_ref()
+            .is_some_and(|prior| prior.same_key(&key))
+        {
+            continue;
+        }
+        if let Some(prior) = previous_keys[index].replace(key.clone())
+            && *unique == Unique::Identity
+        {
+            count_work(|work| &mut work.identity_claims, 1);
+            let prior = IdentityClaimKey(*attribute, prior);
+            if let Some(group) = identity_keys.get_mut(&prior) {
+                group.remove(&index);
+                if group.is_empty() {
+                    identity_keys.remove(&prior);
+                }
+            }
+        }
+        if *unique == Unique::Identity {
+            // Reuse the initial identity grouping's comparison for symbolic
+            // roots as well as scalar/tuple values, independent of source.
+            let group = identity_keys
+                .entry(IdentityClaimKey(*attribute, key.clone()))
+                .or_default();
+            let other = group.first().copied();
+            group.insert(index);
+            if let Some(other) = other {
+                let left = union.root(*temp);
+                let right = union.root(identities[other].0);
+                if left != right {
+                    match (bindings[left], bindings[right]) {
+                        (Some(existing), _) => bind_identity_group(
+                            union,
+                            right,
+                            existing,
+                            &mut bindings,
+                            &dependents,
+                            &mut pending,
+                        )?,
+                        (_, Some(existing)) => bind_identity_group(
+                            union,
+                            left,
+                            existing,
+                            &mut bindings,
+                            &dependents,
+                            &mut pending,
+                        )?,
+                        (None, None) => {
+                            // Only the absorbed group's symbolic name changes.
+                            // Linked membership avoids copying the kept group.
+                            for member in union.members(left.max(right)) {
+                                pending.extend(dependents[member].iter().copied());
+                            }
+                        }
+                    }
+                    union.join(left, right);
+                }
+            }
+        }
+        let Some(value) = key.resolved() else {
+            continue;
+        };
+        if let Some(existing) = reader.lookup(*attribute, value)? {
+            if *unique == Unique::Value {
+                return Err(SemanticError::conflict(
+                    "transaction/unique-value-conflict",
+                    format!("unique value is already held by entity {existing}"),
+                ));
+            }
+            count_work(|work| &mut work.upsert_resolutions, 1);
+            let root = union.root(*temp);
+            bind_identity_group(
+                union,
+                root,
+                existing,
+                &mut bindings,
+                &dependents,
+                &mut pending,
+            )?;
+        }
+    }
+    Ok(bindings
+        .into_iter()
+        .enumerate()
+        .filter_map(|(index, binding)| {
+            binding
+                .filter(|_| union.root(index) == index)
+                .map(|entity| (index, entity))
+        })
+        .collect())
+}
+
+#[derive(Clone)]
+struct IdentityClaimKey(u32, UpsertIdentityValue);
+
+impl Ord for IdentityClaimKey {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.0
+            .cmp(&other.0)
+            .then_with(|| compare_upsert_identity_values(&self.1, &other.1))
+    }
+}
+
+impl PartialOrd for IdentityClaimKey {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl PartialEq for IdentityClaimKey {
+    fn eq(&self, other: &Self) -> bool {
+        self.cmp(other).is_eq()
+    }
+}
+
+impl Eq for IdentityClaimKey {}
+
+fn bind_identity_group(
+    union: &UnionFind,
+    root: usize,
+    existing: u64,
+    bindings: &mut [Option<u64>],
+    dependents: &[Vec<usize>],
+    pending: &mut BTreeSet<usize>,
+) -> Result<(), SemanticError> {
+    if let Some(previous) = bindings[root] {
+        if previous != existing {
+            return Err(SemanticError::conflict(
+                "transaction/upsert-conflict",
+                format!("one tempid resolves to both {previous} and {existing}"),
+            ));
+        }
+        return Ok(());
+    }
+    // Membership chains concatenate in O(1) when groups join. Only an unbound
+    // group is visited, so each name notifies its dependents at most once.
+    for member in union.members(root) {
+        bindings[member] = Some(existing);
+        pending.extend(dependents[member].iter().copied());
+    }
+    Ok(())
 }
 
 /// Group equivalent identity assertions in index-key order before replacing
@@ -2546,10 +2699,13 @@ fn validate_tx_instant_forms(ops: &[TxOp], selected: i64) -> Result<(), Semantic
                         ":db/txInstant must be a scalar instant",
                     ));
                 };
-                if explicit.replace(*instant).is_some() {
+                if explicit
+                    .replace(*instant)
+                    .is_some_and(|previous| previous != *instant)
+                {
                     return Err(SemanticError::incorrect(
                         "transaction/multiple-tx-instants",
-                        ":db/txInstant may be specified only once",
+                        ":db/txInstant additions must specify the same instant",
                     ));
                 }
             }
@@ -2817,12 +2973,16 @@ fn compare_logical(left: &LogicalDatom, right: &LogicalDatom) -> Ordering {
 #[derive(Debug)]
 struct UnionFind {
     parent: Vec<usize>,
+    next_member: Vec<Option<usize>>,
+    last_member: Vec<usize>,
 }
 
 impl UnionFind {
     fn new(size: usize) -> Self {
         Self {
             parent: (0..size).collect(),
+            next_member: vec![None; size],
+            last_member: (0..size).collect(),
         }
     }
 
@@ -2856,7 +3016,13 @@ impl UnionFind {
                 (right, left)
             };
             self.parent[second] = first;
+            self.next_member[self.last_member[first]] = Some(second);
+            self.last_member[first] = self.last_member[second];
         }
+    }
+
+    fn members(&self, root: usize) -> impl Iterator<Item = usize> + '_ {
+        std::iter::successors(Some(root), |member| self.next_member[*member])
     }
 }
 

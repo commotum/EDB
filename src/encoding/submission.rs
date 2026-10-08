@@ -202,23 +202,32 @@ fn decode_map(cursor: &mut Cursor<'_>, depth: usize) -> Result<EntityMap, Semant
             3 => AttributeRef::ReverseIdent(decode_keyword(&mut entry)?),
             tag => return Err(invalid_tag("attribute reference", tag)),
         };
-        attributes.push((attribute, decode_map_value(&mut entry, depth + 1)?));
+        attributes.push((attribute, decode_map_value(&mut entry, depth, false)?));
         entry.finish()?;
     }
     Ok(EntityMap { id, attributes })
 }
 
-fn decode_map_value(cursor: &mut Cursor<'_>, depth: usize) -> Result<MapValue, SemanticError> {
-    depth_limit(depth, 32)?;
+fn decode_map_value(
+    cursor: &mut Cursor<'_>,
+    depth: usize,
+    collection_item: bool,
+) -> Result<MapValue, SemanticError> {
     Ok(match cursor.u8()? {
         0 => MapValue::Value(decode_tx_value(cursor)?),
         1 => MapValue::Nested(Box::new(decode_map(cursor, depth + 1)?)),
         2 => {
+            if collection_item {
+                return Err(fault(
+                    "transaction/nested-collection",
+                    "map value collections cannot contain collections",
+                ));
+            }
             let count = cursor.collection_len()?;
             let mut values = Vec::new();
             for _ in 0..count {
                 let mut value = Cursor::new(framed(cursor)?);
-                values.push(decode_map_value(&mut value, depth + 1)?);
+                values.push(decode_map_value(&mut value, depth, true)?);
                 value.finish()?;
             }
             MapValue::Many(values)
@@ -495,6 +504,117 @@ pub(crate) fn decode_submission_outcome(bytes: &[u8]) -> Result<WireOutcome, Sem
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn nested_maps(depth: usize, many: bool) -> EntityMap {
+        let mut map = EntityMap {
+            id: None,
+            attributes: Vec::new(),
+        };
+        for _ in 0..depth {
+            let value = MapValue::Nested(Box::new(map));
+            map = EntityMap {
+                id: None,
+                attributes: vec![(
+                    AttributeRef::Id(100),
+                    if many {
+                        MapValue::Many(vec![value])
+                    } else {
+                        value
+                    },
+                )],
+            };
+        }
+        map
+    }
+
+    #[test]
+    fn native_map_codec_counts_entities_independently_of_many_wrappers() {
+        let identity = DatabaseIdentity::new("map-depth", "lineage");
+        for many in [false, true] {
+            let request = TransactionRequest::from_forms(
+                "depth-32",
+                vec![TxForm::EntityMap(nested_maps(32, many))],
+                EntityRef::Id(99),
+            );
+            let (decoded_identity, decoded) =
+                decode_submission(&encode_submission(&identity, &request).unwrap()).unwrap();
+            assert_eq!(decoded_identity, identity);
+            assert_eq!(
+                crate::submission_request_digest(&decoded.forms, &decoded.source, None, None)
+                    .unwrap(),
+                crate::submission_request_digest(&request.forms, &request.source, None, None)
+                    .unwrap(),
+            );
+            let too_deep = TransactionRequest::from_forms(
+                "depth-33",
+                vec![TxForm::EntityMap(nested_maps(33, many))],
+                EntityRef::Id(99),
+            );
+            assert_eq!(
+                encode_submission(&identity, &too_deep).unwrap_err().code,
+                "transaction/map-depth"
+            );
+
+            // Build a hostile depth-33 map without using its guarded encoder.
+            let mut map = vec![0];
+            put_len(&mut map, 0).unwrap();
+            for _ in 0..33 {
+                let mut value = vec![1];
+                value.extend(map);
+                if many {
+                    let mut collection = vec![2];
+                    put_len(&mut collection, 1).unwrap();
+                    put_framed_bytes(&mut collection, &value).unwrap();
+                    value = collection;
+                }
+                let mut entry = Vec::new();
+                encode_attribute_ref(&mut entry, &AttributeRef::Id(100)).unwrap();
+                entry.extend(value);
+                map = vec![0];
+                put_len(&mut map, 1).unwrap();
+                put_framed_bytes(&mut map, &entry).unwrap();
+            }
+            assert_eq!(
+                decode_map(&mut Cursor::new(&map), 0).unwrap_err().code,
+                "transport/value-depth"
+            );
+        }
+    }
+
+    #[test]
+    fn nested_many_is_rejected_before_recursive_admission_encoding_or_decoding() {
+        let form = TxForm::EntityMap(EntityMap {
+            id: None,
+            attributes: vec![(
+                AttributeRef::Id(100),
+                MapValue::Many(vec![MapValue::Many(vec![])]),
+            )],
+        });
+        assert_eq!(
+            crate::transaction::input::validate_forms_input(std::slice::from_ref(&form))
+                .unwrap_err()
+                .code,
+            "transaction/nested-collection"
+        );
+        let request = TransactionRequest::from_forms("nested-many", vec![form], EntityRef::Id(99));
+        assert_eq!(
+            encode_submission(&DatabaseIdentity::new("map-depth", "lineage"), &request)
+                .unwrap_err()
+                .code,
+            "transaction/nested-collection"
+        );
+        let mut value = vec![2];
+        put_len(&mut value, 1).unwrap();
+        // Only the nested collection tag is needed: rejection precedes reading
+        // its count or recursively entering any of its children.
+        put_framed_bytes(&mut value, &[2]).unwrap();
+        assert_eq!(
+            decode_map_value(&mut Cursor::new(&value), 0, false)
+                .unwrap_err()
+                .code,
+            "transaction/nested-collection"
+        );
+    }
 
     #[test]
     fn request_roundtrip_preserves_explicit_source_and_identity() {

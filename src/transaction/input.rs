@@ -20,6 +20,45 @@ pub(crate) enum UpsertIdentityValue {
 }
 
 impl UpsertIdentityValue {
+    pub(crate) fn visit_temp_refs(&self, visit: &mut impl FnMut(&str)) {
+        match self {
+            Self::TempRef(name) => visit(name),
+            Self::Tuple(slots) => {
+                for slot in slots.iter().flatten() {
+                    slot.visit_temp_refs(visit);
+                }
+            }
+            Self::Resolved(_) => {}
+        }
+    }
+
+    /// Preserve unresolved root names while substituting known identities.
+    /// A symbolic reference never acquires a provisional allocation or a
+    /// transaction-local lookup meaning.
+    pub(crate) fn canonical_refs(&self, resolve: &mut impl FnMut(&str) -> Self) -> Self {
+        match self {
+            Self::Resolved(value) => Self::Resolved(value.clone()),
+            Self::TempRef(name) => resolve(name),
+            Self::Tuple(slots) => {
+                let slots = slots
+                    .iter()
+                    .map(|slot| slot.as_ref().map(|value| value.canonical_refs(resolve)))
+                    .collect::<Vec<_>>();
+                let value = slots
+                    .iter()
+                    .map(|slot| match slot {
+                        None => Some(None),
+                        Some(value) => value.resolved().cloned().map(Some),
+                    })
+                    .collect::<Option<Vec<_>>>();
+                match value {
+                    Some(value) => Self::Resolved(Value::Tuple(value)),
+                    None => Self::Tuple(slots),
+                }
+            }
+        }
+    }
+
     pub(crate) fn same_key(&self, other: &Self) -> bool {
         match (self, other) {
             (Self::Resolved(left), Self::Resolved(right)) => left.index_cmp(right).is_eq(),
@@ -519,27 +558,33 @@ pub(crate) fn validate_forms_input(forms: &[TxForm]) -> Result<(), SemanticError
         Ok(())
     }
     fn map(map: &crate::EntityMap, depth: usize) -> Result<(), SemanticError> {
+        if depth > 32 {
+            return Err(SemanticError::incorrect(
+                "transaction/map-depth",
+                "transaction entity maps may contain at most 32 nested maps",
+            ));
+        }
         if let Some(id) = &map.id {
             validate_entity_input(id)?;
         }
         for (_, value) in &map.attributes {
-            map_value(value, depth + 1)?;
+            map_value(value, depth)?;
         }
         Ok(())
     }
     fn map_value(value: &MapValue, depth: usize) -> Result<(), SemanticError> {
-        if depth > 32 {
-            return Err(SemanticError::incorrect(
-                "transaction/map-depth",
-                "transaction maps exceed the 32-level policy",
-            ));
-        }
         match value {
             MapValue::Value(value) => validate_value_input(value)?,
-            MapValue::Nested(value) => map(value, depth)?,
+            MapValue::Nested(value) => map(value, depth + 1)?,
             MapValue::Many(values) => {
                 for value in values {
-                    map_value(value, depth + 1)?;
+                    if matches!(value, MapValue::Many(_)) {
+                        return Err(SemanticError::incorrect(
+                            "transaction/nested-collection",
+                            "map value collections cannot contain collections",
+                        ));
+                    }
+                    map_value(value, depth)?;
                 }
             }
         }

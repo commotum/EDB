@@ -6,6 +6,8 @@
 //! PostgreSQL persistence/publication is a separate boundary.
 pub(crate) mod cache;
 pub(crate) mod navigation;
+#[cfg(test)]
+mod tests;
 
 use crate::encoding::{
     Digest, decode_canonical_value, encode_canonical_value, sha256,
@@ -5395,11 +5397,14 @@ fn validate_routing_shape(key: &RoutingKey, order: IndexOrder) -> Result<(), Sem
             "routing key payload and component-presence mask disagree",
         ));
     }
-    if key.has(ROUTING_TX_PRESENT) {
+    // Source follows transaction in the original orders; their sparse
+    // separators omit both. Source-first orders retain exact keys. Neither
+    // coordinate can therefore appear on a sparse routing prefix.
+    if key.has(ROUTING_TX_PRESENT) || key.has(ROUTING_SOURCE_PRESENT) {
         if !key.is_exact() {
             return Err(fault(
                 "tree/invalid-routing-key",
-                "a routing key with a transaction component must be exact",
+                "a routing key with a transaction or source component must be exact",
             ));
         }
         let datom = key.as_datom().ok_or_else(|| {

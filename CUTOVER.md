@@ -58,7 +58,8 @@ to the running application and must remain outside cutover tests.
 The dedicated `[:db/txInstant S]` operation, `TxOp::TxInstant`,
 `Instruction::EmitTxInstant`, `tx_instant_source`, per-operation sources, and
 map-level `:db/source` declarations are not part of the contract. Check that
-none survive in code, tests, examples, or generated API documentation.
+none survive as accepted behavior in code, examples, or generated API
+documentation. Regression tests should reject the retired input forms.
 
 Keep ordinary `:db/txInstant` assertions for explicit import values,
 `tx_instant_override`, and the bootstrap source entity `:db.source/system`.

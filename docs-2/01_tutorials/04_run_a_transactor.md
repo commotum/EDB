@@ -41,7 +41,7 @@ endpoint_dir=$(mktemp -d /tmp/edb-tutorial.XXXXXX)
 printf '%s\n' "$endpoint_dir"
 ```
 
-The directory must already exist, be owned by you, and allow access only to you.
+The directory must already exist, be owned by you, and have permissions `0700`.
 The local socket serves applications running as the same OS user.
 
 ## Starting a Transactor

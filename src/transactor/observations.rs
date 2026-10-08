@@ -193,7 +193,7 @@ pub struct WriterResidencyStats {
     pub recent_accounted_bytes: u64,
     pub tree_cache_entries: usize,
     pub tree_cache_bytes: usize,
-    /// Child references retained by the eight decoded native roots, outside
+    /// Child references retained by the twelve decoded native roots, outside
     /// the discardable node cache.
     pub resident_tree_root_children: usize,
     /// Estimated decoded root allocations, including child vectors and

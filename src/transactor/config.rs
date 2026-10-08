@@ -35,8 +35,8 @@ const DEFAULT_MEMORY_INDEX_MAX_BYTES: u64 = 512 * 1024 * 1024;
 /// Bounded novelty settings for the transactor-owned background indexer.
 ///
 /// The byte measure is a deterministic native approximation: the retained
-/// Rust `Datom`, canonical value bytes, and up to five compact references for
-/// the four raw recent BTSet indexes plus persistent chunk-log/tree overhead.
+/// Rust `Datom`, canonical value bytes, and up to seven compact references for
+/// the six raw recent BTSet indexes plus persistent chunk-log/tree overhead.
 /// It deliberately does not pretend to be allocator RSS. Defaults are a
 /// 32 MiB scheduling point and a 512 MiB back-pressure point. Tests and
 /// small deployments can use explicit lower values

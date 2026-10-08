@@ -42,7 +42,7 @@ With the [peer library](../00_start_here/02_peer_library.md) available in your R
 project, create a connection:
 
 ```rust
-use edb_core::{Connection, EntityRef, Keyword, TransactionRequest, postgres_config_from_env};
+use edb_core::{Connection, EntityRef, TransactionRequest, postgres_config_from_env};
 use std::time::Duration;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -77,7 +77,7 @@ let endpoint = std::env::var("EDB_TUTORIAL_ENDPOINT")?;
 let request = TransactionRequest::from_edn(
     "tutorial-hello-world",
     r#"[{:db/id "hello" :db/doc "Hello world"}]"#,
-    EntityRef::Ident(Keyword::new("db.source", "system")),
+    EntityRef::from_edn(":db.source/system")?,
 )?;
 let committed = conn.transact_socket(&endpoint, request, Duration::from_secs(30))?;
 println!("Committed at basis {}, replayed={}", committed.basis_t, committed.replayed);

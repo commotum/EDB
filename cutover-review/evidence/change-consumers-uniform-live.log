@@ -1,0 +1,27 @@
+   Compiling edb-core v0.1.0 (/tmp/edb-cutover-impl-20261007)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 6.10s
+     Running tests/change_consumers_cutover.rs (target/debug/deps/change_consumers_cutover-788903f1fa3992c9)
+
+running 2 tests
+admission compressible: rejected48KiB body; authenticated metadata physical_bytes=710
+admission varied: rejected48KiB body; authenticated metadata physical_bytes=710
+test consumer_rejects_formerly_inline_bodies_before_postgres_transfer ... ok
+test bounded_consumer_preserves_source_log_and_contiguous_durable_progress ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.01s
+
+     Running tests/deployment_source_recovery.rs (target/debug/deps/deployment_source_recovery-dc8aca2149515f45)
+
+running 1 test
+test explicit_recovery_preserves_sources_receipts_and_retained_values ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.44s
+
+     Running tests/log_source_cutover.rs (target/debug/deps/log_source_cutover-a075619a5541b7e0)
+
+running 2 tests
+test captured_log_bounds_lazy_cursor_and_query_shapes_obey_contract ... ok
+test source_activity_composes_same_basis_log_with_stable_reverse_pages ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.79s
+

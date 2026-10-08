@@ -1,0 +1,106 @@
+restart_full_fingerprint phase=old-before-crash view=current index=Eavt basis=8 as_of_t=None datoms=671 sha256=c61c4a5f647fab66f102ac7be3a4b869e3b64ae27b7b1a1e82d779c00d03b7e2 elapsed_ms=2
+restart_full_fingerprint phase=old-before-crash view=history index=Eavt basis=8 as_of_t=None datoms=673 sha256=052626731c91a7a4ee215d3f7fbc0ccb222f35223dbcccf88606236c7a4d14fc elapsed_ms=10
+restart_full_fingerprint phase=old-before-crash view=current index=Aevt basis=8 as_of_t=None datoms=671 sha256=e243bf230d6b61b18345d01982aedc15a8a8e89e3b9bb154327988d976df0e0a elapsed_ms=2
+restart_full_fingerprint phase=old-before-crash view=history index=Aevt basis=8 as_of_t=None datoms=673 sha256=bba26b01e78c24f37ad031c27b4326543fb6616d1d7cf244cfa0a1e4eee2a87f elapsed_ms=2
+restart_full_fingerprint phase=old-before-crash view=current index=Avet basis=8 as_of_t=None datoms=323 sha256=c87c92374e73d5efa00ff33adae303caf35aae18e225819c52234f321869ec21 elapsed_ms=6
+restart_full_fingerprint phase=old-before-crash view=history index=Avet basis=8 as_of_t=None datoms=325 sha256=92a6a2f9577e18601ff7b4a2bc91c844a5dc275b2eab17deba792bbeb8a37885 elapsed_ms=6
+restart_full_fingerprint phase=old-before-crash view=current index=Vaet basis=8 as_of_t=None datoms=344 sha256=9bdc529e8aa86428c0eee2b7f4a72533cf41eb1cb848e8273799f9e3d3e4a64b elapsed_ms=6
+restart_full_fingerprint phase=old-before-crash view=history index=Vaet basis=8 as_of_t=None datoms=344 sha256=9bdc529e8aa86428c0eee2b7f4a72533cf41eb1cb848e8273799f9e3d3e4a64b elapsed_ms=7
+restart_full_fingerprint phase=old-before-crash view=current index=Saevt basis=8 as_of_t=None datoms=671 sha256=19eeeb4caae96e5f6bba2dc58042dccb124f2877824b2baeda9fdada8429a148 elapsed_ms=11
+restart_full_fingerprint phase=old-before-crash view=history index=Saevt basis=8 as_of_t=None datoms=673 sha256=8470ea152f05d26f8fb2c3bb93ae76a989a4f10b137890cfc481ca80e02cbce5 elapsed_ms=10
+restart_full_fingerprint phase=old-before-crash view=current index=Savet basis=8 as_of_t=None datoms=323 sha256=31952f1d756db47ffeb0e3ce5723509cb13fda8cdb214e9758594feeb545f9e1 elapsed_ms=6
+restart_full_fingerprint phase=old-before-crash view=history index=Savet basis=8 as_of_t=None datoms=325 sha256=95b4b86fbaa8ed682514aa045b396b0b6e309b5d45f9541d20a88848da48c062 elapsed_ms=6
+restart_full_fingerprint phase=acknowledged-before-crash view=current index=Eavt basis=9 as_of_t=None datoms=674 sha256=5851c4c2e71ae6d472aef6d13e4e7e33165e954333d0d95738cb95ff5015afb0 elapsed_ms=4
+restart_full_fingerprint phase=acknowledged-before-crash view=history index=Eavt basis=9 as_of_t=None datoms=676 sha256=0eee6ce35eaf6555ba31b663126bea124eae7a2a1d854ef6849b0e50fc405f01 elapsed_ms=4
+restart_full_fingerprint phase=acknowledged-before-crash view=current index=Aevt basis=9 as_of_t=None datoms=674 sha256=2829c658db13739e72dc3d7fcbddfc0535928c69d4a4c1092104eda2b76298f6 elapsed_ms=4
+restart_full_fingerprint phase=acknowledged-before-crash view=history index=Aevt basis=9 as_of_t=None datoms=676 sha256=7ef7c8abb5ab85bbd54d9ebbb473c3776c3d782cdaa08c3ad94305fe9514522f elapsed_ms=4
+restart_full_fingerprint phase=acknowledged-before-crash view=current index=Avet basis=9 as_of_t=None datoms=326 sha256=c6c2cf4da86e1797f9bb44027571ba9078300311dafc9ecfdfa57b4c8ce3984a elapsed_ms=2
+restart_full_fingerprint phase=acknowledged-before-crash view=history index=Avet basis=9 as_of_t=None datoms=328 sha256=77f43cb8b0c65711e889b12962085538b3744b7fbfbb2be9ee21f9003713875a elapsed_ms=2
+restart_full_fingerprint phase=acknowledged-before-crash view=current index=Vaet basis=9 as_of_t=None datoms=344 sha256=9bdc529e8aa86428c0eee2b7f4a72533cf41eb1cb848e8273799f9e3d3e4a64b elapsed_ms=1
+restart_full_fingerprint phase=acknowledged-before-crash view=history index=Vaet basis=9 as_of_t=None datoms=344 sha256=9bdc529e8aa86428c0eee2b7f4a72533cf41eb1cb848e8273799f9e3d3e4a64b elapsed_ms=1
+restart_full_fingerprint phase=acknowledged-before-crash view=current index=Saevt basis=9 as_of_t=None datoms=674 sha256=92518ced94230f869725bf9ad094a0e5b8fd2d1dc9c9f3e9af19e96849821e31 elapsed_ms=3
+restart_full_fingerprint phase=acknowledged-before-crash view=history index=Saevt basis=9 as_of_t=None datoms=676 sha256=5a9c6a86115f3a715725d58e490196022053d6e904da1f48a66e4e9130b2f7e2 elapsed_ms=2
+restart_full_fingerprint phase=acknowledged-before-crash view=current index=Savet basis=9 as_of_t=None datoms=326 sha256=63dbecc25b13373239437863901a8d8d7e54302dafe199ed76b54ea5c47611bc elapsed_ms=1
+restart_full_fingerprint phase=acknowledged-before-crash view=history index=Savet basis=9 as_of_t=None datoms=328 sha256=1a8b23ac2ec24ad95af09f52e1a4d23b441b3d459ba3d30b6c1f34c45ec9a16d elapsed_ms=1
+memory phase=before-crash VmHWM:	   24868 kB
+memory phase=before-crash VmRSS:	   24868 kB
+waiting for server to shut down.... done
+server stopped
+waiting for server to start.... done
+server started
+restart_full_fingerprint phase=acknowledged-current-after-restart view=current index=Eavt basis=9 as_of_t=None datoms=674 sha256=5851c4c2e71ae6d472aef6d13e4e7e33165e954333d0d95738cb95ff5015afb0 elapsed_ms=3
+restart_full_fingerprint phase=acknowledged-current-after-restart view=history index=Eavt basis=9 as_of_t=None datoms=676 sha256=0eee6ce35eaf6555ba31b663126bea124eae7a2a1d854ef6849b0e50fc405f01 elapsed_ms=3
+restart_full_fingerprint phase=acknowledged-current-after-restart view=current index=Aevt basis=9 as_of_t=None datoms=674 sha256=2829c658db13739e72dc3d7fcbddfc0535928c69d4a4c1092104eda2b76298f6 elapsed_ms=3
+restart_full_fingerprint phase=acknowledged-current-after-restart view=history index=Aevt basis=9 as_of_t=None datoms=676 sha256=7ef7c8abb5ab85bbd54d9ebbb473c3776c3d782cdaa08c3ad94305fe9514522f elapsed_ms=2
+restart_full_fingerprint phase=acknowledged-current-after-restart view=current index=Avet basis=9 as_of_t=None datoms=326 sha256=c6c2cf4da86e1797f9bb44027571ba9078300311dafc9ecfdfa57b4c8ce3984a elapsed_ms=1
+restart_full_fingerprint phase=acknowledged-current-after-restart view=history index=Avet basis=9 as_of_t=None datoms=328 sha256=77f43cb8b0c65711e889b12962085538b3744b7fbfbb2be9ee21f9003713875a elapsed_ms=1
+restart_full_fingerprint phase=acknowledged-current-after-restart view=current index=Vaet basis=9 as_of_t=None datoms=344 sha256=9bdc529e8aa86428c0eee2b7f4a72533cf41eb1cb848e8273799f9e3d3e4a64b elapsed_ms=2
+restart_full_fingerprint phase=acknowledged-current-after-restart view=history index=Vaet basis=9 as_of_t=None datoms=344 sha256=9bdc529e8aa86428c0eee2b7f4a72533cf41eb1cb848e8273799f9e3d3e4a64b elapsed_ms=1
+restart_full_fingerprint phase=acknowledged-current-after-restart view=current index=Saevt basis=9 as_of_t=None datoms=674 sha256=92518ced94230f869725bf9ad094a0e5b8fd2d1dc9c9f3e9af19e96849821e31 elapsed_ms=3
+restart_full_fingerprint phase=acknowledged-current-after-restart view=history index=Saevt basis=9 as_of_t=None datoms=676 sha256=5a9c6a86115f3a715725d58e490196022053d6e904da1f48a66e4e9130b2f7e2 elapsed_ms=2
+restart_full_fingerprint phase=acknowledged-current-after-restart view=current index=Savet basis=9 as_of_t=None datoms=326 sha256=63dbecc25b13373239437863901a8d8d7e54302dafe199ed76b54ea5c47611bc elapsed_ms=1
+restart_full_fingerprint phase=acknowledged-current-after-restart view=history index=Savet basis=9 as_of_t=None datoms=328 sha256=1a8b23ac2ec24ad95af09f52e1a4d23b441b3d459ba3d30b6c1f34c45ec9a16d elapsed_ms=1
+restart_full_fingerprint phase=retained-old-after-restart view=current index=Eavt basis=8 as_of_t=None datoms=671 sha256=c61c4a5f647fab66f102ac7be3a4b869e3b64ae27b7b1a1e82d779c00d03b7e2 elapsed_ms=2
+restart_full_fingerprint phase=retained-old-after-restart view=history index=Eavt basis=8 as_of_t=None datoms=673 sha256=052626731c91a7a4ee215d3f7fbc0ccb222f35223dbcccf88606236c7a4d14fc elapsed_ms=2
+restart_full_fingerprint phase=retained-old-after-restart view=current index=Aevt basis=8 as_of_t=None datoms=671 sha256=e243bf230d6b61b18345d01982aedc15a8a8e89e3b9bb154327988d976df0e0a elapsed_ms=2
+restart_full_fingerprint phase=retained-old-after-restart view=history index=Aevt basis=8 as_of_t=None datoms=673 sha256=bba26b01e78c24f37ad031c27b4326543fb6616d1d7cf244cfa0a1e4eee2a87f elapsed_ms=2
+restart_full_fingerprint phase=retained-old-after-restart view=current index=Avet basis=8 as_of_t=None datoms=323 sha256=c87c92374e73d5efa00ff33adae303caf35aae18e225819c52234f321869ec21 elapsed_ms=1
+restart_full_fingerprint phase=retained-old-after-restart view=history index=Avet basis=8 as_of_t=None datoms=325 sha256=92a6a2f9577e18601ff7b4a2bc91c844a5dc275b2eab17deba792bbeb8a37885 elapsed_ms=1
+restart_full_fingerprint phase=retained-old-after-restart view=current index=Vaet basis=8 as_of_t=None datoms=344 sha256=9bdc529e8aa86428c0eee2b7f4a72533cf41eb1cb848e8273799f9e3d3e4a64b elapsed_ms=1
+restart_full_fingerprint phase=retained-old-after-restart view=history index=Vaet basis=8 as_of_t=None datoms=344 sha256=9bdc529e8aa86428c0eee2b7f4a72533cf41eb1cb848e8273799f9e3d3e4a64b elapsed_ms=1
+restart_full_fingerprint phase=retained-old-after-restart view=current index=Saevt basis=8 as_of_t=None datoms=671 sha256=19eeeb4caae96e5f6bba2dc58042dccb124f2877824b2baeda9fdada8429a148 elapsed_ms=2
+restart_full_fingerprint phase=retained-old-after-restart view=history index=Saevt basis=8 as_of_t=None datoms=673 sha256=8470ea152f05d26f8fb2c3bb93ae76a989a4f10b137890cfc481ca80e02cbce5 elapsed_ms=2
+restart_full_fingerprint phase=retained-old-after-restart view=current index=Savet basis=8 as_of_t=None datoms=323 sha256=31952f1d756db47ffeb0e3ce5723509cb13fda8cdb214e9758594feeb545f9e1 elapsed_ms=1
+restart_full_fingerprint phase=retained-old-after-restart view=history index=Savet basis=8 as_of_t=None datoms=325 sha256=95b4b86fbaa8ed682514aa045b396b0b6e309b5d45f9541d20a88848da48c062 elapsed_ms=1
+restart_full_fingerprint phase=old-as-of-after-restart view=current index=Eavt basis=9 as_of_t=Some(8) datoms=671 sha256=c61c4a5f647fab66f102ac7be3a4b869e3b64ae27b7b1a1e82d779c00d03b7e2 elapsed_ms=24
+restart_full_fingerprint phase=old-as-of-after-restart view=history index=Eavt basis=9 as_of_t=Some(8) datoms=673 sha256=052626731c91a7a4ee215d3f7fbc0ccb222f35223dbcccf88606236c7a4d14fc elapsed_ms=2
+restart_full_fingerprint phase=old-as-of-after-restart view=current index=Aevt basis=9 as_of_t=Some(8) datoms=671 sha256=e243bf230d6b61b18345d01982aedc15a8a8e89e3b9bb154327988d976df0e0a elapsed_ms=24
+restart_full_fingerprint phase=old-as-of-after-restart view=history index=Aevt basis=9 as_of_t=Some(8) datoms=673 sha256=bba26b01e78c24f37ad031c27b4326543fb6616d1d7cf244cfa0a1e4eee2a87f elapsed_ms=2
+restart_full_fingerprint phase=old-as-of-after-restart view=current index=Avet basis=9 as_of_t=Some(8) datoms=323 sha256=c87c92374e73d5efa00ff33adae303caf35aae18e225819c52234f321869ec21 elapsed_ms=12
+restart_full_fingerprint phase=old-as-of-after-restart view=history index=Avet basis=9 as_of_t=Some(8) datoms=325 sha256=92a6a2f9577e18601ff7b4a2bc91c844a5dc275b2eab17deba792bbeb8a37885 elapsed_ms=1
+restart_full_fingerprint phase=old-as-of-after-restart view=current index=Vaet basis=9 as_of_t=Some(8) datoms=344 sha256=9bdc529e8aa86428c0eee2b7f4a72533cf41eb1cb848e8273799f9e3d3e4a64b elapsed_ms=12
+restart_full_fingerprint phase=old-as-of-after-restart view=history index=Vaet basis=9 as_of_t=Some(8) datoms=344 sha256=9bdc529e8aa86428c0eee2b7f4a72533cf41eb1cb848e8273799f9e3d3e4a64b elapsed_ms=1
+restart_full_fingerprint phase=old-as-of-after-restart view=current index=Saevt basis=9 as_of_t=Some(8) datoms=671 sha256=19eeeb4caae96e5f6bba2dc58042dccb124f2877824b2baeda9fdada8429a148 elapsed_ms=28
+restart_full_fingerprint phase=old-as-of-after-restart view=history index=Saevt basis=9 as_of_t=Some(8) datoms=673 sha256=8470ea152f05d26f8fb2c3bb93ae76a989a4f10b137890cfc481ca80e02cbce5 elapsed_ms=3
+restart_full_fingerprint phase=old-as-of-after-restart view=current index=Savet basis=9 as_of_t=Some(8) datoms=323 sha256=31952f1d756db47ffeb0e3ce5723509cb13fda8cdb214e9758594feeb545f9e1 elapsed_ms=17
+restart_full_fingerprint phase=old-as-of-after-restart view=history index=Savet basis=9 as_of_t=Some(8) datoms=325 sha256=95b4b86fbaa8ed682514aa045b396b0b6e309b5d45f9541d20a88848da48c062 elapsed_ms=1
+restart_full_fingerprint phase=acknowledged-as-of-after-next-marker view=current index=Eavt basis=10 as_of_t=Some(9) datoms=674 sha256=5851c4c2e71ae6d472aef6d13e4e7e33165e954333d0d95738cb95ff5015afb0 elapsed_ms=27
+restart_full_fingerprint phase=acknowledged-as-of-after-next-marker view=history index=Eavt basis=10 as_of_t=Some(9) datoms=676 sha256=0eee6ce35eaf6555ba31b663126bea124eae7a2a1d854ef6849b0e50fc405f01 elapsed_ms=2
+restart_full_fingerprint phase=acknowledged-as-of-after-next-marker view=current index=Aevt basis=10 as_of_t=Some(9) datoms=674 sha256=2829c658db13739e72dc3d7fcbddfc0535928c69d4a4c1092104eda2b76298f6 elapsed_ms=24
+restart_full_fingerprint phase=acknowledged-as-of-after-next-marker view=history index=Aevt basis=10 as_of_t=Some(9) datoms=676 sha256=7ef7c8abb5ab85bbd54d9ebbb473c3776c3d782cdaa08c3ad94305fe9514522f elapsed_ms=2
+restart_full_fingerprint phase=acknowledged-as-of-after-next-marker view=current index=Avet basis=10 as_of_t=Some(9) datoms=326 sha256=c6c2cf4da86e1797f9bb44027571ba9078300311dafc9ecfdfa57b4c8ce3984a elapsed_ms=12
+restart_full_fingerprint phase=acknowledged-as-of-after-next-marker view=history index=Avet basis=10 as_of_t=Some(9) datoms=328 sha256=77f43cb8b0c65711e889b12962085538b3744b7fbfbb2be9ee21f9003713875a elapsed_ms=1
+restart_full_fingerprint phase=acknowledged-as-of-after-next-marker view=current index=Vaet basis=10 as_of_t=Some(9) datoms=344 sha256=9bdc529e8aa86428c0eee2b7f4a72533cf41eb1cb848e8273799f9e3d3e4a64b elapsed_ms=13
+restart_full_fingerprint phase=acknowledged-as-of-after-next-marker view=history index=Vaet basis=10 as_of_t=Some(9) datoms=344 sha256=9bdc529e8aa86428c0eee2b7f4a72533cf41eb1cb848e8273799f9e3d3e4a64b elapsed_ms=1
+restart_full_fingerprint phase=acknowledged-as-of-after-next-marker view=current index=Saevt basis=10 as_of_t=Some(9) datoms=674 sha256=92518ced94230f869725bf9ad094a0e5b8fd2d1dc9c9f3e9af19e96849821e31 elapsed_ms=24
+restart_full_fingerprint phase=acknowledged-as-of-after-next-marker view=history index=Saevt basis=10 as_of_t=Some(9) datoms=676 sha256=5a9c6a86115f3a715725d58e490196022053d6e904da1f48a66e4e9130b2f7e2 elapsed_ms=2
+restart_full_fingerprint phase=acknowledged-as-of-after-next-marker view=current index=Savet basis=10 as_of_t=Some(9) datoms=326 sha256=63dbecc25b13373239437863901a8d8d7e54302dafe199ed76b54ea5c47611bc elapsed_ms=13
+restart_full_fingerprint phase=acknowledged-as-of-after-next-marker view=history index=Savet basis=10 as_of_t=Some(9) datoms=328 sha256=1a8b23ac2ec24ad95af09f52e1a4d23b441b3d459ba3d30b6c1f34c45ec9a16d elapsed_ms=1
+restart_full_fingerprint phase=final-before-writer-stop view=current index=Eavt basis=10 as_of_t=None datoms=675 sha256=c5307a355e197840884e0b2d447b98ac0325a22a2a17ecb4e667f20f84445847 elapsed_ms=3
+restart_full_fingerprint phase=final-before-writer-stop view=history index=Eavt basis=10 as_of_t=None datoms=679 sha256=91d486b5f736c6e9a09e0a9f5ec671807f58b515d53edad24e1de3cf0d0dc47c elapsed_ms=3
+restart_full_fingerprint phase=final-before-writer-stop view=current index=Aevt basis=10 as_of_t=None datoms=675 sha256=da96a1c34981e9f00df069fe3037de29d1db83ff90c8652d4c3204b41d7d6c85 elapsed_ms=2
+restart_full_fingerprint phase=final-before-writer-stop view=history index=Aevt basis=10 as_of_t=None datoms=679 sha256=61a8c2af96023a42be8571710c70dc521ec2f6384c0a0c005cf54bb4f1880036 elapsed_ms=2
+restart_full_fingerprint phase=final-before-writer-stop view=current index=Avet basis=10 as_of_t=None datoms=327 sha256=6d924920399057dff5ce01e8971a53016c46a47ab678d41b04c1c9bc40bd44f1 elapsed_ms=1
+restart_full_fingerprint phase=final-before-writer-stop view=history index=Avet basis=10 as_of_t=None datoms=331 sha256=faf2ac7a4dbc9dc5fa23ce1d98e21308ae6d9a401871dab136ebd87b8bfe5a57 elapsed_ms=1
+restart_full_fingerprint phase=final-before-writer-stop view=current index=Vaet basis=10 as_of_t=None datoms=344 sha256=9bdc529e8aa86428c0eee2b7f4a72533cf41eb1cb848e8273799f9e3d3e4a64b elapsed_ms=1
+restart_full_fingerprint phase=final-before-writer-stop view=history index=Vaet basis=10 as_of_t=None datoms=344 sha256=9bdc529e8aa86428c0eee2b7f4a72533cf41eb1cb848e8273799f9e3d3e4a64b elapsed_ms=1
+restart_full_fingerprint phase=final-before-writer-stop view=current index=Saevt basis=10 as_of_t=None datoms=675 sha256=58985c991d0296ee257149593e7b46ee82881b214fe78f2b0f4a7de73348da21 elapsed_ms=3
+restart_full_fingerprint phase=final-before-writer-stop view=history index=Saevt basis=10 as_of_t=None datoms=679 sha256=25a6edff9c42bfbb6d3808a5a5695a785387beb2418c7cf20331dec02713d0b0 elapsed_ms=2
+restart_full_fingerprint phase=final-before-writer-stop view=current index=Savet basis=10 as_of_t=None datoms=327 sha256=fd69eb406a6e78f33d06149b5392e616e705cdbe37aa57554933c4da5b9eaba3 elapsed_ms=1
+restart_full_fingerprint phase=final-before-writer-stop view=history index=Savet basis=10 as_of_t=None datoms=331 sha256=9dea90af4e66afc2cc383c7e92b0c2035d223967aa92a45d89614ce706e165ba elapsed_ms=1
+restart_full_fingerprint phase=independent-reopen-final view=current index=Eavt basis=10 as_of_t=None datoms=675 sha256=c5307a355e197840884e0b2d447b98ac0325a22a2a17ecb4e667f20f84445847 elapsed_ms=4
+restart_full_fingerprint phase=independent-reopen-final view=history index=Eavt basis=10 as_of_t=None datoms=679 sha256=91d486b5f736c6e9a09e0a9f5ec671807f58b515d53edad24e1de3cf0d0dc47c elapsed_ms=10
+restart_full_fingerprint phase=independent-reopen-final view=current index=Aevt basis=10 as_of_t=None datoms=675 sha256=da96a1c34981e9f00df069fe3037de29d1db83ff90c8652d4c3204b41d7d6c85 elapsed_ms=2
+restart_full_fingerprint phase=independent-reopen-final view=history index=Aevt basis=10 as_of_t=None datoms=679 sha256=61a8c2af96023a42be8571710c70dc521ec2f6384c0a0c005cf54bb4f1880036 elapsed_ms=2
+restart_full_fingerprint phase=independent-reopen-final view=current index=Avet basis=10 as_of_t=None datoms=327 sha256=6d924920399057dff5ce01e8971a53016c46a47ab678d41b04c1c9bc40bd44f1 elapsed_ms=6
+restart_full_fingerprint phase=independent-reopen-final view=history index=Avet basis=10 as_of_t=None datoms=331 sha256=faf2ac7a4dbc9dc5fa23ce1d98e21308ae6d9a401871dab136ebd87b8bfe5a57 elapsed_ms=6
+restart_full_fingerprint phase=independent-reopen-final view=current index=Vaet basis=10 as_of_t=None datoms=344 sha256=9bdc529e8aa86428c0eee2b7f4a72533cf41eb1cb848e8273799f9e3d3e4a64b elapsed_ms=5
+restart_full_fingerprint phase=independent-reopen-final view=history index=Vaet basis=10 as_of_t=None datoms=344 sha256=9bdc529e8aa86428c0eee2b7f4a72533cf41eb1cb848e8273799f9e3d3e4a64b elapsed_ms=5
+restart_full_fingerprint phase=independent-reopen-final view=current index=Saevt basis=10 as_of_t=None datoms=675 sha256=58985c991d0296ee257149593e7b46ee82881b214fe78f2b0f4a7de73348da21 elapsed_ms=10
+restart_full_fingerprint phase=independent-reopen-final view=history index=Saevt basis=10 as_of_t=None datoms=679 sha256=25a6edff9c42bfbb6d3808a5a5695a785387beb2418c7cf20331dec02713d0b0 elapsed_ms=10
+restart_full_fingerprint phase=independent-reopen-final view=current index=Savet basis=10 as_of_t=None datoms=327 sha256=fd69eb406a6e78f33d06149b5392e616e705cdbe37aa57554933c4da5b9eaba3 elapsed_ms=6
+restart_full_fingerprint phase=independent-reopen-final view=history index=Savet basis=10 as_of_t=None datoms=331 sha256=9dea90af4e66afc2cc383c7e92b0c2035d223967aa92a45d89614ce706e165ba elapsed_ms=5
+memory phase=after-recovery VmHWM:	   25732 kB
+memory phase=after-recovery VmRSS:	   25732 kB
+recovery storage_restart_ms=324 replacement_start_ms=2730 base_t=8 target_t=9 tail_transactions=1 tail_range_reads=1
+PASS restart-workflow database=ha-current-source original_basis=8 final_basis=10 immediate_pg_crash=true durable_settings=on exact_replay=true old_values=true old_log=true full_current_history_fingerprints=true indexes=6 deferred_source_replay=true changed_source_rejected=true cross_source_replacement=true native_eager=0

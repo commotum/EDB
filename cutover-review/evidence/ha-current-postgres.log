@@ -1,0 +1,27 @@
+2026-10-07 19:34:28.481 PDT [1193998] LOG:  starting PostgreSQL 15.11 on x86_64-pc-linux-gnu, compiled by gcc (MW GCC 12.3.0-GLIBC2.17-gold) 12.3.0, 64-bit
+2026-10-07 19:34:28.483 PDT [1193998] LOG:  listening on Unix socket "/tmp/edb-cutover-ha-current-20261007/socket/.s.PGSQL.55438"
+2026-10-07 19:34:28.489 PDT [1194001] LOG:  database system was shut down at 2026-10-07 19:34:28 PDT
+2026-10-07 19:34:28.495 PDT [1193998] LOG:  database system is ready to accept connections
+2026-10-07 19:34:30.780 PDT [1194148] LOG:  could not receive data from client: Connection reset by peer
+2026-10-07 19:34:31.119 PDT [1193998] LOG:  received immediate shutdown request
+2026-10-07 19:34:31.124 PDT [1194306] FATAL:  the database system is shutting down
+2026-10-07 19:34:31.125 PDT [1194307] FATAL:  the database system is shutting down
+2026-10-07 19:34:31.135 PDT [1193998] LOG:  database system is shut down
+2026-10-07 19:34:31.261 PDT [1194577] LOG:  starting PostgreSQL 15.11 on x86_64-pc-linux-gnu, compiled by gcc (MW GCC 12.3.0-GLIBC2.17-gold) 12.3.0, 64-bit
+2026-10-07 19:34:31.263 PDT [1194577] LOG:  listening on Unix socket "/tmp/edb-cutover-ha-current-20261007/socket/.s.PGSQL.55438"
+2026-10-07 19:34:31.268 PDT [1194590] LOG:  database system was interrupted; last known up at 2026-10-07 19:34:28 PDT
+2026-10-07 19:34:31.396 PDT [1194590] LOG:  database system was not properly shut down; automatic recovery in progress
+2026-10-07 19:34:31.398 PDT [1194590] LOG:  redo starts at 0/150AF20
+2026-10-07 19:34:31.402 PDT [1194590] LOG:  invalid record length at 0/155DAE8: wanted 24, got 0
+2026-10-07 19:34:31.402 PDT [1194590] LOG:  redo done at 0/155DAC0 system usage: CPU: user: 0.00 s, system: 0.00 s, elapsed: 0.00 s
+2026-10-07 19:34:31.406 PDT [1194587] LOG:  checkpoint starting: end-of-recovery immediate wait
+2026-10-07 19:34:31.423 PDT [1194587] LOG:  checkpoint complete: wrote 72 buffers (0.4%); 0 WAL file(s) added, 0 removed, 0 recycled; write=0.004 s, sync=0.008 s, total=0.018 s; sync files=46, longest=0.001 s, average=0.001 s; distance=331 kB, estimate=331 kB
+2026-10-07 19:34:31.428 PDT [1194577] LOG:  database system is ready to accept connections
+2026-10-07 19:35:02.510 PDT [1195494] LOG:  could not receive data from client: Connection reset by peer
+2026-10-07 19:35:02.516 PDT [1194577] LOG:  received fast shutdown request
+2026-10-07 19:35:02.517 PDT [1194577] LOG:  aborting any active transactions
+2026-10-07 19:35:02.521 PDT [1194577] LOG:  background worker "logical replication launcher" (PID 1194637) exited with exit code 1
+2026-10-07 19:35:02.521 PDT [1194587] LOG:  shutting down
+2026-10-07 19:35:02.522 PDT [1194587] LOG:  checkpoint starting: shutdown immediate
+2026-10-07 19:35:02.533 PDT [1194587] LOG:  checkpoint complete: wrote 22 buffers (0.1%); 0 WAL file(s) added, 0 removed, 0 recycled; write=0.002 s, sync=0.003 s, total=0.013 s; sync files=11, longest=0.001 s, average=0.001 s; distance=141 kB, estimate=312 kB
+2026-10-07 19:35:02.543 PDT [1194577] LOG:  database system is shut down

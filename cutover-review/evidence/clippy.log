@@ -1,0 +1,191 @@
+    Checking edb-core v0.1.0 (/tmp/edb-cutover-impl-20261007)
+warning: this `if` statement can be collapsed
+  --> src/index/visibility.rs:66:16
+   |
+66 |           } else if let Some(retraction) = barriers.get(&key) {
+   |  ________________^
+67 | |             if retraction.tx > datom.tx {
+68 | |                 pairs.push(crate::index::recent::NoHistoryPair {
+69 | |                     retraction: retraction.clone(),
+...  |
+73 | |         }
+   | |_________^
+   |
+   = help: for further information visit https://rust-lang.github.io/rust-clippy/master/index.html#collapsible_if
+   = note: `#[warn(clippy::collapsible_if)]` on by default
+help: collapse nested if block
+   |
+66 ~         } else if let Some(retraction) = barriers.get(&key)
+67 ~             && retraction.tx > datom.tx {
+68 |                 pairs.push(crate::index::recent::NoHistoryPair {
+...
+71 |                 });
+72 ~             }
+   |
+
+warning: this loop could be written as a `for` loop
+   --> src/index/overlay.rs:165:9
+    |
+165 |         while let Some((key, ())) = cursor.next() {
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ help: try: `for (key, ()) in cursor`
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/master/index.html#while_let_on_iterator
+    = note: `#[warn(clippy::while_let_on_iterator)]` on by default
+
+warning: this function has too many arguments (8/7)
+   --> src/operations/deployment.rs:100:1
+    |
+100 | / pub(crate) fn install(
+101 | |     operator: &super::PostgresOperator,
+102 | |     client: &crate::TransactionClient,
+103 | |     request_key: &str,
+...   |
+108 | |     timeout: std::time::Duration,
+109 | | ) -> Result<crate::ServiceTransactionReport, SemanticError> {
+    | |___________________________________________________________^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/master/index.html#too_many_arguments
+    = note: `#[warn(clippy::too_many_arguments)]` on by default
+
+warning: this function has too many arguments (8/7)
+  --> src/operations/operator.rs:71:5
+   |
+71 | /     pub fn install_program(
+72 | |         &mut self,
+73 | |         client: &crate::TransactionClient,
+74 | |         request_key: &str,
+...  |
+79 | |         timeout: Duration,
+80 | |     ) -> Result<crate::ServiceTransactionReport, SemanticError> {
+   | |_______________________________________________________________^
+   |
+   = help: for further information visit https://rust-lang.github.io/rust-clippy/master/index.html#too_many_arguments
+
+warning: items after a test module
+  --> src/reserved_allocation.rs:20:1
+   |
+20 | mod tests {
+   | ^^^^^^^^^
+...
+40 | impl ReservedAllocation {
+   | ^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: for further information visit https://rust-lang.github.io/rust-clippy/master/index.html#items_after_test_module
+   = note: `#[warn(clippy::items_after_test_module)]` on by default
+
+warning: this call to `clone` can be replaced with `std::slice::from_ref`
+    --> src/storage/indexing.rs:1053:19
+     |
+1053 |             .with(&[operation.clone()], 1, EntityRef::Id(99))
+     |                   ^^^^^^^^^^^^^^^^^^^^ help: try: `std::slice::from_ref(&operation)`
+     |
+     = help: for further information visit https://rust-lang.github.io/rust-clippy/master/index.html#cloned_ref_to_slice_refs
+     = note: `#[warn(clippy::cloned_ref_to_slice_refs)]` on by default
+
+warning: this call to `clone` can be replaced with `std::slice::from_ref`
+   --> src/transaction/assess/tests.rs:186:15
+    |
+186 |         .with(&[op.clone()], 10, source(99))
+    |               ^^^^^^^^^^^^^ help: try: `std::slice::from_ref(&op)`
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/master/index.html#cloned_ref_to_slice_refs
+
+warning: this call to `clone` can be replaced with `std::slice::from_ref`
+   --> src/transaction/assess/tests.rs:282:15
+    |
+282 |         .with(&[op.clone()], 13, source(99))
+    |               ^^^^^^^^^^^^^ help: try: `std::slice::from_ref(&op)`
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/master/index.html#cloned_ref_to_slice_refs
+
+warning: this call to `clone` can be replaced with `std::slice::from_ref`
+   --> src/transaction/assess/tests.rs:364:32
+    |
+364 |     let report = database.with(&[explicit.clone()], 10, source(99)).unwrap();
+    |                                ^^^^^^^^^^^^^^^^^^^ help: try: `std::slice::from_ref(&explicit)`
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/master/index.html#cloned_ref_to_slice_refs
+
+warning: `edb-core` (lib) generated 4 warnings (run `cargo clippy --fix --lib -p edb-core` to apply 2 suggestions)
+warning: for loop over a single element
+   --> tests/persisted_program_source_cutover.rs:110:5
+    |
+110 | /     for db in [&second.db_after] {
+111 | |         assert_eq!(
+112 | |             rows(
+113 | |                 ProgramRuntime
+...   |
+126 | |         );
+127 | |     }
+    | |_____^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/master/index.html#single_element_loop
+    = note: `#[warn(clippy::single_element_loop)]` on by default
+help: try
+    |
+110 ~     {
+111 +         let db = &second.db_after;
+112 +         assert_eq!(
+113 +             rows(
+114 +                 ProgramRuntime
+115 +                     .execute(
+116 +                         &many,
+117 +                         db,
+118 +                         &[],
+119 +                         ProgramControl {
+120 +                             max_collection_items: 2,
+121 +                             ..ProgramControl::default()
+122 +                         }
+123 +                     )
+124 +                     .unwrap()
+125 +             ),
+126 +             vec![vec![Value::Long(10)], vec![Value::Long(20)]]
+127 +         );
+128 +     }
+    |
+
+warning: `edb-core` (test "persisted_program_source_cutover") generated 1 warning (run `cargo clippy --fix --test "persisted_program_source_cutover"` to apply 1 suggestion)
+warning: this `if` statement can be collapsed
+   --> tests/pull_source_cutover.rs:536:9
+    |
+536 | /         if datom.entity == 500 && datom.attribute == 101 {
+537 | |             if observed.fetch_add(1, Ordering::Relaxed) == 1 {
+538 | |                 cancel.store(true, Ordering::Relaxed);
+539 | |             }
+540 | |         }
+    | |_________^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/master/index.html#collapsible_if
+    = note: `#[warn(clippy::collapsible_if)]` on by default
+help: collapse nested if block
+    |
+536 ~         if datom.entity == 500 && datom.attribute == 101
+537 ~             && observed.fetch_add(1, Ordering::Relaxed) == 1 {
+538 |                 cancel.store(true, Ordering::Relaxed);
+539 ~             }
+    |
+
+warning: `edb-core` (test "pull_source_cutover") generated 1 warning (run `cargo clippy --fix --test "pull_source_cutover"` to apply 1 suggestion)
+warning: this `if` statement can be collapsed
+   --> examples/application_workflow.rs:119:9
+    |
+119 | /         if let Ok(report) = &committed.report {
+120 | |             if let Err(error) = check_attribution(&report.db_after, &report.tx_data) {
+121 | |                 committed.report = Err(error);
+122 | |             }
+123 | |         }
+    | |_________^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/master/index.html#collapsible_if
+    = note: `#[warn(clippy::collapsible_if)]` on by default
+help: collapse nested if block
+    |
+119 ~         if let Ok(report) = &committed.report
+120 ~             && let Err(error) = check_attribution(&report.db_after, &report.tx_data) {
+121 |                 committed.report = Err(error);
+122 ~             }
+    |
+
+warning: `edb-core` (example "application_workflow") generated 1 warning (run `cargo clippy --fix --example "application_workflow"` to apply 1 suggestion)
+warning: `edb-core` (lib test) generated 9 warnings (4 duplicates)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 13.37s

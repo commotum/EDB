@@ -1,0 +1,9 @@
+   Compiling edb-core v0.1.0 (/tmp/edb-cutover-impl-20261007)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.95s
+     Running tests/updating_transactions_cutover.rs (target/debug/deps/updating_transactions_cutover-353be6700e644ee8)
+
+running 1 test
+test proposed_information_is_checked_as_one_set_and_captured_before_is_immutable ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.13s
+

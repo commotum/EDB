@@ -1,0 +1,25 @@
+    Checking edb-core v0.1.0 (/tmp/edb-cutover-impl-20261007)
+error: called `.err().expect()` on a `Result` value
+  --> tests/northstar_source_cutover.rs:89:14
+   |
+89 |               .err()
+   |  ______________^
+90 | |             .expect("transaction entity cascade must fail atomically");
+   | |___________________^ help: try: `expect_err`
+   |
+   = help: for further information visit https://rust-lang.github.io/rust-clippy/master/index.html#err_expect
+   = note: `-D clippy::err-expect` implied by `-D warnings`
+   = help: to override `-D warnings` add `#[allow(clippy::err_expect)]`
+
+error: called `.err().expect()` on a `Result` value
+  --> tests/northstar_source_cutover.rs:95:14
+   |
+95 |               .err()
+   |  ______________^
+96 | |             .expect("overlay transaction entity cascade must fail atomically");
+   | |___________________^ help: try: `expect_err`
+   |
+   = help: for further information visit https://rust-lang.github.io/rust-clippy/master/index.html#err_expect
+
+error: could not compile `edb-core` (test "northstar_source_cutover") due to 2 previous errors
+warning: build failed, waiting for other jobs to finish...

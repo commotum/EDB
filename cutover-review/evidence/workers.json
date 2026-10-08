@@ -1,0 +1,489 @@
+{
+  "docs-2/00_start_here/00_introduction.md": {
+    "state": "root_reviewed_and_verified",
+    "agent": "doc_introduction"
+  },
+  "docs-2/00_start_here/01_setup.md": {
+    "state": "root_reviewed_and_verified",
+    "agent": "doc_setup"
+  },
+  "docs-2/00_start_here/02_peer_library.md": {
+    "state": "root_reviewed_and_verified",
+    "agent": "doc_peer_library"
+  },
+  "docs-2/00_start_here/03_language_support.md": {
+    "state": "root_reviewed_and_verified",
+    "agent": "doc_language_support"
+  },
+  "docs-2/00_start_here/04_releases.md": {
+    "state": "root_reviewed_and_verified",
+    "agent": "doc_releases"
+  },
+  "docs-2/00_start_here/05_change_log.md": {
+    "state": "root_reviewed_and_verified",
+    "agent": "doc_change_log"
+  },
+  "docs-2/00_start_here/06_release_notices.md": {
+    "state": "root_reviewed_and_verified",
+    "agent": "doc_release_notices"
+  },
+  "docs-2/01_tutorials/00_edn_workflow.md": {
+    "state": "root_reviewed_and_verified",
+    "agent": "doc_edn_workflow"
+  },
+  "docs-2/01_tutorials/01_application_workflow.md": {
+    "state": "root_reviewed_and_verified",
+    "agent": "doc_application_workflow",
+    "owned": [
+      "examples/application_workflow.rs"
+    ]
+  },
+  "docs-2/01_tutorials/02_in_memory.md": {
+    "state": "root_reviewed_and_verified",
+    "agent": "doc_in_memory"
+  },
+  "docs-2/01_tutorials/03_peer_tutorial.md": {
+    "state": "root_reviewed_and_verified",
+    "agent": "doc_peer_tutorial"
+  },
+  "docs-2/01_tutorials/04_run_a_transactor.md": {
+    "state": "root_reviewed_and_verified",
+    "agent": "doc_run_transactor"
+  },
+  "docs-2/01_tutorials/05_connect_to_a_database.md": {
+    "state": "root_reviewed_and_verified",
+    "agent": "doc_connect_database"
+  },
+  "docs-2/01_tutorials/06_transact_schema.md": {
+    "state": "root_reviewed_and_verified",
+    "agent": "doc_transact_schema"
+  },
+  "docs-2/01_tutorials/07_transact_data.md": {
+    "state": "root_reviewed_and_verified",
+    "agent": "doc_transact_data"
+  },
+  "docs-2/01_tutorials/08_query_the_data.md": {
+    "state": "root_reviewed_and_verified",
+    "agent": "doc_query_data"
+  },
+  "docs-2/01_tutorials/09_see_historic_data.md": {
+    "state": "root_reviewed_and_verified",
+    "agent": "doc_historic_data"
+  },
+  "docs-2/01_tutorials/10_client_workflow.md": {
+    "state": "root_reviewed_and_verified",
+    "agent": "doc_client_workflow"
+  },
+  "docs-2/02_core_concepts/00_database_values.md": {
+    "state": "root_reviewed_and_verified",
+    "agent": "doc_database_values"
+  },
+  "docs-2/02_core_concepts/01_data_model.md": {
+    "state": "root_reviewed_and_verified",
+    "agent": "doc_data_model",
+    "owned": [
+      "src/model",
+      "src/database.rs",
+      "src/encoding/mod.rs"
+    ]
+  },
+  "docs-2/02_core_concepts/02_programming_with_data_and_edn.md": {
+    "state": "root_reviewed_and_verified",
+    "agent": "doc_programming_edn"
+  },
+  "docs-2/02_core_concepts/03_database_filters.md": {
+    "state": "root_reviewed_and_verified",
+    "agent": "doc_database_filters",
+    "owned": [
+      "src/database_value"
+    ]
+  },
+  "docs-2/02_core_concepts/04_entities.md": {
+    "state": "root_reviewed_and_verified",
+    "agent": "doc_entities"
+  },
+  "docs-2/02_core_concepts/05_best_practices.md": {
+    "state": "root_reviewed_and_verified",
+    "agent": "doc_best_practices"
+  },
+  "docs-2/02_core_concepts/06_glossary.md": {
+    "state": "root_reviewed_and_verified",
+    "agent": "doc_glossary"
+  },
+  "docs-2/03_schema/00_schema.md": {
+    "state": "root_reviewed_and_verified",
+    "agent": "doc_schema_overview"
+  },
+  "docs-2/03_schema/01_identity_and_values.md": {
+    "state": "root_reviewed_and_verified",
+    "agent": "doc_identity_values"
+  },
+  "docs-2/03_schema/02_schema_reference.md": {
+    "state": "root_reviewed_and_verified",
+    "agent": "doc_schema_reference"
+  },
+  "docs-2/03_schema/03_changing_schema.md": {
+    "state": "root_reviewed_and_verified",
+    "agent": "doc_changing_schema"
+  },
+  "docs-2/03_schema/04_data_modeling.md": {
+    "state": "root_reviewed_and_verified",
+    "agent": "doc_data_modeling"
+  },
+  "docs-2/03_schema/05_identity_and_uniqueness.md": {
+    "state": "root_reviewed_and_verified",
+    "agent": "doc_identity_uniqueness"
+  },
+  "docs-2/04_transactions/00_transactions.md": {
+    "state": "root_reviewed_and_verified",
+    "agent": "doc_transactions",
+    "owned": [
+      "src/transaction",
+      "src/transactor/request.rs",
+      "src/encoding/submission.rs"
+    ]
+  },
+  "docs-2/04_transactions/01_persisted_programs.md": {
+    "state": "root_reviewed_and_verified",
+    "agent": "doc_persisted_programs",
+    "owned": [
+      "src/program.rs",
+      "src/program_bindings.rs"
+    ]
+  },
+  "docs-2/04_transactions/02_partitions.md": {
+    "state": "root_reviewed_and_verified",
+    "agent": "doc_partitions"
+  },
+  "docs-2/04_transactions/03_diagnostics.md": {
+    "state": "root_reviewed_and_verified",
+    "agent": "doc_transaction_diagnostics"
+  },
+  "docs-2/04_transactions/04_transaction_data.md": {
+    "state": "root_reviewed_and_verified",
+    "agent": "doc_transaction_data"
+  },
+  "docs-2/04_transactions/05_transaction_model.md": {
+    "state": "root_reviewed_and_verified",
+    "agent": "doc_transaction_model"
+  },
+  "docs-2/04_transactions/06_processing_transactions.md": {
+    "state": "root_reviewed_and_verified",
+    "agent": "doc_processing_transactions"
+  },
+  "docs-2/04_transactions/07_transaction_functions.md": {
+    "state": "root_reviewed_and_verified",
+    "agent": "doc_transaction_functions"
+  },
+  "docs-2/04_transactions/08_acid.md": {
+    "state": "root_reviewed_and_verified",
+    "agent": "doc_acid"
+  },
+  "docs-2/04_transactions/09_synchronization.md": {
+    "state": "root_reviewed_and_verified",
+    "agent": "doc_synchronization"
+  },
+  "docs-2/05_query_and_pull/00_queries.md": {
+    "state": "root_reviewed_and_verified",
+    "agent": "doc_queries"
+  },
+  "docs-2/05_query_and_pull/01_application_data.md": {
+    "state": "root_reviewed_and_verified",
+    "agent": "doc_application_data"
+  },
+  "docs-2/05_query_and_pull/02_pull_and_entities.md": {
+    "state": "root_reviewed_and_verified",
+    "agent": "doc_pull_entities"
+  },
+  "docs-2/05_query_and_pull/03_fulltext.md": {
+    "state": "root_reviewed_and_verified",
+    "agent": "doc_fulltext",
+    "owned": [
+      "src/fulltext"
+    ]
+  },
+  "docs-2/05_query_and_pull/04_diagnostics.md": {
+    "state": "root_reviewed_and_verified",
+    "agent": "doc_query_diagnostics"
+  },
+  "docs-2/05_query_and_pull/05_query_reference.md": {
+    "state": "root_reviewed_and_verified",
+    "agent": "doc_query_reference",
+    "owned": [
+      "src/query",
+      "src/edn_query.rs",
+      "src/encoding/program_query.rs"
+    ]
+  },
+  "docs-2/05_query_and_pull/06_pull_reference.md": {
+    "state": "root_reviewed_and_verified",
+    "agent": "doc_pull_reference",
+    "owned": [
+      "src/pull",
+      "src/edn_pull.rs"
+    ]
+  },
+  "docs-2/05_query_and_pull/07_executing_queries.md": {
+    "state": "root_reviewed_and_verified",
+    "agent": "doc_executing_queries"
+  },
+  "docs-2/06_indexes/00_indexes_and_log.md": {
+    "state": "root_reviewed_and_verified",
+    "agent": "doc_indexes_log"
+  },
+  "docs-2/06_indexes/01_index_model.md": {
+    "state": "root_reviewed_and_verified",
+    "agent": "related_index_docs_cleanup",
+    "owned": [
+      "src/index",
+      "src/storage/descriptors.rs"
+    ],
+    "note": "doc_index_model.md"
+  },
+  "docs-2/06_indexes/02_background_indexing.md": {
+    "state": "root_reviewed_and_verified",
+    "agent": "doc_background_indexing",
+    "owned": [
+      "src/storage except descriptors.rs"
+    ]
+  },
+  "docs-2/06_indexes/03_index_pull.md": {
+    "state": "root_reviewed_and_verified",
+    "agent": "doc_index_pull"
+  },
+  "docs-2/06_indexes/04_index_apis.md": {
+    "state": "root_reviewed_and_verified",
+    "agent": "doc_index_apis"
+  },
+  "docs-2/06_indexes/05_rseek_datoms.md": {
+    "state": "root_reviewed_and_verified",
+    "agent": "doc_rseek_datoms"
+  },
+  "docs-2/07_peer_api/00_connections.md": {
+    "state": "root_reviewed_and_verified",
+    "agent": "doc_connections"
+  },
+  "docs-2/07_peer_api/01_async_client.md": {
+    "state": "root_reviewed_and_verified",
+    "agent": "doc_async_client"
+  },
+  "docs-2/07_peer_api/02_native_computation.md": {
+    "state": "root_reviewed_and_verified",
+    "agent": "doc_native_computation"
+  },
+  "docs-2/07_peer_api/03_change_consumers.md": {
+    "state": "root_reviewed_and_verified",
+    "agent": "doc_change_consumers"
+  },
+  "docs-2/07_peer_api/04_native_api_reference.md": {
+    "state": "root_reviewed_and_verified",
+    "agent": "doc_native_api_reference"
+  },
+  "docs-2/07_peer_api/05_types.md": {
+    "state": "root_reviewed_and_verified",
+    "agent": "doc_types_overview"
+  },
+  "docs-2/07_peer_api/06_log_api.md": {
+    "state": "root_reviewed_and_verified",
+    "agent": "doc_log_api"
+  },
+  "docs-2/07_peer_api/07_error_handling.md": {
+    "state": "root_reviewed_and_verified",
+    "agent": "doc_error_handling"
+  },
+  "docs-2/07_peer_api/08_io_stats.md": {
+    "state": "root_reviewed_and_verified",
+    "agent": "doc_io_stats"
+  },
+  "docs-2/07_peer_api/09_client_api_sync.md": {
+    "state": "root_reviewed_and_verified",
+    "agent": "doc_sync_api"
+  },
+  "docs-2/07_peer_api/10_client_api_async.md": {
+    "state": "root_reviewed_and_verified",
+    "agent": "doc_async_api"
+  },
+  "docs-2/07_peer_api/types/01_attribute.md": {
+    "state": "root_reviewed_and_verified",
+    "agent": "doc_type_attribute"
+  },
+  "docs-2/07_peer_api/types/02_connection.md": {
+    "state": "root_reviewed_and_verified",
+    "agent": "doc_type_connection"
+  },
+  "docs-2/07_peer_api/types/03_database.md": {
+    "state": "root_reviewed_and_verified",
+    "agent": "doc_type_database"
+  },
+  "docs-2/07_peer_api/types/04_database_predicate.md": {
+    "state": "root_reviewed_and_verified",
+    "agent": "doc_database_predicate",
+    "owned": [
+      "src/database_value/views.rs"
+    ]
+  },
+  "docs-2/07_peer_api/types/05_datom.md": {
+    "state": "root_reviewed_and_verified",
+    "agent": "doc_type_datom"
+  },
+  "docs-2/07_peer_api/types/06_entity.md": {
+    "state": "root_reviewed_and_verified",
+    "agent": "doc_type_entity"
+  },
+  "docs-2/07_peer_api/types/07_async_operation.md": {
+    "state": "root_reviewed_and_verified",
+    "agent": "doc_type_async_operation"
+  },
+  "docs-2/07_peer_api/types/08_log.md": {
+    "state": "root_reviewed_and_verified",
+    "agent": "doc_type_log"
+  },
+  "docs-2/07_peer_api/types/09_peer.md": {
+    "state": "root_reviewed_and_verified",
+    "agent": "doc_type_peer"
+  },
+  "docs-2/07_peer_api/types/10_query_request.md": {
+    "state": "root_reviewed_and_verified",
+    "agent": "doc_type_query_request"
+  },
+  "docs-2/07_peer_api/types/11_data_utilities.md": {
+    "state": "root_reviewed_and_verified",
+    "agent": "doc_type_data_utilities"
+  },
+  "docs-2/08_operations/00_deployment.md": {
+    "state": "root_reviewed_and_verified",
+    "agent": "doc_deployment"
+  },
+  "docs-2/08_operations/01_administration.md": {
+    "state": "root_reviewed_and_verified",
+    "agent": "doc_administration"
+  },
+  "docs-2/08_operations/02_database_lifecycle.md": {
+    "state": "root_reviewed_and_verified",
+    "agent": "doc_database_lifecycle"
+  },
+  "docs-2/08_operations/03_observability.md": {
+    "state": "root_reviewed_and_verified",
+    "agent": "doc_observability"
+  },
+  "docs-2/08_operations/04_maintenance_controls.md": {
+    "state": "root_reviewed_and_verified",
+    "agent": "doc_maintenance_controls"
+  },
+  "docs-2/08_operations/05_backup_reads.md": {
+    "state": "root_reviewed_and_verified",
+    "agent": "doc_backup_reads"
+  },
+  "docs-2/08_operations/06_storage_services.md": {
+    "state": "root_reviewed_and_verified",
+    "agent": "doc_storage_services"
+  },
+  "docs-2/08_operations/07_transactor_reference.md": {
+    "state": "root_reviewed_and_verified",
+    "agent": "doc_transactor_reference"
+  },
+  "docs-2/08_operations/08_deployment_reference.md": {
+    "state": "root_reviewed_and_verified",
+    "agent": "doc_deployment_reference"
+  },
+  "docs-2/08_operations/09_capacity_planning.md": {
+    "state": "root_reviewed_and_verified",
+    "agent": "doc_capacity_planning"
+  },
+  "docs-2/08_operations/10_high_availability.md": {
+    "state": "root_reviewed_and_verified",
+    "agent": "doc_high_availability"
+  },
+  "docs-2/08_operations/11_backup_and_restore.md": {
+    "state": "root_reviewed_and_verified",
+    "agent": "doc_backup_restore"
+  },
+  "docs-2/08_operations/12_memory_and_caching.md": {
+    "state": "root_reviewed_and_verified",
+    "agent": "doc_memory_caching"
+  },
+  "docs-2/08_operations/13_logging.md": {
+    "state": "root_reviewed_and_verified",
+    "agent": "doc_logging"
+  },
+  "docs-2/08_operations/14_configuration_reference.md": {
+    "state": "root_reviewed_and_verified",
+    "agent": "doc_configuration_reference"
+  },
+  "docs-2/09_optional/00_local_cache.md": {
+    "state": "root_reviewed_and_verified",
+    "agent": "doc_local_cache"
+  },
+  "docs-2/09_optional/01_transaction_hints.md": {
+    "state": "root_reviewed_and_verified",
+    "agent": "doc_transaction_hints"
+  },
+  "docs-2/09_optional/02_log_cache.md": {
+    "state": "root_reviewed_and_verified",
+    "agent": "doc_log_cache"
+  },
+  "docs-2/09_optional/03_database_tools.md": {
+    "state": "root_reviewed_and_verified",
+    "agent": "doc_database_tools"
+  },
+  "docs-2/09_optional/04_remote_transactions.md": {
+    "state": "root_reviewed_and_verified",
+    "agent": "doc_remote_transactions"
+  },
+  "docs-2/09_optional/05_running_on_aws.md": {
+    "state": "root_reviewed_and_verified",
+    "agent": "doc_running_aws"
+  },
+  "docs-2/09_optional/06_aws_access_control.md": {
+    "state": "root_reviewed_and_verified",
+    "agent": "doc_aws_access_control"
+  },
+  "docs-2/09_optional/07_read_only_connections.md": {
+    "state": "root_reviewed_and_verified",
+    "agent": "doc_read_only_connections"
+  },
+  "docs-2/09_optional/08_excision.md": {
+    "state": "root_reviewed_and_verified",
+    "agent": "doc_excision"
+  },
+  "docs-2/09_optional/09_problem_reports.md": {
+    "state": "root_reviewed_and_verified",
+    "agent": "doc_problem_reports"
+  },
+  "docs-2/09_optional/technical_notes/00_updating_transactions.md": {
+    "state": "root_reviewed_and_verified",
+    "agent": "doc_updating_transactions"
+  },
+  "docs-2/09_optional/technical_notes/01_composing_transactions.md": {
+    "state": "root_reviewed_and_verified",
+    "agent": "doc_composing_transactions"
+  },
+  "docs-2/09_optional/technical_notes/02_distributing_the_library.md": {
+    "state": "root_reviewed_and_verified",
+    "agent": "doc_distributing_library"
+  },
+  "docs-2/09_optional/technical_notes/03_querying_bytes.md": {
+    "state": "root_reviewed_and_verified",
+    "agent": "doc_querying_bytes"
+  },
+  "docs-2/09_optional/technical_notes/04_outer_joins.md": {
+    "state": "root_reviewed_and_verified",
+    "agent": "doc_outer_joins"
+  },
+  "docs-2/DATOMIC_TIME_AND_SOURCE_REPORT.md": {
+    "state": "root_reviewed_and_verified",
+    "agent": "doc_historical_report"
+  },
+  "docs-2/NORTHSTAR.md": {
+    "state": "root_reviewed_and_verified",
+    "agent": "doc_northstar"
+  },
+  "docs-2/README.md": {
+    "state": "root_reviewed_and_verified",
+    "agent": "doc_readme"
+  },
+  "docs-2/TIMESTAMP_SOURCE_DESIGN.md": {
+    "state": "root_reviewed_and_verified",
+    "agent": "doc_timestamp_source"
+  }
+}

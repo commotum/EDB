@@ -1,0 +1,35 @@
+TARGET postgres_database="edb_cutover_log14_restore" catalog_schema="public"
+GC_POLICY older_than_seconds=0 short_retention=true scope=entire-catalog
+PROGRESS command=gc phase=collect-bounded-batch
+GC_APPLIED batch=1 applied=true phase=Some(Adding) sealed_epoch=Some(0) stored_objects=None stored_bytes=None pending_events=None ownership_steps=0 newly_owned=0 objects_examined=0 objects_removed=0 bytes_removed=0
+PROGRESS command=gc phase=collect-bounded-batch
+GC_APPLIED batch=2 applied=true phase=Some(Adding) sealed_epoch=Some(0) stored_objects=None stored_bytes=None pending_events=None ownership_steps=4058 newly_owned=2295 objects_examined=0 objects_removed=0 bytes_removed=0
+PROGRESS command=gc phase=collect-bounded-batch
+GC_APPLIED batch=3 applied=true phase=Some(Removing) sealed_epoch=Some(0) stored_objects=None stored_bytes=None pending_events=None ownership_steps=4028 newly_owned=998 objects_examined=0 objects_removed=0 bytes_removed=0
+PROGRESS command=gc phase=collect-bounded-batch
+GC_APPLIED batch=4 applied=true phase=Some(ProtectingMetadata) sealed_epoch=Some(0) stored_objects=None stored_bytes=None pending_events=None ownership_steps=3273 newly_owned=0 objects_examined=0 objects_removed=0 bytes_removed=0
+PROGRESS command=gc phase=collect-bounded-batch
+GC_APPLIED batch=5 applied=true phase=Some(ProtectingMetadata) sealed_epoch=Some(0) stored_objects=None stored_bytes=None pending_events=None ownership_steps=0 newly_owned=0 objects_examined=0 objects_removed=0 bytes_removed=0
+PROGRESS command=gc phase=collect-bounded-batch
+GC_APPLIED batch=6 applied=true phase=Some(ProtectingMetadata) sealed_epoch=Some(0) stored_objects=None stored_bytes=None pending_events=None ownership_steps=0 newly_owned=0 objects_examined=0 objects_removed=0 bytes_removed=0
+PROGRESS command=gc phase=collect-bounded-batch
+GC_APPLIED batch=7 applied=true phase=Some(Sweeping) sealed_epoch=Some(0) stored_objects=None stored_bytes=None pending_events=None ownership_steps=0 newly_owned=0 objects_examined=0 objects_removed=0 bytes_removed=0
+PROGRESS command=gc phase=collect-bounded-batch
+GC_APPLIED batch=8 applied=true phase=Some(Sweeping) sealed_epoch=Some(0) stored_objects=None stored_bytes=None pending_events=None ownership_steps=0 newly_owned=0 objects_examined=4096 objects_removed=469 bytes_removed=54646
+PROGRESS command=gc phase=collect-bounded-batch
+GC_APPLIED batch=9 applied=true phase=Some(Sweeping) sealed_epoch=Some(0) stored_objects=None stored_bytes=None pending_events=None ownership_steps=0 newly_owned=0 objects_examined=4096 objects_removed=437 bytes_removed=50735
+PROGRESS command=gc phase=collect-bounded-batch
+GC_APPLIED batch=10 applied=true phase=Some(Sweeping) sealed_epoch=Some(0) stored_objects=None stored_bytes=None pending_events=None ownership_steps=0 newly_owned=0 objects_examined=4096 objects_removed=466 bytes_removed=55855
+PROGRESS command=gc phase=collect-bounded-batch
+GC_APPLIED batch=11 applied=true phase=Some(Sweeping) sealed_epoch=Some(0) stored_objects=None stored_bytes=None pending_events=None ownership_steps=0 newly_owned=0 objects_examined=4096 objects_removed=461 bytes_removed=54930
+PROGRESS command=gc phase=collect-bounded-batch
+GC_APPLIED batch=12 applied=true phase=Some(Sweeping) sealed_epoch=Some(0) stored_objects=None stored_bytes=None pending_events=None ownership_steps=0 newly_owned=0 objects_examined=4096 objects_removed=450 bytes_removed=53783
+PROGRESS command=gc phase=collect-bounded-batch
+GC_APPLIED batch=13 applied=true phase=Some(Sweeping) sealed_epoch=Some(0) stored_objects=None stored_bytes=None pending_events=None ownership_steps=0 newly_owned=0 objects_examined=4096 objects_removed=467 bytes_removed=55442
+PROGRESS command=gc phase=collect-bounded-batch
+GC_APPLIED batch=14 applied=true phase=Some(ClearingEvents) sealed_epoch=Some(0) stored_objects=None stored_bytes=None pending_events=None ownership_steps=0 newly_owned=0 objects_examined=1698 objects_removed=209 bytes_removed=25153
+PROGRESS command=gc phase=collect-bounded-batch
+GC_APPLIED batch=15 applied=true phase=Some(Complete) sealed_epoch=Some(0) stored_objects=None stored_bytes=None pending_events=None ownership_steps=0 newly_owned=0 objects_examined=0 objects_removed=0 bytes_removed=0
+GC_REPORT_HANDOFFS batch=15 examined=0 removed=0 page_complete=true next_cycle_may_have_work=true
+GC_AUTHORIZATION batch=15 examined=9 removed=4 unsettled=false page_complete=false next_cycle_may_have_work=true
+GC_PROGRESS batches=15 cycle_complete=true resumable=false global_quiescence=not-established elapsed_ms=101652

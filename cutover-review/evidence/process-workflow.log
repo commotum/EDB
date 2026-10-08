@@ -1,0 +1,6 @@
+   Compiling edb-core v0.1.0 (/tmp/edb-cutover-impl-20261007)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 1.01s
+     Running `target/debug/examples/process_workflow`
+peer pid=335530 name=Ada committed t=3
+peer pid=335531 name=Grace committed t=2
+PASS process-workflow-335245-1791418705945801405: independent writer/peers, schema, concurrent maps, retries, complete reports, native pull, immutable values, writer-offline reopen

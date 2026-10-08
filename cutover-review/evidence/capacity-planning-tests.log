@@ -1,0 +1,10 @@
+   Compiling edb-core v0.1.0 (/tmp/edb-cutover-impl-20261007)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 5.14s
+     Running unittests src/lib.rs (target/debug/deps/edb_core-b77486e83f53582c)
+
+running 2 tests
+test index::tests::capacity_cutover_recent_limits_charge_contributions_in_all_six_orders ... ok
+test encoding::submission::tests::capacity_cutover_request_byte_limit_includes_the_source_reference ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 58 filtered out; finished in 0.00s
+

@@ -1,0 +1,15 @@
+Command: cargo test --locked --test edn_workflow_cutover -- --include-ignored --nocapture
+Working directory: /tmp/edb-cutover-impl-20261007
+EDB_TEST_POSTGRES_URL: explicitly selected disposable instance from WORKER_RULES.md
+Each execution creates a unique logical edn-workflow database and a private 0700 temporary endpoint; no production environment fallback.
+
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 1.52s
+     Running tests/edn_workflow_cutover.rs (target/debug/deps/edn_workflow_cutover-aaa365f28073d7a6)
+
+running 2 tests
+test tutorial_native_library_example_runs_against_a_speculative_database ... ok
+test tutorial_cli_preserves_sources_previews_views_and_exact_restart_retries ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 3.87s
+
+Live test steps: CLI install/create; stock separate writer with private socket; supplied examples/edn/schema.edn and people.edn via --file; supplied names-query.edn and person-pull.edn; six-slot reports including one automatic timestamp; preview with no persistent change and ordinary explicit timestamp matching --tx-instant; Alicia map and primitive authoring; explicit nested Bob lookup/name update; empty transaction; as-of/since/history query and Pull; non-source --inputs vector; multiple named database views/log/raw tuples; same-request source tempid; different-source same EAV retained while ordinary Pull remains scalar; global retraction and original history attribution; reads with writer stopped; graceful restart and canonical map-order/comment exact replay; replay after source ident removed; changed source intent conflict; rejection of dedicated timestamp, per-operation source, and map-level source syntax; basis unchanged after retries/rejections.

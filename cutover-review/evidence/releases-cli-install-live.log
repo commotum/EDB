@@ -1,0 +1,8 @@
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.08s
+     Running tests/release_distribution_cutover.rs (target/debug/deps/release_distribution_cutover-91c67cf06e5e4488)
+
+running 1 test
+test cli_install_reports_the_installed_storage_format_on_repeated_installation ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.05s
+

@@ -1,0 +1,10 @@
+   Compiling edb-core v0.1.0 (/tmp/edb-cutover-impl-20261007)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 1.03s
+     Running tests/processing_transactions_cutover.rs (target/debug/deps/processing_transactions_cutover-ff81fb2d9ca828ee)
+
+running 2 tests
+test independent_connection_report_queue_preserves_exact_source_reports_and_removal ... ignored, requires EDB_TEST_POSTGRES_URL for a disposable PostgreSQL database
+test documented_report_query_joins_names_and_preserves_retractions ... ok
+
+test result: ok. 1 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.12s
+

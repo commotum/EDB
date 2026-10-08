@@ -1,0 +1,9 @@
+   Compiling edb-core v0.1.0 (/tmp/edb-cutover-impl-20261007)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 1.21s
+     Running tests/synchronization_cutover.rs (target/debug/deps/synchronization_cutover-8d83e1407582ad8d)
+
+running 1 test
+test causal_values_local_waits_and_queued_async_deadlines_remain_independent ... ignored, requires EDB_TEST_POSTGRES_URL for a disposable PostgreSQL database
+
+test result: ok. 0 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.00s
+

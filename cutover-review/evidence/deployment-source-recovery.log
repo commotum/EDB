@@ -1,0 +1,9 @@
+   Compiling edb-core v0.1.0 (/tmp/edb-cutover-impl-20261007)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 1.00s
+     Running tests/deployment_source_recovery.rs (target/debug/deps/deployment_source_recovery-dc8aca2149515f45)
+
+running 1 test
+test explicit_recovery_preserves_sources_receipts_and_retained_values ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.65s
+

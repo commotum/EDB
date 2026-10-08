@@ -1,0 +1,29 @@
+   Compiling edb-core v0.1.0 (/tmp/edb-cutover-impl-20261007)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.81s
+     Running tests/identity_uniqueness_source_cutover.rs (target/debug/deps/identity_uniqueness_source_cutover-52597b2bbbe85ad9)
+
+running 2 tests
+test tuple_identity_uses_upserted_reference_tempid_and_resolves_source ... FAILED
+test reference_identity_uses_upserted_reference_tempid_and_resolves_source ... FAILED
+
+failures:
+
+---- tuple_identity_uses_upserted_reference_tempid_and_resolves_source stdout ----
+
+thread 'tuple_identity_uses_upserted_reference_tempid_and_resolves_source' panicked at tests/identity_uniqueness_source_cutover.rs:64:71:
+called `Result::unwrap()` on an `Err` value: SemanticError { category: Conflict, code: "transaction/unique-conflict", message: "resulting database has multiple holders of a unique value", details: {}, anomaly: None }
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+---- reference_identity_uses_upserted_reference_tempid_and_resolves_source stdout ----
+
+thread 'reference_identity_uses_upserted_reference_tempid_and_resolves_source' panicked at tests/identity_uniqueness_source_cutover.rs:47:71:
+called `Result::unwrap()` on an `Err` value: SemanticError { category: Conflict, code: "transaction/unique-conflict", message: "resulting database has multiple holders of a unique value", details: {}, anomaly: None }
+
+
+failures:
+    reference_identity_uses_upserted_reference_tempid_and_resolves_source
+    tuple_identity_uses_upserted_reference_tempid_and_resolves_source
+
+test result: FAILED. 0 passed; 2 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.12s
+
+error: test failed, to rerun pass `--test identity_uniqueness_source_cutover`

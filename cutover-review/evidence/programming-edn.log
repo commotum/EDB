@@ -1,0 +1,13 @@
+    Blocking waiting for file lock on build directory
+   Compiling edb-core v0.1.0 (/tmp/edb-cutover-impl-20261007)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 6.06s
+     Running tests/programming_edn_cutover.rs (target/debug/deps/programming_edn_cutover-816a6794cff001d0)
+
+running 4 tests
+test overview_reader_stream_tags_and_limits_have_explicit_boundaries ... ok
+test overview_numeric_and_precision_boundaries_retain_their_domains ... ok
+test overview_collections_and_nonstored_scalars_remain_ordinary_query_data ... ok
+test overview_data_construction_transaction_and_query_run_through_public_apis ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.12s
+

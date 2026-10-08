@@ -1,0 +1,18 @@
+    Blocking waiting for file lock on build directory
+   Compiling edb-core v0.1.0 (/tmp/edb-cutover-impl-20261007)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 4.01s
+     Running tests/identity_uniqueness_source_cutover.rs (target/debug/deps/identity_uniqueness_source_cutover-52597b2bbbe85ad9)
+
+running 9 tests
+test ident_lookup_sources_follow_the_captured_alias_dictionary ... ok
+test lookup_refs_still_cannot_resolve_keys_created_in_the_same_transaction ... ok
+test reference_identity_uses_upserted_reference_tempid_and_resolves_source ... ok
+test conflicting_dependent_identities_and_unique_values_fail_without_changing_basis ... ok
+test late_identity_unification_propagates_existing_bindings_to_dependents ... ok
+test tuple_identity_uses_upserted_reference_tempid_and_resolves_source ... ok
+test new_only_cycles_allocate_deterministically_without_identity_lookups ... ok
+test new_only_reference_and_tuple_aliases_unify_before_allocation ... ok
+test chained_reference_and_tuple_identities_are_order_independent_and_lookup_once ... ok
+
+test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.32s
+

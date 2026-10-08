@@ -1,0 +1,9 @@
+   Compiling edb-core v0.1.0 (/tmp/edb-cutover-impl-20261007)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.90s
+     Running tests/change_consumers_cutover.rs (target/debug/deps/change_consumers_cutover-788903f1fa3992c9)
+
+running 1 test
+test bounded_consumer_preserves_source_log_and_contiguous_durable_progress ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.86s
+

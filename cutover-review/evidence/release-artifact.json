@@ -1,0 +1,13 @@
+{
+  "package": "edb-core",
+  "version": "0.1.0",
+  "branch": "source-first-class-cutover",
+  "code_revision": "246286350a389011b7b021d20942353891154705",
+  "platform": "Linux x86_64",
+  "rustc": "rustc 1.90.0 (1159e78c4 2025-09-14)",
+  "binary": "edb",
+  "sha256": "a41cb826576620ac0744df3feef04ca3eb967090f2e48718ce90b2048ee5bed5",
+  "bytes": 13133816,
+  "compatibility": "Fresh source-aware storage only; no old-format adapter",
+  "version_output": "edb 0.1.0"
+}

@@ -1,0 +1,15 @@
+
+running 1 test
+
+thread 'retired_lineage_cannot_restore_before_reclamation' panicked at tests/database_lifecycle_source_cutover.rs:250:5:
+same-catalog restore accepted a retired lineage before any reclamation
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+test retired_lineage_cannot_restore_before_reclamation ... FAILED
+
+failures:
+
+failures:
+    retired_lineage_cannot_restore_before_reclamation
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 2 filtered out; finished in 2.38s
+

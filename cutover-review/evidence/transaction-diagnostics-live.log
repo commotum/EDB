@@ -1,0 +1,8 @@
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.08s
+     Running tests/transaction_diagnostics_source_cutover.rs (/tmp/edb-cutover-impl-20261007-target/debug/deps/transaction_diagnostics_source_cutover-f1cafe48134b83a3)
+
+running 1 test
+test durable_diagnostics_follow_queue_scope_material_work_and_receipt_first_replay ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 3 filtered out; finished in 0.55s
+

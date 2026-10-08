@@ -1,0 +1,10 @@
+   Compiling edb-core v0.1.0 (/tmp/edb-cutover-impl-20261007)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 5.99s
+     Running unittests src/lib.rs (target/debug/deps/edb_core-b77486e83f53582c)
+
+running 2 tests
+test index::tree::cache::tests::byte_budget_and_bypass_policy_are_independent_of_entry_budget ... ok
+test index::tree::cache::tests::eviction_releases_only_cache_ownership_of_source_bearing_nodes ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 58 filtered out; finished in 0.00s
+

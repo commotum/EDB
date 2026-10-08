@@ -1,0 +1,14 @@
+   Compiling edb-core v0.1.0 (/tmp/edb-cutover-impl-20261007)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 4.36s
+     Running tests/edb_interfaces.rs (target/debug/deps/edb_interfaces-1c22d90e1067e565)
+
+running 6 tests
+test edn_tags_preserve_stored_values ... ok
+test qualified_subquery_executes_against_application_data ... ok
+test cli_runs_queries_without_database_configuration ... ok
+test cli_requires_a_structural_source_before_opening_storage ... ok
+test storage_headers_round_trip_and_authenticate_content ... ok
+test transaction_entity_and_report_use_edb_names ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.12s
+

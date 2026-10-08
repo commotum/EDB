@@ -1,0 +1,65 @@
+    Blocking waiting for file lock on build directory
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 2.09s
+     Running unittests src/lib.rs (target/debug/deps/edb_core-b77486e83f53582c)
+
+running 38 tests
+test encoding::submission::tests::old_submission_version_is_rejected_without_inventing_source ... ok
+test index::tests::index_cutover_five_component_boundaries_and_source_prefixes ... ok
+test encoding::submission::tests::request_roundtrip_preserves_explicit_source_and_identity ... ok
+test index::tests::index_cutover_eager_eligibility_matches_avet_and_savet ... ok
+test encoding::submission::deferred_edn_source_identity_is_canonical_without_database_resolution ... ok
+test index::tests::index_cutover_overlay_retains_distinct_sources_then_retracts_all ... ok
+test index::tests::index_cutover_visibility_preserves_contributors_and_global_barrier ... ok
+test operations::projection::tests::history_omission_keeps_new_assertions_and_separates_withdrawals ... ok
+test operations::projection::tests::history_omission_preserves_complete_global_withdrawals ... ok
+test index::tests::index_cutover_descriptor_requires_twelve_trees_and_rejects_legacy_kind ... ok
+test program_bindings::source_cutover_tests::fixed_dependencies_include_raw_edn_lookup_values_and_query_source_terms ... ok
+test reserved_allocation::tests::source_identity_reserves_partition_zero_even_without_entity_facts ... ok
+test index::tests::index_cutover_recent_source_ranges_apply_global_visibility ... ok
+test storage::indexing::tests::old_storage_blocks_are_rejected_before_log_payload_interpretation ... ok
+test program_bindings::source_cutover_tests::raw_function_lookup_closure_identity_survives_program_round_trip ... ok
+test storage::codec::tests::compressed_edb_blocks_round_trip_and_reject_corruption ... ok
+test index::tests::index_cutover_source_activity_prefix_and_reverse_follow_transaction_order ... ok
+test index::tests::index_cutover_nohistory_discovery_requires_complete_eav_groups ... ok
+test index::tests::index_cutover_nohistory_shared_barrier_removes_all_withdrawn_sources ... ok
+test index::tests::index_cutover_six_tree_orders_roundtrip_source_and_reject_old_version ... ok
+test index::tests::index_cutover_durable_five_component_boundaries_seek_both_directions ... ok
+test transaction::assess::tests::deferred_edn_tempid_source_retains_ordinary_entity_position_rule ... ok
+test program_bindings::source_cutover_tests::duplicate_binding_contributions_resolve_invoke_and_expand_once ... FAILED
+test transaction::assess::tests::deferred_edn_source_lookup_uses_authoritative_attribute_and_value_types ... ok
+test program_bindings::source_cutover_tests::nested_calls_maps_and_generated_retractions_inherit_the_request_source ... FAILED
+test transaction::assess::tests::callback_generated_entities_and_explicit_timestamp_share_resolved_source ... ok
+test transaction::assess::tests::empty_transaction_has_one_attributed_automatic_instant ... ok
+test transaction::assess::tests::anonymous_map_cannot_accidentally_establish_request_source_tempid ... ok
+test transaction::assess::tests::unique_value_holder_survives_contributions_and_global_retraction_releases_it ... ok
+test transaction::assess::tests::cas_and_replacement_count_shared_values_and_withdraw_all_sources ... ok
+test transaction::assess::tests::ordinary_explicit_instant_retains_clock_validation ... ok
+test transaction::assess::tests::same_eavs_is_redundant_but_another_source_is_material ... ok
+test transaction::assess::tests::generated_composite_changes_share_source_and_schema_counts_distinct_values ... ok
+test storage::indexing::tests::no_history_withdrawal_uses_shared_cross_source_witnesses ... ok
+test storage::indexing::tests::fulltext_uses_the_six_order_history_offset_for_incremental_omissions ... ok
+test transaction::assess::tests::source_uses_ordinary_tempid_ident_and_lookup_resolution ... ok
+test storage::indexing::tests::durable_tail_keeps_sources_and_global_retraction_in_all_orders ... ok
+test storage::indexing::tests::bounded_backfill_and_clear_publish_avet_savet_together ... ok
+
+failures:
+
+---- program_bindings::source_cutover_tests::duplicate_binding_contributions_resolve_invoke_and_expand_once stdout ----
+
+thread 'program_bindings::source_cutover_tests::duplicate_binding_contributions_resolve_invoke_and_expand_once' panicked at src/program_bindings.rs:977:65:
+called `Result::unwrap()` on an `Err` value: SemanticError { category: Incorrect, code: "schema/native-information-immutable", message: "native genesis information cannot be retracted or replaced", details: {}, anomaly: None }
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+---- program_bindings::source_cutover_tests::nested_calls_maps_and_generated_retractions_inherit_the_request_source stdout ----
+
+thread 'program_bindings::source_cutover_tests::nested_calls_maps_and_generated_retractions_inherit_the_request_source' panicked at src/program_bindings.rs:1048:84:
+called `Result::unwrap()` on an `Err` value: SemanticError { category: Incorrect, code: "schema/invalid-hook-datom", message: "attribute install/alter hooks must be assertions on :db.part/db", details: {}, anomaly: None }
+
+
+failures:
+    program_bindings::source_cutover_tests::duplicate_binding_contributions_resolve_invoke_and_expand_once
+    program_bindings::source_cutover_tests::nested_calls_maps_and_generated_retractions_inherit_the_request_source
+
+test result: FAILED. 36 passed; 2 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.48s
+
+error: test failed, to rerun pass `--lib`

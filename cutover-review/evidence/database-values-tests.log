@@ -1,0 +1,12 @@
+Command: cargo test --test database_values_source_cutover
+Working directory: /tmp/edb-cutover-impl-20261007
+Observed final output:
+
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 1.04s
+     Running tests/database_values_source_cutover.rs (target/debug/deps/database_values_source_cutover-39a311735c4d4611)
+
+running 2 tests
+test mixed_sequence_retains_captured_contributors_and_projects_only_consumed_rows ... ok
+test entity_identity_survives_source_changes_without_equating_states_or_origins ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.23s

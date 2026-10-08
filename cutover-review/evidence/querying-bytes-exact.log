@@ -1,0 +1,4 @@
+Compiled against libedb_core-a0676893826732bc.rlib: exit 0
+Run: exit 0
+#{[#edb/ref 17592186045417] [#edb/ref 17592186045418]}
+PASS: exact page Rust sequence and output; both pattern and = match freshly read equal bytes; both reject different bytes

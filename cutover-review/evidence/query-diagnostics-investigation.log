@@ -1,0 +1,21 @@
+   Compiling edb-core v0.1.0 (/tmp/edb-cutover-impl-20261007)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.82s
+     Running tests/query_diagnostics_source_cutover.rs (target/debug/deps/query_diagnostics_source_cutover-9f902433a44a8536)
+
+running 1 test
+
+thread 'source_index_reports_use_existing_counters_and_named_source_labels' panicked at tests/query_diagnostics_source_cutover.rs:127:9:
+assertion `left == right` failed: QueryDiagnostics { phases: [QueryPhase { id: 0, parent: None, parent_step: None, path: "where", kind: Query, scheduled_steps: 1 }], steps: [QueryClauseStep { id: 0, phase_id: 0, schedule_position: 0, clause_path: "where/0", original_index: 0, operator: "pattern", source: Some("$catalog"), access: "SAEVT seek", binds_in: ["?s"], binds_out: ["?e", "?s"], bindings_complete: true, rows_in: 1, rows_out: Some(1), status: Complete, work: QueryStepWork { work: 5, datoms_examined: 1, index_seeks: 1, join_candidates: 1, allocated_value_bytes: 300 }, warnings: [] }], truncated: false, capture_bytes: 1168, inspection_work: 27 } QueryStats { work: 18, clauses_executed: 1, datoms_examined: 2, index_seeks: 1, rows_produced: 1, rule_iterations: 0, prepared_cache_hits: 0, hash_join_build_rows: 0, hash_join_probes: 0, join_candidates: 2, grouped_probes_saved: 0, peak_join_bytes: 262, allocated_value_bytes: 686, fulltext_searches: 0, fulltext_lagging_searches: 0, fulltext_truncated_searches: 0, fulltext_read_bytes: 0 }
+  left: 1
+ right: 2
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+test source_index_reports_use_existing_counters_and_named_source_labels ... FAILED
+
+failures:
+
+failures:
+    source_index_reports_use_existing_counters_and_named_source_labels
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 2 filtered out; finished in 0.13s
+
+error: test failed, to rerun pass `--test query_diagnostics_source_cutover`

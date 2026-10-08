@@ -1,0 +1,20 @@
+PASS exact page data-only CLI: cat > scores-input.edn
+stdout=#{["Alice" 42]}
+PostgreSQL configuration absent
+
+PASS exact page data-only CLI: cat > scores-source.edn
+stdout=#{["Alice" 42]}
+PostgreSQL configuration absent
+
+PASS exact page data-only CLI: cat > documentation-input.edn
+stdout=#{[81 "The artist's name"]}
+PostgreSQL configuration absent
+
+PASS exact page Rust snippet: print_email_range
+Datom { entity: 17592186045420, attribute: 1002, value: String("alice@example.com"), tx: 13194139533314, source: 73, added: true }
+Datom { entity: 17592186045421, attribute: 1002, value: String("bob@example.com"), tx: 13194139533314, source: 73, added: true }
+
+PASS exact page Rust snippet: print_artist_datoms
+Datom { entity: 17592186045417, attribute: 1000, value: String("Foo Fighters"), tx: 13194139533314, source: 73, added: true }
+
+Linked current isolated library: /tmp/edb-cutover-impl-20261007/target/debug/deps/libedb_core-a0676893826732bc.rlib

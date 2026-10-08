@@ -1,0 +1,6 @@
+    Blocking waiting for file lock on build directory
+    Checking edb-core v0.1.0 (/tmp/edb-cutover-impl-20261007)
+src/index/boundary.rs:339:19: warning: methods `is_after_prefix` and `unbiased` are never used
+src/index/prepare.rs:365:19: warning: method `all` is never used
+warning: `edb-core` (lib) generated 2 warnings
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 14.21s

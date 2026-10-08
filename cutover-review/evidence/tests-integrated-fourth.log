@@ -1,0 +1,358 @@
+   Compiling edb-core v0.1.0 (/tmp/edb-cutover-impl-20261007)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 8.30s
+     Running unittests src/lib.rs (target/debug/deps/edb_core-b77486e83f53582c)
+
+running 49 tests
+test backup::tests::source_bearing_backup_restore_preserves_pending_and_partial_six_index_publications ... ignored, requires EDB_TEST_POSTGRES_URL and EDB_TEST_RESTORE_POSTGRES_URL selecting independent disposable catalogs
+test encoding::submission::tests::old_submission_version_is_rejected_without_inventing_source ... ok
+test encoding::submission::tests::nested_many_is_rejected_before_recursive_admission_encoding_or_decoding ... ok
+test encoding::submission::deferred_edn_source_identity_is_canonical_without_database_resolution ... ok
+test fulltext::store::page::tests::search_pages_and_headers_reject_pre_source_formats ... ok
+test index::tests::index_cutover_five_component_boundaries_and_source_prefixes ... ok
+test encoding::submission::tests::request_roundtrip_preserves_explicit_source_and_identity ... ok
+test fulltext::records::tests::assertion_records_roundtrip_source_and_distinguish_transaction_contributions ... ok
+test index::tests::index_cutover_eager_eligibility_matches_avet_and_savet ... ok
+test index::tests::index_cutover_overlay_retains_distinct_sources_then_retracts_all ... ok
+test index::tests::index_cutover_visibility_preserves_contributors_and_global_barrier ... ok
+test encoding::submission::tests::native_map_codec_counts_entities_independently_of_many_wrappers ... ok
+test observation::notices::tests::provider_notice_channel_accepts_only_the_safe_identifier_shape ... ok
+test operations::projection::tests::history_omission_preserves_complete_global_withdrawals ... ok
+test index::tests::index_cutover_descriptor_requires_twelve_trees_and_rejects_legacy_kind ... ok
+test operations::projection::tests::history_omission_keeps_new_assertions_and_separates_withdrawals ... ok
+test reserved_allocation::tests::source_identity_reserves_partition_zero_even_without_entity_facts ... ok
+test index::tests::index_cutover_recent_source_ranges_apply_global_visibility ... ok
+test program_bindings::source_cutover_tests::fixed_dependencies_include_raw_edn_lookup_values_and_query_source_terms ... ok
+test index::tree::tests::source_first_routing_remains_exact_and_decodable ... ok
+test storage::indexing::tests::old_storage_blocks_are_rejected_before_log_payload_interpretation ... ok
+test program_bindings::source_cutover_tests::raw_function_lookup_closure_identity_survives_program_round_trip ... ok
+test storage::codec::tests::compressed_edb_blocks_round_trip_and_reject_corruption ... ok
+test backup::tests::backup_listing_rejects_old_format_points_without_inventing_source ... ok
+test index::tests::index_cutover_nohistory_discovery_requires_complete_eav_groups ... ok
+test index::tests::index_cutover_nohistory_shared_barrier_removes_all_withdrawn_sources ... ok
+test index::tests::index_cutover_source_activity_prefix_and_reverse_follow_transaction_order ... ok
+test index::tree::tests::authenticated_nodes_reject_source_after_an_omitted_transaction ... ok
+test index::tests::index_cutover_six_tree_orders_roundtrip_source_and_reject_old_version ... ok
+test index::tests::index_cutover_durable_five_component_boundaries_seek_both_directions ... ok
+test transaction::assess::tests::anonymous_map_cannot_accidentally_establish_request_source_tempid ... ok
+test transaction::assess::tests::unique_value_holder_survives_contributions_and_global_retraction_releases_it ... ok
+test transaction::assess::tests::ordinary_explicit_instant_retains_clock_validation ... ok
+test transaction::assess::tests::cas_and_replacement_count_shared_values_and_withdraw_all_sources ... ok
+test program_bindings::source_cutover_tests::binding_replacement_and_nested_invocation_read_the_same_db_before ... ok
+test transaction::assess::tests::empty_transaction_has_one_attributed_automatic_instant ... ok
+test transaction::assess::tests::callback_generated_entities_and_explicit_timestamp_share_resolved_source ... ok
+test transaction::assess::tests::deferred_edn_tempid_source_retains_ordinary_entity_position_rule ... ok
+test transaction::assess::tests::same_eavs_is_redundant_but_another_source_is_material ... ok
+test program_bindings::source_cutover_tests::nested_calls_maps_and_generated_retractions_inherit_the_request_source ... ok
+test transaction::assess::tests::deferred_edn_source_lookup_uses_authoritative_attribute_and_value_types ... ok
+test program_bindings::source_cutover_tests::duplicate_binding_contributions_resolve_invoke_and_expand_once ... ok
+test transaction::assess::tests::generated_composite_changes_share_source_and_schema_counts_distinct_values ... ok
+test storage::indexing::tests::fulltext_uses_the_six_order_history_offset_for_incremental_omissions ... ok
+test storage::excision::tests::frozen_request_counts_values_across_sources_and_survives_retraction ... ok
+test storage::indexing::tests::no_history_withdrawal_uses_shared_cross_source_witnesses ... ok
+test transaction::assess::tests::source_uses_ordinary_tempid_ident_and_lookup_resolution ... ok
+test storage::indexing::tests::durable_tail_keeps_sources_and_global_retraction_in_all_orders ... ok
+test storage::indexing::tests::bounded_backfill_and_clear_publish_avet_savet_together ... ok
+
+test result: ok. 48 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 2.70s
+
+     Running unittests src/bin/edb/main.rs (target/debug/deps/edb-6c906e0b04180958)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/changing_schema_source_cutover.rs (target/debug/deps/changing_schema_source_cutover-dc9a9d31d13e40bb)
+
+running 4 tests
+test cardinality_and_unique_changes_use_old_replacement_and_upsert_rules ... ok
+test component_changes_expand_retract_entity_under_db_before_and_share_source ... ok
+test rename_and_alias_repurpose_preserve_captured_names_and_application_datoms ... ok
+test cardinality_cleanup_is_atomic_and_temporal_entity_shapes_use_captured_schema ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.16s
+
+     Running tests/client_tutorial_cutover.rs (target/debug/deps/client_tutorial_cutover-ce462b89ea2f9b36)
+
+running 2 tests
+test client_tutorial_sync_and_async_socket_preserve_source_and_exact_retry ... ignored, requires EDB_TEST_POSTGRES_URL for a disposable PostgreSQL database
+test client_tutorial_rust_and_cli_share_exact_request_identity ... ok
+
+test result: ok. 1 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/connect_tutorial_cutover.rs (target/debug/deps/connect_tutorial_cutover-bff565063870055f)
+
+running 1 test
+test connect_tutorial_rust_and_cli_examples_have_one_exact_request_identity ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/data_model_source_cutover.rs (target/debug/deps/data_model_source_cutover-d65f0b082c4710d4)
+
+running 4 tests
+test durable_codec_and_request_identity_preserve_source ... ok
+test canonical_genesis_is_system_attributed_and_old_envelopes_are_rejected ... ok
+test cross_source_replacement_retracts_every_contribution ... ok
+test sourced_contributions_share_cardinality_and_global_withdrawal ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.25s
+
+     Running tests/data_modeling_cutover.rs (target/debug/deps/data_modeling_cutover-05ed5d25aeacf6fb)
+
+running 3 tests
+test enumeration_rename_keeps_reference_identity_and_noncomponent_country_survives ... ok
+test db_before_binding_and_representation_choice_remain_ordinary ... ok
+test exact_enumeration_examples_compose_through_transactions_queries_and_navigation ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.13s
+
+     Running tests/database_filters_source_cutover.rs (target/debug/deps/database_filters_source_cutover-5379ae5eb88b0dba)
+
+running 6 tests
+test speculative_savet_backfill_keeps_same_value_from_both_sources ... ok
+test callback_context_tracks_later_views_and_removes_every_chained_predicate ... ok
+test predicates_cannot_restore_facts_withdrawn_by_another_source ... ok
+test speculative_overlays_keep_contributions_and_global_withdrawal ... ok
+test six_boundaries_normalize_source_and_resolve_visibility_before_seeking ... ok
+test temporal_views_keep_source_contributions_and_project_one_value ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.19s
+
+     Running tests/database_values_source_cutover.rs (target/debug/deps/database_values_source_cutover-39a311735c4d4611)
+
+running 2 tests
+test mixed_sequence_retains_captured_contributors_and_projects_only_consumed_rows ... ok
+test entity_identity_survives_source_changes_without_equating_states_or_origins ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.26s
+
+     Running tests/deployment_source_recovery.rs (target/debug/deps/deployment_source_recovery-dc8aca2149515f45)
+
+running 1 test
+test explicit_recovery_preserves_sources_receipts_and_retained_values ... ignored, requires EDB_TEST_POSTGRES_URL for a disposable PostgreSQL database
+
+test result: ok. 0 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/edb_interfaces.rs (target/debug/deps/edb_interfaces-1c22d90e1067e565)
+
+running 6 tests
+test edn_tags_preserve_stored_values ... ok
+test qualified_subquery_executes_against_application_data ... ok
+test cli_runs_queries_without_database_configuration ... ok
+test cli_requires_a_structural_source_before_opening_storage ... ok
+test transaction_entity_and_report_use_edb_names ... ok
+test storage_headers_round_trip_and_authenticate_content ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.12s
+
+     Running tests/edn_workflow_cutover.rs (target/debug/deps/edn_workflow_cutover-aaa365f28073d7a6)
+
+running 2 tests
+test tutorial_cli_preserves_sources_previews_views_and_exact_restart_retries ... ignored, requires EDB_TEST_POSTGRES_URL for a disposable PostgreSQL database
+test tutorial_native_library_example_runs_against_a_speculative_database ... ok
+
+test result: ok. 1 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.13s
+
+     Running tests/entities_source_cutover.rs (target/debug/deps/entities_source_cutover-1c36d5a40e74174c)
+
+running 2 tests
+test entity_projection_preserves_stored_decimal_values_across_sources_and_views ... ok
+test entity_references_and_components_resolve_global_withdrawals_before_source_filters ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.15s
+
+     Running tests/excision_source_cutover.rs (target/debug/deps/excision_source_cutover-8a69952f5d651da6)
+
+running 1 test
+test durable_excision_preserves_sources_global_visibility_and_frozen_requests ... ignored, requires EDB_TEST_POSTGRES_URL for a disposable PostgreSQL database
+
+test result: ok. 0 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/fulltext_source_cutover.rs (target/debug/deps/fulltext_source_cutover-45047d1a3aa3c977)
+
+running 3 tests
+test durable_fulltext_source_roundtrip_recent_tail_and_nohistory_removal ... ignored, requires explicit isolated cutover PostgreSQL configuration
+test fulltext_relation_preserves_four_columns_and_joins_attributed_facts ... ok
+test fulltext_current_history_time_and_filters_keep_distinct_contributions ... ok
+
+test result: ok. 2 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.14s
+
+     Running tests/identity_uniqueness_source_cutover.rs (target/debug/deps/identity_uniqueness_source_cutover-52597b2bbbe85ad9)
+
+running 9 tests
+test ident_lookup_sources_follow_the_captured_alias_dictionary ... ok
+test conflicting_dependent_identities_and_unique_values_fail_without_changing_basis ... ok
+test tuple_identity_uses_upserted_reference_tempid_and_resolves_source ... ok
+test lookup_refs_still_cannot_resolve_keys_created_in_the_same_transaction ... ok
+test late_identity_unification_propagates_existing_bindings_to_dependents ... ok
+test reference_identity_uses_upserted_reference_tempid_and_resolves_source ... ok
+test new_only_cycles_allocate_deterministically_without_identity_lookups ... ok
+test new_only_reference_and_tuple_aliases_unify_before_allocation ... ok
+test chained_reference_and_tuple_identities_are_order_independent_and_lookup_once ... ok
+
+test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.28s
+
+     Running tests/identity_values_source_cutover.rs (target/debug/deps/identity_values_source_cutover-770c6e2083af4144)
+
+running 3 tests
+test uri_aliases_share_identity_but_preserve_source_and_exact_input ... ok
+test nan_payload_aliases_share_values_and_replacement_withdraws_every_source ... ok
+test nan_cannot_become_a_unique_key_even_when_replacing_an_existing_value ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.48s
+
+     Running tests/index_apis_source_cutover.rs (target/debug/deps/index_apis_source_cutover-2539d791656d6a6f)
+
+running 3 tests
+test partial_tuple_boundaries_keep_lexical_positions_and_resolve_reference_slots ... ok
+test every_boundary_arity_resolves_ordinary_entity_source_and_reference_forms ... ok
+test avet_and_source_value_ranges_share_eligibility_and_exclusive_upper_bounds ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.15s
+
+     Running tests/log_source_cutover.rs (target/debug/deps/log_source_cutover-a075619a5541b7e0)
+
+running 2 tests
+test captured_log_bounds_lazy_cursor_and_query_shapes_obey_contract ... ignored, requires EDB_TEST_POSTGRES_URL for a disposable PostgreSQL database
+test source_activity_composes_same_basis_log_with_stable_reverse_pages ... ignored, requires EDB_TEST_POSTGRES_URL for a disposable PostgreSQL database
+
+test result: ok. 0 passed; 0 failed; 2 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/partitions_source_cutover.rs (target/debug/deps/partitions_source_cutover-826ab8b16f076140)
+
+running 4 tests
+test policy_does_not_establish_source_and_invalid_source_ids_are_rejected ... ok
+test source_schema_affinity_and_transaction_identity_remain_ordinary ... ok
+test source_upsert_keeps_identity_and_matching_tempid_keeps_original_policy ... ok
+test source_tempid_uses_ordinary_default_and_explicit_partition_policy ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.13s
+
+     Running tests/persisted_program_source_cutover.rs (target/debug/deps/persisted_program_source_cutover-8466f16da08297f1)
+
+running 6 tests
+test abi_twelve_is_rejected_even_with_an_authenticated_envelope ... ok
+test inert_emitted_callable_literals_use_their_canonical_program_identity ... ok
+test vm_reads_count_distinct_values_and_keep_exact_views ... ok
+test raw_reference_retention_cannot_hide_behind_small_canonical_bytes ... ok
+test raw_lookup_programs_have_canonical_identity_and_resolve_at_invocation ... ok
+test hash_equivalent_raw_literals_and_nested_arguments_have_the_same_vm_equality ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.45s
+
+     Running tests/processing_transactions_cutover.rs (target/debug/deps/processing_transactions_cutover-ff81fb2d9ca828ee)
+
+running 2 tests
+test independent_connection_report_queue_preserves_exact_source_reports_and_removal ... ignored, requires EDB_TEST_POSTGRES_URL for a disposable PostgreSQL database
+test documented_report_query_joins_names_and_preserves_retractions ... ok
+
+test result: ok. 1 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.12s
+
+     Running tests/programming_edn_cutover.rs (target/debug/deps/programming_edn_cutover-816a6794cff001d0)
+
+running 4 tests
+test overview_reader_stream_tags_and_limits_have_explicit_boundaries ... ok
+test overview_numeric_and_precision_boundaries_retain_their_domains ... ok
+test overview_collections_and_nonstored_scalars_remain_ordinary_query_data ... ok
+test overview_data_construction_transaction_and_query_run_through_public_apis ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.13s
+
+     Running tests/pull_source_cutover.rs (target/debug/deps/pull_source_cutover-e53865e5e39869a8)
+
+running 7 tests
+test cancellation_still_checks_duplicate_source_candidates ... ok
+test query_pull_uses_the_same_logical_selection ... ok
+test entity_navigation_is_set_valued_for_forward_reverse_and_components ... ok
+test index_pull_retains_datoms_but_each_projection_has_distinct_values ... ok
+test filtered_temporal_pull_honors_global_withdrawals_and_preserves_history ... ok
+test every_pull_shape_projects_values_once_across_eager_and_overlay_sources ... ok
+test default_and_explicit_limits_count_values_before_transforming ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.85s
+
+     Running tests/query_source_cutover.rs (target/debug/deps/query_source_cutover-5e3204181b43bf84)
+
+running 9 tests
+test prepared_cache_distinguishes_fact_sources ... ok
+test portable_query_codec_roundtrips_every_fact_coordinate ... ok
+test contribution_distinctness_uses_the_existing_find_with_basis ... ok
+test source_bound_patterns_choose_source_indexes_and_schedule_first ... ok
+test raw_datoms_preserve_six_positions_and_literal_source_values ... ok
+test source_ranges_share_strict_bounds_exclusions_and_filtered_visibility ... ok
+test raw_pattern_arity_includes_blanks_without_padding_short_patterns ... ok
+test source_patterns_never_resurrect_globally_withdrawn_values ... ok
+test source_is_an_entity_coordinate_and_joins_ordinary_identity ... ok
+
+test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.23s
+
+     Running tests/release_distribution_cutover.rs (target/debug/deps/release_distribution_cutover-91c67cf06e5e4488)
+
+running 1 test
+test cli_install_reports_the_installed_storage_format_on_repeated_installation ... ignored, requires EDB_TEST_POSTGRES_URL for a disposable PostgreSQL database
+
+test result: ok. 0 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/schema_source_cutover.rs (target/debug/deps/schema_source_cutover-bed3e33385a18ef8)
+
+running 14 tests
+test tuple_slots_keep_exact_types_nil_arity_and_utf16_limits ... ok
+test native_predicates_require_literal_true_and_contain_missing_code_and_panics ... ok
+test attribute_predicates_use_db_before_and_validate_new_source_assertions ... ok
+test entity_specs_use_db_before_and_reject_nonattribute_required_names ... ok
+test entity_specs_check_distinct_values_and_managed_tuples_in_complete_db_after ... ok
+test adding_uniqueness_requires_the_prior_projection_when_history_exists ... ok
+test changed_schema_property_preserves_overlapping_source_contributions ... ok
+test canonical_genesis_and_open_schema_metadata_keep_ordinary_attribution ... ok
+test decimal_stored_scales_remain_distinct_when_sources_share_each_representation ... ok
+test many_to_one_and_uniqueness_count_values_and_holders_across_sources ... ok
+test unchanged_composite_contribution_is_material_only_for_a_new_source ... ok
+test schema_transitions_can_retract_conflicts_but_cannot_rewrite_history ... ok
+test schema_definition_and_evolution_restrictions_remain_authoritative ... ok
+test composite_backfill_is_paced_and_discontinuation_is_permanent ... ok
+
+test result: ok. 14 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.39s
+
+     Running tests/stored_value_source_cutover.rs (target/debug/deps/stored_value_source_cutover-9d493bc347d8b833)
+
+running 1 test
+test contribution_deduplication_preserves_decimal_scale_and_pull_limits ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.18s
+
+     Running tests/transaction_data_source_cutover.rs (target/debug/deps/transaction_data_source_cutover-8cda919bf0dd2542)
+
+running 4 tests
+test durable_equal_explicit_timestamp_forms_keep_override_bounds_and_exact_retry ... ignored, requires EDB_TEST_POSTGRES_URL for a disposable PostgreSQL database
+test timestamp_dedup_keeps_conflicts_fixed_time_and_immutable_transaction_checks ... ok
+test equal_explicit_timestamp_forms_share_one_selected_instant_and_source ... ok
+test ordinary_nested_component_maps_support_documented_entity_depth ... ok
+
+test result: ok. 3 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.13s
+
+     Running tests/transaction_diagnostics_source_cutover.rs (target/debug/deps/transaction_diagnostics_source_cutover-f1cafe48134b83a3)
+
+running 4 tests
+test durable_diagnostics_follow_queue_scope_material_work_and_receipt_first_replay ... ignored, requires EDB_TEST_POSTGRES_URL for a disposable PostgreSQL database
+test transaction_read_quota_charges_contributions_before_distinct_value_projection ... ok
+test opt_in_counters_explain_source_materiality_and_global_withdrawal ... ok
+test nested_expansion_and_generated_changes_share_source_and_counter_scope ... ok
+
+test result: ok. 3 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.13s
+
+     Running tests/transaction_functions_source_cutover.rs (target/debug/deps/transaction_functions_source_cutover-0b18191291e0efac)
+
+running 3 tests
+test native_rejections_panics_and_invalid_generated_forms_do_not_change_db_before ... ok
+test empty_native_output_keeps_one_timestamp_and_accepts_more_than_ten_arguments ... ok
+test nested_and_sibling_native_calls_share_db_before_source_and_call_budget ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.13s
+
+     Running tests/transaction_model_durable_cutover.rs (target/debug/deps/transaction_model_durable_cutover-9d188f04e4e0932c)
+
+running 2 tests
+test durable_transaction_model_observes_empty_source_transactions ... ignored, requires EDB_TEST_POSTGRES_URL for a disposable PostgreSQL database
+test durable_transaction_model_preserves_attribution_and_receipt_first_retry ... ignored, requires EDB_TEST_POSTGRES_URL for a disposable PostgreSQL database
+
+test result: ok. 0 passed; 0 failed; 2 ignored; 0 measured; 0 filtered out; finished in 0.00s
+

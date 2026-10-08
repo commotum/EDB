@@ -1,0 +1,13 @@
+   Compiling edb-core v0.1.0 (/tmp/edb-cutover-impl-20261007)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.89s
+     Running tests/partitions_source_cutover.rs (target/debug/deps/partitions_source_cutover-826ab8b16f076140)
+
+running 5 tests
+test policy_does_not_establish_source_and_invalid_source_ids_are_rejected ... ok
+test source_tempid_uses_ordinary_default_and_explicit_partition_policy ... ok
+test source_upsert_keeps_identity_and_matching_tempid_keeps_original_policy ... ok
+test source_schema_affinity_and_transaction_identity_remain_ordinary ... ok
+test dependent_source_upsert_preserves_existing_partition_and_original_match_policy ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.14s
+

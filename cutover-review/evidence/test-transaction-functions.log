@@ -1,0 +1,16 @@
+    Blocking waiting for file lock on build directory
+   Compiling edb-core v0.1.0 (/tmp/edb-cutover-impl-20261007)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 3.24s
+     Running tests/transaction_functions_source_cutover.rs (target/debug/deps/transaction_functions_source_cutover-0b18191291e0efac)
+
+running 3 tests
+
+thread 'native_rejections_panics_and_invalid_generated_forms_do_not_change_db_before' panicked at tests/transaction_functions_source_cutover.rs:199:13:
+test callback panic
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+test native_rejections_panics_and_invalid_generated_forms_do_not_change_db_before ... ok
+test nested_and_sibling_native_calls_share_db_before_source_and_call_budget ... ok
+test empty_native_output_keeps_one_timestamp_and_accepts_more_than_ten_arguments ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.13s
+

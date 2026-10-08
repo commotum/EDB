@@ -79,11 +79,13 @@ impl PeerSnapshot {
         self.database_value().pull(pattern, entity)
     }
     fn ensure_order(&self, order: IndexOrder) -> Result<(), SemanticError> {
-        if order == IndexOrder::Avet && !self.native.avet_unready().is_empty() {
+        if matches!(order, IndexOrder::Avet | IndexOrder::Savet)
+            && !self.native.avet_unready().is_empty()
+        {
             return Err(SemanticError::new(
                 ErrorCategory::Unavailable,
                 "peer/avet-not-ready",
-                "Captured AVET projections are incomplete",
+                "Captured AVET/SAVET projections are incomplete",
             ));
         }
         Ok(())

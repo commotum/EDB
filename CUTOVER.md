@@ -53,6 +53,13 @@ to the running application and must remain outside cutover tests.
    facts, and stable source-activity pagination explicitly. Complete release
    checks against the documented feature set before calling the cutover ready.
 
+Authenticated log entries use kind 14: fixed transaction metadata with links to
+the existing body chunks for every transaction, including small ones. This lets
+bounded consumers admit encoded payload length before reading body bytes and
+lets log endpoint validation read metadata alone. Former kind 11 entries are
+incompatible and rejected; acceptance runs use freshly initialized cutover
+storage rather than mixing these representations.
+
 ## Retired timestamp mechanism
 
 The dedicated `[:db/txInstant S]` operation, `TxOp::TxInstant`,

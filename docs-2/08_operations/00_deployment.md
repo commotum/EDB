@@ -175,7 +175,7 @@ database value; `deep=true` additionally checks coherent log skip links and
 compares every retained covering index and search attachment against canonical
 information. Receipt before/after values must match exact canonical prefixes,
 and metadata must match ordinary/reserved allocation checkpoints. Legitimate
-no-history omissions and pending AVET prefixes are checked, not ignored.
+no-history omissions and pending AVET/SAVET prefixes are checked, not ignored.
 This semantic audit is explicit; ordinary restore authenticates copied objects
 and checks guarded publication without replaying history.
 
@@ -306,7 +306,8 @@ are protected audit information. EDB freezes the complete predicate at its A=15 
 later ordinary edits do not rewrite an already queued request.
 
 The Rust worker rewrites an inactive generation into immutable objects, stages
-all eight indexes and fulltext, then indivisibly activates the completed root.
+all six current and six history indexes and fulltext, then indivisibly activates
+the completed root.
 A protected work reference retains bounded persisted checkpoints across worker
 or process interruption. Large excisions can cost proportionally to the whole
 database. After successful admission, the service parks fresh transactions for

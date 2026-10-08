@@ -168,8 +168,8 @@ fn sync_index(
 
 Retrieves a database value indexed through the supplied database coordinate.
 Completion requires the logical basis and the physical indexed-through frontier
-to reach the target, with relevant AVET additions and removals through that
-target complete. Logical basis advancement alone is insufficient.
+to reach the target, with relevant AVET and SAVET additions and removals through
+that target complete. Logical basis advancement alone is insufficient.
 
 This call observes progress through storage and does not schedule indexing.
 Use `request_index` to request work, then wait on the returned finite target.
@@ -189,14 +189,14 @@ fn sync_schema(
 ```
 
 Retrieves a database value aware of schema changes through the supplied database
-coordinate and ready for the AVET additions required through that target.
-The returned value has reached the logical basis and has no pending relevant
-AVET addition at or before the target. This includes readiness associated with
-indexing or uniqueness changes.
+coordinate and ready for the AVET and SAVET additions required through that
+target. The returned value has reached the logical basis and has no pending relevant
+AVET or SAVET addition at or before the target. This includes readiness
+associated with indexing or uniqueness changes.
 
-It need not wait for later schema transitions, AVET removals, or the general
-indexed-through frontier required by `sync_index`. This is a wait, not a request
-to perform a migration. It performs storage observation and can complete on its
+It need not wait for later schema transitions, AVET or SAVET removals, or the
+general indexed-through frontier required by `sync_index`. This is a wait, not a
+request to perform a migration. It performs storage observation and can complete on its
 first check. Timeout checks occur between storage attempts. See
 [changing schema](../../03_schema/03_changing_schema.md).
 

@@ -4,8 +4,8 @@ use edb_core::edn_pull::{entity_identifier_from_edn, parse_pull_edn};
 use edb_core::edn_query::{EdnQueryArgument, EdnQueryInput, parse_query_edn};
 use edb_core::edn_value::{edn_keyword, query_value_to_edn, transaction_report_to_edn};
 use edb_core::{
-    BackupConnection, Connection, DatabaseValue, Datom, EntityRef, ErrorCategory, PullControl, QueryControl,
-    QuerySourceValue, SemanticError, TransactionRequest, postgres_config_from_env,
+    BackupConnection, Connection, DatabaseValue, Datom, EntityRef, ErrorCategory, PullControl,
+    QueryControl, QuerySourceValue, SemanticError, TransactionRequest, postgres_config_from_env,
     remote_client_config_from_env,
 };
 use std::collections::{BTreeMap, BTreeSet};

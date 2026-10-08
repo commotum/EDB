@@ -164,7 +164,11 @@ impl TransactionRequest {
         text: &str,
         source: EntityRef,
     ) -> Result<Self, SemanticError> {
-        Ok(Self::from_forms(request_key, read_edn_transaction(text)?, source))
+        Ok(Self::from_forms(
+            request_key,
+            read_edn_transaction(text)?,
+            source,
+        ))
     }
 }
 

@@ -26,7 +26,9 @@ impl EntityRef {
     /// Read an entity reference without consulting a database. Named lookup
     /// attributes and their values are resolved against transaction db-before.
     pub fn from_edn(text: &str) -> Result<Self, crate::SemanticError> {
-        Ok(Self::Edn(crate::edn_transaction::canonical_entity_ref(text)?))
+        Ok(Self::Edn(crate::edn_transaction::canonical_entity_ref(
+            text,
+        )?))
     }
 }
 

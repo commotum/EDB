@@ -154,7 +154,12 @@ fn cli_requires_a_structural_source_before_opening_storage() {
     for command in ["transact", "with"] {
         for source in [None, Some("true"), Some("[]")] {
             let mut request = Command::new(env!("CARGO_BIN_EXE_edb"));
-            request.args([command, "--database", "unopened-source-admission-test", "--file"]);
+            request.args([
+                command,
+                "--database",
+                "unopened-source-admission-test",
+                "--file",
+            ]);
             request.arg(&transaction);
             if command == "transact" {
                 request.args(["--request-key", "test", "--endpoint"]);
@@ -166,7 +171,11 @@ fn cli_requires_a_structural_source_before_opening_storage() {
             let output = request.env_remove("EDB_POSTGRES_URL").output().unwrap();
             assert!(!output.status.success());
             let error = String::from_utf8(output.stderr).unwrap();
-            let expected = if source.is_none() { "cli/edn-usage" } else { "edn/entity" };
+            let expected = if source.is_none() {
+                "cli/edn-usage"
+            } else {
+                "edn/entity"
+            };
             assert!(error.contains(expected), "{command} {source:?}: {error}");
             assert!(!error.contains("config/environment"), "{error}");
         }

@@ -1964,12 +1964,6 @@ fn expand_op(
         }
         TxOp::RetractEntity(entity) => {
             let entity = resolve_entity(reader, entity, tx, tempids)?;
-            if eid_to_part(entity)? == TX_PARTITION {
-                return Err(SemanticError::incorrect(
-                    "transaction/reset-tx-instant",
-                    "transaction entities cannot be retracted",
-                ));
-            }
             expand_retract_entity(reader, entity, logical, touched, &mut BTreeSet::new())?;
         }
         TxOp::Ensure { entity, spec } => {
@@ -2005,6 +1999,12 @@ fn expand_retract_entity(
     while let Some(work) = pending.pop() {
         match work {
             Work::Visit(entity) => {
+                if eid_to_part(entity)? == TX_PARTITION {
+                    return Err(SemanticError::incorrect(
+                        "transaction/reset-tx-instant",
+                        "transaction entities cannot be retracted",
+                    ));
+                }
                 if !visited.insert(entity) {
                     continue;
                 }

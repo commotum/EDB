@@ -582,3 +582,59 @@ impl Default for SpeculationLimits {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn durable_backward_clock_clamps_automatic_time_but_keeps_explicit_bounds() {
+        let source = EntityRef::Id(99);
+        let previous = Database::bootstrap()
+            .unwrap()
+            .database_value()
+            .with(&[], 100, EntityRef::Id(crate::DB_SOURCE_SYSTEM))
+            .unwrap();
+        let assess = |forms: &[TxForm], now, explicit| {
+            assess_durable_forms(
+                &previous.db_after,
+                forms,
+                now,
+                explicit,
+                &source,
+                SpeculationLimits::default(),
+                &crate::TransactionExecutionOptions::default(),
+            )
+        };
+        let automatic = assess(&[], 90, None).unwrap();
+        assert_eq!(automatic.basis_t, previous.db_after.basis_t() + 1);
+        assert_eq!(automatic.tx_data.len(), 1);
+        let timestamp = &automatic.tx_data[0];
+        assert_eq!(timestamp.entity, crate::t_to_tx(automatic.basis_t).unwrap());
+        assert_eq!(timestamp.attribute, crate::DB_TX_INSTANT as u32);
+        assert_eq!(timestamp.value, Value::Instant(100));
+        assert_eq!(timestamp.tx, timestamp.entity);
+        assert_eq!(timestamp.source, 99);
+        assert!(timestamp.added);
+
+        for (explicit, code) in [
+            (100, "transaction/future-tx-instant"),
+            (90, "transaction/past-tx-instant"),
+        ] {
+            assert_eq!(assess(&[], 90, Some(explicit)).err().unwrap().code, code);
+        }
+        let imported = [TxForm::Op(TxOp::Add {
+            entity: EntityRef::Tx,
+            attribute: crate::DB_TX_INSTANT as u32,
+            value: Value::Instant(100).into(),
+        })];
+        assert_eq!(
+            assess(&imported, 90, None).err().unwrap().code,
+            "transaction/future-tx-instant"
+        );
+        for (forms, explicit) in [(&[][..], Some(100)), (&imported[..], None)] {
+            let boundary = assess(forms, 100, explicit).unwrap();
+            assert_eq!(boundary.tx_data, automatic.tx_data);
+        }
+    }
+}

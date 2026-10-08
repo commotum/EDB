@@ -1865,7 +1865,10 @@ fn decode_entity_ref_at(cursor: &mut Cursor<'_>, depth: usize) -> Result<EntityR
             let text = cursor.string()?;
             let canonical = crate::edn_transaction::canonical_entity_ref(&text)?;
             if canonical != text {
-                return Err(fault("transport/noncanonical-edn", "EDN entity reference is not canonical"));
+                return Err(fault(
+                    "transport/noncanonical-edn",
+                    "EDN entity reference is not canonical",
+                ));
             }
             EntityRef::Edn(canonical)
         }

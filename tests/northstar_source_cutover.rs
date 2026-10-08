@@ -86,14 +86,12 @@ fn component_retraction_cannot_withdraw_transaction_activity() {
         let error = linked
             .db_after
             .with(&ops, 3, EntityRef::Id(97))
-            .err()
-            .expect("transaction entity cascade must fail atomically");
+            .expect_err("transaction entity cascade must fail atomically");
         assert_eq!(error.code, "transaction/reset-tx-instant");
         let overlay = linked.db_after.database_value();
         let error = overlay
             .with(&ops, 3, EntityRef::Id(97))
-            .err()
-            .expect("overlay transaction entity cascade must fail atomically");
+            .expect_err("overlay transaction entity cascade must fail atomically");
         assert_eq!(error.code, "transaction/reset-tx-instant");
         assert_eq!(overlay.basis_t(), basis);
         assert_eq!(overlay.collect_datoms(IndexOrder::Saevt).unwrap(), captured);

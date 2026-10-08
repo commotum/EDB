@@ -1,7 +1,7 @@
 # Source cutover
 
 The contract is [NORTHSTAR](docs-2/NORTHSTAR.md), the
-[transaction source and timestamp reference](docs-2/TIMESTAMP_SOURCE_DESIGN.md),
+[transaction data reference](docs-2/04_transactions/04_transaction_data.md),
 and the API and behavior documented in `docs-2/`.
 
 ## Working copies and the running application
@@ -70,5 +70,5 @@ documentation. Regression tests should reject the retired input forms.
 
 Keep ordinary `:db/txInstant` assertions for explicit import values,
 `tx_instant_override`, and the bootstrap source entity `:db.source/system`.
-The timestamp reference describes the current behavior; the superseded design
+The transaction data reference describes the current behavior; the superseded design
 remains in Git history.

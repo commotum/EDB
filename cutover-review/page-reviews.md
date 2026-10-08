@@ -114,4 +114,4 @@ Each file received a fresh gpt-6.1-sol worker at high reasoning effort. The pare
 | [DATOMIC_TIME_AND_SOURCE_REPORT.md](../docs-2/DATOMIC_TIME_AND_SOURCE_REPORT.md) | Unchanged | [doc_historical_report](pages/doc_historical_report.md) |
 | [NORTHSTAR.md](../docs-2/NORTHSTAR.md) | Unchanged | [doc_northstar](pages/doc_northstar.md) |
 | [README.md](../docs-2/README.md) | Unchanged | [doc_readme](pages/doc_readme.md) |
-| [TIMESTAMP_SOURCE_DESIGN.md](../docs-2/TIMESTAMP_SOURCE_DESIGN.md) | Unchanged | [doc_timestamp_source](pages/doc_timestamp_source.md) |
+| `TIMESTAMP_SOURCE_DESIGN.md` | Reviewed unchanged; subsequently removed as redundant with [Transaction Data](../docs-2/04_transactions/04_transaction_data.md#reified-transactions) | [doc_timestamp_source](pages/doc_timestamp_source.md) |

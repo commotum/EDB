@@ -29,7 +29,7 @@ Datoms have six fields, `[e a v t s added?]`. Each transaction requires one
 explicit source, resolved through ordinary entity references, and every fact it
 produces carries that source, including the automatic transaction timestamp.
 Transaction forms retain their ordinary arguments. See
-[transaction source and timestamp](../TIMESTAMP_SOURCE_DESIGN.md) and the
+[transaction source and timestamp](../04_transactions/04_transaction_data.md#reified-transactions) and the
 [data model](../NORTHSTAR.md#the-data-model). Readers reject earlier
 formats rather than assigning a source to old facts.
 

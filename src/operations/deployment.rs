@@ -97,6 +97,10 @@ fn deploy_graph(
 
 /// Resolve an acknowledged request before inspecting deployment dependencies.
 /// Staging and its bounded collector retry are internal to installation.
+#[allow(
+    clippy::too_many_arguments,
+    reason = "Source extends the established operation argument order"
+)]
 pub(crate) fn install(
     operator: &super::PostgresOperator,
     client: &crate::TransactionClient,

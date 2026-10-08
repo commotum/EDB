@@ -25,6 +25,14 @@ databases, backups, and checkpoints are not compatible. There is no old-format
 reader, administrative upgrade converter, or log downgrade command. Use a fresh
 installation and regenerate data with the current interfaces.
 
+Datoms have six fields, `[e a v t s added?]`. Each transaction requires one
+explicit source, resolved through ordinary entity references, and every fact it
+produces carries that source, including the automatic transaction timestamp.
+Transaction forms retain their ordinary arguments. See
+[transaction source and timestamp](../TIMESTAMP_SOURCE_DESIGN.md) and the
+[data model](../NORTHSTAR.md#the-data-model). Readers reject earlier
+formats rather than assigning a source to old facts.
+
 The EDB naming update affects the crate (`edb-core`), executable (`edb`),
 environment variables (`EDB_*`), storage tables, format markers, and content
 hash domains. Renaming tables or changing a format marker does not convert

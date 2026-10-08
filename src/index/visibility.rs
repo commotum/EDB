@@ -63,13 +63,13 @@ pub(crate) fn no_history_eav_group(
         let key = StoredValue(datom.value.clone());
         if !datom.added {
             barriers.insert(key, datom);
-        } else if let Some(retraction) = barriers.get(&key) {
-            if retraction.tx > datom.tx {
-                pairs.push(crate::index::recent::NoHistoryPair {
-                    retraction: retraction.clone(),
-                    assertion: datom,
-                });
-            }
+        } else if let Some(retraction) = barriers.get(&key)
+            && retraction.tx > datom.tx
+        {
+            pairs.push(crate::index::recent::NoHistoryPair {
+                retraction: retraction.clone(),
+                assertion: datom,
+            });
         }
     }
     pairs

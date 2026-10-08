@@ -425,7 +425,7 @@ fn run(args: Arguments) -> Result<(), SemanticError> {
     match args.command.as_str() {
         "install" => {
             PgBlockStore::install(&config)?;
-            println!("INSTALLED storage_format=edb/opaque-storage/1 tables=2");
+            println!("INSTALLED storage_format=edb/opaque-storage/2 tables=2");
             std::io::stdout().flush().map_err(|_| process_io())?;
             if let Some(writer) = args.values.get("--writer-role") {
                 PgBlockStore::connect(&config)?

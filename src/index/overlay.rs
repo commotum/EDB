@@ -158,11 +158,11 @@ impl OverlayIndexes {
     }
 
     fn remove_current(&mut self, datom: &Datom, all_sources: bool) {
-        let mut cursor = self
+        let cursor = self
             .current_eav
             .seek(|key| compare_eav(&key.0, datom), false);
         let mut old = Vec::new();
-        while let Some((key, ())) = cursor.next() {
+        for (key, ()) in cursor {
             if !compare_eav(&key.0, datom).is_eq() {
                 break;
             }

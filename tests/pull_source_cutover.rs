@@ -533,10 +533,11 @@ fn cancellation_still_checks_duplicate_source_candidates() {
     let reads = Arc::new(AtomicUsize::new(0));
     let observed = Arc::clone(&reads);
     let filtered = two.filter(move |_, datom| {
-        if datom.entity == 500 && datom.attribute == 101 {
-            if observed.fetch_add(1, Ordering::Relaxed) == 1 {
-                cancel.store(true, Ordering::Relaxed);
-            }
+        if datom.entity == 500
+            && datom.attribute == 101
+            && observed.fetch_add(1, Ordering::Relaxed) == 1
+        {
+            cancel.store(true, Ordering::Relaxed);
         }
         true
     });

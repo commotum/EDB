@@ -16,27 +16,6 @@ pub(crate) struct ReservedAllocation {
     frontier: u64,
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn source_identity_reserves_partition_zero_even_without_entity_facts() {
-        let mut allocation = ReservedAllocation::initial();
-        let source = allocation.frontier() + 100;
-        let datom = Datom {
-            entity: crate::t_to_tx(1).unwrap(),
-            attribute: crate::DB_TX_INSTANT as u32,
-            value: Value::Instant(1),
-            tx: crate::t_to_tx(1).unwrap(),
-            source,
-            added: true,
-        };
-        allocation.observe_datoms([&datom]).unwrap();
-        assert_eq!(allocation.allocate().unwrap(), source + 1);
-    }
-}
-
 impl ReservedAllocation {
     pub(crate) const fn initial() -> Self {
         Self {
@@ -149,5 +128,26 @@ impl ReservedAllocation {
         let entity = make_eid(DB_PARTITION, self.frontier)?;
         self.frontier += 1;
         Ok(entity)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn source_identity_reserves_partition_zero_even_without_entity_facts() {
+        let mut allocation = ReservedAllocation::initial();
+        let source = allocation.frontier() + 100;
+        let datom = Datom {
+            entity: crate::t_to_tx(1).unwrap(),
+            attribute: crate::DB_TX_INSTANT as u32,
+            value: Value::Instant(1),
+            tx: crate::t_to_tx(1).unwrap(),
+            source,
+            added: true,
+        };
+        allocation.observe_datoms([&datom]).unwrap();
+        assert_eq!(allocation.allocate().unwrap(), source + 1);
     }
 }

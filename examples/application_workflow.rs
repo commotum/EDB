@@ -116,10 +116,10 @@ impl AppSubmit for Connection {
         }?;
         // Keep a confirmed receipt confirmed even if opening or checking its
         // local report fails. Exact retries still use the complete request.
-        if let Ok(report) = &committed.report {
-            if let Err(error) = check_attribution(&report.db_after, &report.tx_data) {
-                committed.report = Err(error);
-            }
+        if let Ok(report) = &committed.report
+            && let Err(error) = check_attribution(&report.db_after, &report.tx_data)
+        {
+            committed.report = Err(error);
         }
         Ok(committed)
     }

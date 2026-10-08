@@ -183,7 +183,7 @@ fn unique_value_holder_survives_contributions_and_global_retraction_releases_it(
     let op = add(EntityRef::Id(400), DB_IDENT as u32, name.clone());
     let first = Database::bootstrap()
         .unwrap()
-        .with(&[op.clone()], 10, source(99))
+        .with(std::slice::from_ref(&op), 10, source(99))
         .unwrap();
     let second = first.db_after.with(&[op], 11, source(98)).unwrap();
     let moved = second
@@ -279,7 +279,7 @@ fn generated_composite_changes_share_source_and_schema_counts_distinct_values() 
     let op = add(EntityRef::Id(400), 503, Value::String("one".into()));
     let a = installed
         .db_after
-        .with(&[op.clone()], 13, source(99))
+        .with(std::slice::from_ref(&op), 13, source(99))
         .unwrap();
     let b = a.db_after.with(&[op], 14, source(98)).unwrap();
     many.cardinality = Cardinality::One;
@@ -361,7 +361,9 @@ fn callback_generated_entities_and_explicit_timestamp_share_resolved_source() {
 fn ordinary_explicit_instant_retains_clock_validation() {
     let database = Database::bootstrap().unwrap();
     let explicit = add(EntityRef::Tx, DB_TX_INSTANT as u32, Value::Instant(10));
-    let report = database.with(&[explicit.clone()], 10, source(99)).unwrap();
+    let report = database
+        .with(std::slice::from_ref(&explicit), 10, source(99))
+        .unwrap();
     assert_eq!(report.tx_data.len(), 1);
     assert_eq!(report.tx_data[0].source, 99);
     assert_eq!(

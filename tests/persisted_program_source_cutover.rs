@@ -107,7 +107,8 @@ fn vm_reads_count_distinct_values_and_keep_exact_views() {
         ),
         vec![vec![Value::String("Peaches".into())]]
     );
-    for db in [&second.db_after] {
+    {
+        let db = &second.db_after;
         assert_eq!(
             rows(
                 ProgramRuntime

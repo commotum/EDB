@@ -1050,7 +1050,7 @@ mod tests {
         let initial = Database::new(schema).unwrap();
         let operation = add(100, Value::String("fresh peaches".into()));
         let first = initial
-            .with(&[operation.clone()], 1, EntityRef::Id(99))
+            .with(std::slice::from_ref(&operation), 1, EntityRef::Id(99))
             .unwrap()
             .db_after;
         let second = first

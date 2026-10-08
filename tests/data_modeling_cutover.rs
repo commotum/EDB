@@ -8,7 +8,7 @@ use edb_core::{
 use std::sync::Arc;
 
 fn examples() -> Vec<&'static str> {
-    include_str!("../docs-2/03_schema/04_data_modeling.md")
+    include_str!("../docs/03_schema/04_data_modeling.md")
         .split("```edn\n")
         .skip(1)
         .map(|block| block.split("```").next().unwrap().trim())

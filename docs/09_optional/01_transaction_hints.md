@@ -35,13 +35,16 @@ milliseconds named `preview_instant`:
 let hinted = db.with_forms_with_hints(
     &request.forms,
     preview_instant,
+    request.source.clone(),
     edb_core::SpeculationLimits::default(),
     edb_core::HintLimits::default(),
 )?;
 ```
 
 This runs ordinary pure speculation with the supplied `SpeculationLimits` and an
-additional bounded `HintLimits` read trace. The returned `HintedSpeculation`
+additional bounded `HintLimits` read trace. The request's required source applies
+to every fact produced by the preview, including its automatic transaction
+timestamp. The returned `HintedSpeculation`
 contains the ordinary speculative `report`, optional `hints`, and trace `stats`.
 No data is written. Eager in-memory values, speculative values and opaque-filter
 origins do not provide a portable committed origin: they still speculate
@@ -77,7 +80,8 @@ Hints do not lock a basis or reserve identities. Use an explicit request basis
 guard when a plan requires one; see [transactions and exact
 retries](../04_transactions/00_transactions.md).
 
-The canonical request hash does not include hints. Stale, absent, unrelated or
+The canonical request hash includes the forms, required source, basis condition,
+and explicit time override, but does not include hints. Stale, absent, unrelated or
 failed prefetch never changes transaction meaning. A stale basis in the same
 lineage and generation may still be useful; hints from another lineage or
 generation are ignored. The writer reads its own authenticated current value,

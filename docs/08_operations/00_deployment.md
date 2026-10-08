@@ -135,10 +135,10 @@ startup options.
 SQL cancellation (`57014`) is Interrupted; lock timeout (`55P03`) is Busy.
 These are not transport-loss claims. A delivery timeout or connection loss
 after attempted submission can still be `UnknownOutcome`: reconcile/retry the
-identical request key and content. Do not submit under a new key to resolve an
-unknown result. A known commit remains committed if opening its local report
-fails; the native socket result separates those facts. Report observation
-failure is likewise separate from transaction success.
+identical request key and content, including the supplied source. Do not submit
+under a new key to resolve an unknown result. A known commit remains committed
+if opening its local report fails; the native socket result separates those
+facts. Report observation failure is likewise separate from transaction success.
 
 Do not log credentials, plaintext request keys or subject data. Use structured
 categories and lineage-bound request digests for diagnostics. Configure process
@@ -175,7 +175,7 @@ database value; `deep=true` additionally checks coherent log skip links and
 compares every retained covering index and search attachment against canonical
 information. Receipt before/after values must match exact canonical prefixes,
 and metadata must match ordinary/reserved allocation checkpoints. Legitimate
-no-history omissions and pending AVET prefixes are checked, not ignored.
+no-history omissions and pending AVET/SAVET prefixes are checked, not ignored.
 This semantic audit is explicit; ordinary restore authenticates copied objects
 and checks guarded publication without replaying history.
 
@@ -292,11 +292,12 @@ entity and attribute selection, cutoffs, component traversal and examples.
 
 Excision is rare privacy/retention work, not correction; ordinary retraction
 preserves the history needed to explain past decisions. Submit an ordinary
-`:db/excise` request with optional selected attributes and one strict cutoff,
-then establish completion with `sync_excise` or the connection's corresponding
-synchronization. The stock service automatically schedules committed requests
-with indexing and resumes interrupted jobs; a committed request is not itself
-proof of completed removal. `PostgresOperator::process_excision_requests` remains
+`:db/excise` request with one transaction source, optional selected attributes
+and one strict cutoff, then establish completion with `sync_excise` or the
+connection's corresponding synchronization. The stock service automatically
+schedules committed requests with indexing and resumes interrupted jobs; a
+committed request is not itself proof of completed removal.
+`PostgresOperator::process_excision_requests` remains
 an explicit administrative driver for the same rewrite algorithm. It claims a
 normal writer lease and reports Busy when a running service owns that lease;
 let the service finish or stop it before administrative processing. Operator
@@ -305,7 +306,8 @@ are protected audit information. EDB freezes the complete predicate at its A=15 
 later ordinary edits do not rewrite an already queued request.
 
 The Rust worker rewrites an inactive generation into immutable objects, stages
-all eight indexes and fulltext, then indivisibly activates the completed root.
+all six current and six history indexes and fulltext, then indivisibly activates
+the completed root.
 A protected work reference retains bounded persisted checkpoints across worker
 or process interruption. Large excisions can cost proportionally to the whole
 database. After successful admission, the service parks fresh transactions for

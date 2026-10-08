@@ -413,7 +413,7 @@ has additional SQL-call/stream details; see the
 | `transaction.composite_candidates`, `transaction.composite_datoms` | Counts | Composite candidate and produced-composite work |
 | `transaction.function_calls`, `transaction.produced_datoms` | Counts | Function expansion and produced datoms |
 | `cache.DecodedNode`, `cache.LocalDisk`, `cache.PostgresBlock` | Objects | Per-tier accesses, hits, misses, errors, bytes and durations |
-| `index.Eavt`, `index.Aevt`, `index.Avet`, `index.Vaet` | Objects | Per-order cursors, node accesses and decoded misses |
+| `index.Eavt`, `index.Aevt`, `index.Avet`, `index.Vaet`, `index.Saevt`, `index.Savet` | Objects | Per-order cursors, node accesses and decoded misses |
 | `phase.<OperationKind>` | Object | Phase `invocations` and summed `elapsed_nanos` |
 
 Cache objects contain `accesses`, `hits`, `misses`, `errors`, `physical_bytes`,

@@ -18,26 +18,34 @@ A transaction is logical information to apply indivisibly, not a script of
 imperative updates. Typed `TxOp`/`TxForm` and EDN entity maps or primitive forms
 use the same assessment rules. The writer evaluates fresh intent against one
 immutable db-before, validates it, then publishes a new ordered transaction.
-Unrelated omitted facts remain unchanged.
+The caller explicitly supplies one source for the transaction. Every assertion
+and retraction it produces carries that source, including generated changes and
+the automatic transaction instant. Contributions from different sources reach
+the shared record through separate transactions. Unrelated omitted facts remain
+unchanged.
 
-`TransactionRequest` pairs that intent with a caller-owned request key. Keep the
-complete request, including explicit basis/time options and generated UUIDs,
-until its outcome is known. An application outbox can preserve it across process
-failure. A transaction callback must compute from supplied data, not perform
-external side effects that a retry could duplicate.
+`TransactionRequest` pairs that intent with a caller-owned request key and a
+required `source: EntityRef`. The source uses ordinary entity-reference resolution,
+including a tempid established in entity position in the same transaction.
+Keep the complete request, including its source,
+explicit basis/time options and generated UUIDs, until its outcome is known.
+An application outbox can preserve it across process failure. A transaction
+callback must compute from supplied data, not perform external side effects
+that a retry could duplicate.
 
 ## Interpret the outcome
 
 A successful report carries exact db-before/db-after values, assertion and
-retraction datoms, resolved tempids and transaction identity. `basis_t` is logical
-transaction order; the transaction entity and `:db/txInstant` are separate
-representations. Earlier captured values remain unchanged.
+retraction datoms with their source entity ids, resolved tempids and transaction
+identity. `basis_t` is logical transaction order; the transaction entity and
+`:db/txInstant` are separate representations. Earlier captured values remain
+unchanged.
 
 After ambiguous delivery, retry identical content under the same key. Receipt
 resolution precedes current schema/default/function assessment. Reusing a key
-with different intent conflicts; it is not a second transaction. Keep the original
-typed or EDN representation: equivalent representations are not promised to have
-the same request digest.
+with different intent, including a different source, conflicts; it is not a second
+transaction. Keep the original typed or EDN representation: equivalent
+representations are not promised to have the same request digest.
 
 A confirmed `CommittedTransaction` can have `report: Err` if opening its local
 read values fails. The commit is still confirmed. EDN output can similarly carry
@@ -49,6 +57,7 @@ occupied-key tombstones; see [its retry policy](../08_operations/00_deployment.m
 
 `DatabaseValue::with`, `with_forms` and EDN preview produce a speculative
 db-after without storage publication, durable receipts or identity reservation.
+Each preview requires one source alongside its transaction data and fixed instant.
 Pass the result through ordinary queries/Pull to compare alternatives.
 Submit the original logical forms, not preview IDs or a datom diff.
 An optional basis guard rejects a plan whose required live basis changed;

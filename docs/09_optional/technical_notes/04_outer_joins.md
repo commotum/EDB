@@ -40,7 +40,7 @@ EDB also includes the [get-else query function](../../05_query_and_pull/05_query
  [(get-else $ ?e :artist/startYear "Unknown") ?year]]
 ```
 
-The omitted `:in` defaults to `$`; bind the database as the source input as in the first example. `get-else` requires a cardinality-one attribute and a non-nil default. The string default above is allowed even when the stored start year is a long. Both examples require `:artist/name` and `:artist/startYear` in the schema; a missing value is different from an unknown attribute.
+The omitted `:in` defaults to `$`; bind the database as the source input as in the first example. `get-else` requires a cardinality-one attribute and a non-nil default. The string default above is allowed even when the stored start year is a long. The `get-else` example requires `:artist/name` and `:artist/startYear` in the schema; a missing value is different from an unknown attribute.
 
 For related operations, [get-some](../../05_query_and_pull/05_query_reference.md#get-some) tries cardinality-one attributes in order, returning the first available attribute id and value. If none is present, it produces no tuple, so it does not preserve that artist's row. The [missing? predicate](../../05_query_and_pull/05_query_reference.md#missing) instead selects artists whose start year is absent:
 

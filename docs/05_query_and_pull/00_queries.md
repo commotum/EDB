@@ -60,7 +60,7 @@ allocation in comparisons or logical join hashes.
 ## Raw tuples and datoms
 
 Use `QueryDataSource::tuples` for ordinary E/A/V rows, optionally followed by
-transaction and assertion/retraction fields:
+transaction, source and assertion/retraction fields, in that order:
 
 ```rust
 use edb_core::{
@@ -96,20 +96,22 @@ Rows too short for a pattern do not match. Extra columns are ignored by that
 pattern. Arbitrary-width relational inputs remain available through
 `InputSpec::Relation` and `QueryInput::Relation`.
 
-For named relations of six or more columns use `RelationPattern`; it also accepts
+For named relations of seven or more columns use `RelationPattern`; it also accepts
 shorter patterns. `QueryDataSource::relation` and `QueryInput::General` extend
 cells/arguments beyond stored values to nil, maps, sets, characters and inert tags.
 See [general query data](01_application_data.md), including database-free queries and pure
 Rust callbacks. Existing typed tuple and datom APIs remain available.
 
 `QueryDataSource::datoms(name, datoms)` converts native `Datom` values into
-E/A/V/T/assertion tuples. Entity, attribute and transaction positions contain
+E/A/V/T/source/assertion tuples. Entity, attribute, transaction and source positions contain
 numeric refs. A query using an attribute ID can run unchanged over these tuples
 and a native database. An attribute keyword is resolved against a native
 database's schema, but is not automatically resolved against raw datom tuples.
 
 Use `QueryDataSource::database(name, database_value)` for exact database values.
-Set `DataPattern::source` to the corresponding name when combining sources.
+Set `DataPattern.source` to the corresponding name when combining sources.
+Use `DataPattern.fact_source` to bind or constrain the datom's source entity,
+independently of the named database input.
 History/as-of/since/filter semantics belong to the supplied database value;
 the query does not substitute a live connection's latest database.
 
@@ -123,7 +125,7 @@ log. Two native function clauses integrate it with ordinary joins:
   Bounds accept `Term::Nil`, nonnegative `Value::Long` T, `Value::Ref` transaction
   entity, or `Value::Instant` Unix milliseconds.
 - `Function::TxData`: the same named log source, one T or transaction-ref
-  argument, and usually a five-column `Binding::Relation` for E/A/V/T/assertion.
+  argument, and usually a six-column `Binding::Relation` for E/A/V/T/source/assertion.
 
 Join the transaction variable with a database pattern to retrieve
 `:db/txInstant` or application-defined transaction provenance. Log reads retain
@@ -222,7 +224,7 @@ cache, not a persisted compiled-query or JVM compatibility format.
 Shared-key input relations and raw tuple patterns can use hash joins. Their
 candidate comparisons still verify full logical equality. Native database
 patterns group identical resolved probes within bounded batches and retain
-selective EAVT/AEVT/AVET/VAET access; they do not replace selective seeks with
+selective index access; they do not replace selective seeks with
 whole-database scans. Existing demand-driven recursive-rule evaluation remains
 in use.
 

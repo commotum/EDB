@@ -159,12 +159,15 @@ submit a small transaction using the built-in `:db/doc` attribute:
 ```sh
 target/debug/edb transact --database transactor-demo \
   --endpoint "$endpoint_dir/transactor.sock" \
-  --request-key transactor-reference-hello --file - <<'EDN'
+  --request-key transactor-reference-hello --source ':db.source/system' --file - <<'EDN'
 [{:db/id "hello" :db/doc "Hello world"}]
 EDN
 ```
 
-This writes one entity to the database. Keep the same key and content when
+This writes one entity to the database. The required `--source` supplies the
+transaction's source once; its `:db/doc` assertion and automatic transaction
+instant both carry `:db.source/system`.
+Keep the same key, source and content when
 retrying this example: EDB returns its exact retained receipt rather than
 repeating the transaction. The result includes `:edb/committed true`, basis,
 transaction hash and replay status. See [connecting to a database](../01_tutorials/05_connect_to_a_database.md)

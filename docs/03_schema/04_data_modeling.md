@@ -5,6 +5,10 @@
 Many databases need to represent a set of enumerated values. In EDB, it is
 idiomatic to represent enumerated values as entities with a `:db/ident` attribute.
 
+Submit each transaction below with source `99`, an existing contributor
+entity. EDB automatically records the transaction instant with that source,
+along with every fact the transaction produces.
+
 For example, the transaction below defines an `:artist/country` attribute, and
 two initial enumerated values, `:country/CA` and `:country/JP`, ISO alpha-2 country
 codes for Canada and Japan. It also defines `:artist/name` for the example that
@@ -46,8 +50,8 @@ from committing.
 
 ## Installation and resolution
 
-The first two maps define attributes. The last two create ordinary identified
-entities, not additional attributes: they have no `:db/valueType` or
+The first two domain maps define attributes. The last two create ordinary
+identified entities, not additional attributes: they have no `:db/valueType` or
 `:db/cardinality`.
 
 EDN reference idents resolve against db-before. Merely spelling a keyword does

@@ -1,8 +1,8 @@
 # Source cutover
 
-The contract is [NORTHSTAR](docs-2/NORTHSTAR.md), the
-[transaction data reference](docs-2/04_transactions/04_transaction_data.md),
-and the API and behavior documented in `docs-2/`.
+The contract is [NORTHSTAR](docs/NORTHSTAR.md), the
+[transaction data reference](docs/04_transactions/04_transaction_data.md),
+and the API and behavior documented in `docs/`.
 
 ## Working copies and the running application
 

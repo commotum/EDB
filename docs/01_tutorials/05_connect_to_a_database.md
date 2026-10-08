@@ -42,7 +42,7 @@ With the [peer library](../00_start_here/02_peer_library.md) available in your R
 project, create a connection:
 
 ```rust
-use edb_core::{Connection, TransactionRequest, postgres_config_from_env};
+use edb_core::{Connection, EntityRef, TransactionRequest, postgres_config_from_env};
 use std::time::Duration;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -77,6 +77,7 @@ let endpoint = std::env::var("EDB_TUTORIAL_ENDPOINT")?;
 let request = TransactionRequest::from_edn(
     "tutorial-hello-world",
     r#"[{:db/id "hello" :db/doc "Hello world"}]"#,
+    EntityRef::from_edn(":db.source/system")?,
 )?;
 let committed = conn.transact_socket(&endpoint, request, Duration::from_secs(30))?;
 println!("Committed at basis {}, replayed={}", committed.basis_t, committed.replayed);
@@ -89,6 +90,9 @@ println!("tempids: {:?}", report.tempids);
 
 `:db/doc` is a built-in string attribute, so this transaction needs no custom
 schema. `"hello"` is a temporary ID that the report maps to the new entity's ID.
+The request supplies the built-in source entity `:db.source/system` once for
+the transaction. Every resulting datom carries that source, including the
+automatically recorded transaction instant.
 The transaction report contains the exact immutable database values before and
 after the transaction, the datoms asserted or retracted, and the temporary ID
 mapping.
@@ -98,7 +102,8 @@ connection using the peer configuration in your environment:
 
 ```sh
 target/release/edb transact --database edn-demo \
-  --endpoint "$EDB_TUTORIAL_ENDPOINT" --request-key tutorial-hello-world --file - <<'EDN'
+  --endpoint "$EDB_TUTORIAL_ENDPOINT" --request-key tutorial-hello-world \
+  --source ':db.source/system' --file - <<'EDN'
 [{:db/id "hello" :db/doc "Hello world"}]
 EDN
 ```
@@ -108,22 +113,24 @@ transaction hash, and replay flag. Its report fields contain basis numbers in
 place of Rust database values. An illustrative report portion for the first
 transaction is shown below; IDs, time and basis depend on your database:
 
-```edn
+```text
 {:edb/db-before-t 0
  :edb/db-after-t 1
- :edb/tx-data [[13194139533313 50 #inst "2023-11-14T22:13:20.000Z" 13194139533313 true]
-               [17592186045416 62 "Hello world" 13194139533313 true]]
+ :edb/tx-data [[13194139533313 50 #inst "2023-11-14T22:13:20.000Z" 13194139533313 source-id true]
+               [17592186045416 62 "Hello world" 13194139533313 source-id true]]
  :edb/tempids {"hello" 17592186045416}}
 ```
 
-Each datom is `[entity attribute value transaction added?]`. The first records
-the transaction time; the second asserts `"Hello world"` on your new entity.
+Each datom is `[entity attribute value transaction source added?]`. The first
+records the transaction time; the second asserts `"Hello world"` on your new
+entity. Here, `source-id` stands for the numeric entity ID resolved from
+`:db.source/system`.
 
 Keep the request key `tutorial-hello-world` when retrying this exact transaction
-after a lost reply. Running both examples uses the same EDN request and key,
-so the second submission replays the retained receipt. Use a new key for a new
-transaction. A confirmed commit remains committed even if opening its local
-report fails: Rust exposes that failure through `committed.report`, and the CLI
+after a lost reply. Running both examples uses the same EDN request, key, and
+source, so the second submission replays the retained receipt. Use a new key
+for a new transaction. A confirmed commit remains committed even if opening its
+local report fails: Rust exposes that failure through `committed.report`, and the CLI
 can return `:edb/report-error`. See [transactions and exact retries](00_edn_workflow.md#transactions-and-exact-retries).
 
 ## Interact with EDB

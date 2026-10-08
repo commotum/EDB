@@ -27,6 +27,10 @@ Every attribute definition has [three required attributes](../03_schema/02_schem
 You can also supply the optional `:db/doc` attribute, which stores a docstring
 of the attribute which you can query for later.
 
+Each transaction supplies one source for all of its assertions and retractions.
+For this tutorial, we'll use the built-in source entity `:db.source/system`
+when submitting the schema.
+
 - Our first attribute, "title", will be defined as:
 
   ```edn
@@ -57,8 +61,9 @@ of the attribute which you can query for later.
 
 You could choose to send each of these attributes to the database in individual
 transactions. We'll batch them up into a single transaction and combine the
-three maps into a single vector of maps. Let's save our schema vector in a file
-called `movie-schema.edn`:
+three maps into a single vector. EDB automatically records the transaction
+instant with the source supplied when we submit the transaction. Let's save our
+schema vector in a file called `movie-schema.edn`:
 
 ```sh
 cat > movie-schema.edn <<'EDN'
@@ -86,50 +91,56 @@ connection and submit the transaction to the running transactor. It takes:
 - The logical database name and transaction endpoint.
 - A collection of transaction data, formatted in [list or map form](../04_transactions/04_transaction_data.md), supplied through a file.
 - A request key identifying this transaction for exact retries.
+- One source entity reference supplied with `--source`.
 
 Go ahead and transact the schema:
 
 ```sh
 target/release/edb transact --database edn-demo \
   --endpoint "$EDB_TUTORIAL_ENDPOINT" \
-  --request-key tutorial-movie-schema --file movie-schema.edn
+  --request-key tutorial-movie-schema --source ':db.source/system' \
+  --file movie-schema.edn
 ```
 
 The executable prints EDN with `:edb/committed true`, `:edb/basis-t`,
 `:edb/tx-hash`, and `:edb/replayed`. The report fields look like this; IDs, time
 and basis depend on your database. This example assumes the "Hello world"
-transaction from the previous section was the first transaction:
+transaction from the previous section was the first transaction.
 
-```edn
+In this schematic report, `source-id` denotes the resolved entity ID of
+`:db.source/system`.
+
+```text
 {:edb/db-before-t 1
  :edb/db-after-t 2
  :edb/tx-data
- [[0 13 #edb/ref 1000 13194139533314 true]
-  [0 13 #edb/ref 1001 13194139533314 true]
-  [0 13 #edb/ref 1002 13194139533314 true]
-  [1000 10 :movie/genre 13194139533314 true]
-  [1000 40 #edb/ref 23 13194139533314 true]
-  [1000 41 #edb/ref 35 13194139533314 true]
-  [1000 62 "The genre of the movie" 13194139533314 true]
-  [1001 10 :movie/title 13194139533314 true]
-  [1001 40 #edb/ref 23 13194139533314 true]
-  [1001 41 #edb/ref 35 13194139533314 true]
-  [1001 62 "The title of the movie" 13194139533314 true]
-  [1002 10 :movie/release-year 13194139533314 true]
-  [1002 40 #edb/ref 22 13194139533314 true]
-  [1002 41 #edb/ref 35 13194139533314 true]
-  [1002 62 "The year the movie was released in theaters" 13194139533314 true]
-  [13194139533314 50 #inst "2023-11-14T22:13:21.000Z" 13194139533314 true]]
+ [[0 13 #edb/ref 1000 13194139533314 source-id true]
+  [0 13 #edb/ref 1001 13194139533314 source-id true]
+  [0 13 #edb/ref 1002 13194139533314 source-id true]
+  [1000 10 :movie/genre 13194139533314 source-id true]
+  [1000 40 #edb/ref 23 13194139533314 source-id true]
+  [1000 41 #edb/ref 35 13194139533314 source-id true]
+  [1000 62 "The genre of the movie" 13194139533314 source-id true]
+  [1001 10 :movie/title 13194139533314 source-id true]
+  [1001 40 #edb/ref 23 13194139533314 source-id true]
+  [1001 41 #edb/ref 35 13194139533314 source-id true]
+  [1001 62 "The title of the movie" 13194139533314 source-id true]
+  [1002 10 :movie/release-year 13194139533314 source-id true]
+  [1002 40 #edb/ref 22 13194139533314 source-id true]
+  [1002 41 #edb/ref 35 13194139533314 source-id true]
+  [1002 62 "The year the movie was released in theaters" 13194139533314 source-id true]
+  [13194139533314 50 #inst "2023-11-14T22:13:21.000Z" 13194139533314 source-id true]]
  :edb/tempids {"__map/00000000000000000000" 1000
               "__map/00000000000000000001" 1001
               "__map/00000000000000000002" 1002}}
 ```
 
-Each datom is `[entity attribute value transaction added?]`. The report contains
-the three attribute definitions, the automatically generated schema installation
-facts, and the transaction time. `#edb/ref` marks an entity reference. Because we
-omitted `:db/id` from the maps, EDB generated temporary IDs; their names and
-allocation order are implementation details.
+Each datom is `[entity attribute value transaction source added?]`. The report
+contains the three attribute definitions, the automatically generated schema
+installation facts, and the automatic transaction time, all with the supplied
+source. `#edb/ref` marks an entity reference.
+Because we omitted `:db/id` from the attribute maps, EDB generated temporary IDs;
+their names and allocation order are implementation details.
 
 `:edb/committed true` confirms that the transaction was persisted. The
 `:edb/db-before-t` and `:edb/db-after-t` values identify the database versions
@@ -138,9 +149,9 @@ immutable values as `db_before` and `db_after`. A confirmed commit remains
 committed even if opening or rendering its local report fails, in which case
 the executable returns `:edb/report-error` with the receipt fields.
 
-Keep `tutorial-movie-schema` and the same file contents when retrying this
-transaction after a lost reply. Use a new request key for a new transaction.
-You can learn more about the return value and retries in the
+Keep `tutorial-movie-schema`, the same source, and the same file contents when
+retrying this transaction after a lost reply. Use a new request key for a new
+transaction. You can learn more about the return value and retries in the
 [transaction tutorial](00_edn_workflow.md#transactions-and-exact-retries).
 
 The schema is now ready for [adding movies into the database](07_transact_data.md). Submit movie data

@@ -30,8 +30,8 @@ The tutorial will explain the queries as we go.
 
 ```rust
 use edb_core::{
-    Database, DatabaseValue, QueryControl, QueryResult, QuerySourceValue,
-    QueryValue, SemanticError, Value,
+    Database, DatabaseValue, EntityRef, Keyword, QueryControl, QueryResult,
+    QuerySourceValue, QueryValue, SemanticError, Value,
 };
 use edb_core::edn::write_edn;
 use edb_core::edn_query::{EdnQueryArgument, parse_query_edn};
@@ -57,6 +57,7 @@ Start `main` and create the database:
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let empty = Database::bootstrap()?;
     assert_eq!(empty.basis_t(), 0);
+    let source = EntityRef::Ident(Keyword::new("db.source", "system"));
 ```
 
 Keep `main` open until the final snippet in the tutorial. You can now use `empty`
@@ -91,6 +92,10 @@ built-in attributes. Every attribute definition has three required attributes:
 
 Supply also the optional `:db/doc` attribute, which stores a docstring of the
 attribute you can query later.
+
+Each transaction explicitly supplies one source, which identifies the contributor
+of all its assertions and retractions. This tutorial uses the built-in source
+entity `:db.source/system`, bound to `source` above.
 
 Attribute definitions are defined as maps of data. Our first attribute,
 "title", would be defined as:
@@ -127,8 +132,9 @@ for it:
 
 You could choose to send each of these attributes to the database in individual
 transactions, but we'll batch them up into a single transaction. To do that,
-combine the three maps into a single vector of maps. Let's bind the EDN schema
-text to a variable called `movie_schema`:
+combine the three maps into a single transaction vector. EDB automatically
+asserts the transaction instant with the transaction's source. Let's bind the
+EDN schema text to a variable called `movie_schema`:
 
 ```rust
     let movie_schema = r#"[
@@ -148,18 +154,21 @@ text to a variable called `movie_schema`:
 ```
 
 Now that we have our attribute definitions ready to go, issue a local transaction
-using `with_edn`. This method takes two arguments:
+using `with_edn`. This method takes three arguments:
 
 - Transaction data as EDN text, formatted in
   [list or map form](../04_transactions/04_transaction_data.md).
 - An explicit transaction instant in milliseconds since the Unix epoch.
+- The required transaction source as an `EntityRef`.
 
 The receiver is the immutable database value to which the transaction applies.
 We use increasing example instants throughout this tutorial so that the history
-is reproducible. Transact the schema:
+is reproducible. The instant argument supplies the time, and `source` attributes
+every resulting datom, including the automatic `:db/txInstant` assertion.
+Transact the schema:
 
 ```rust
-    let schema_report = empty.with_edn(movie_schema, 1_000)?;
+    let schema_report = empty.with_edn(movie_schema, 1_000, source.clone())?;
     println!("{}", write_edn(&transaction_report_to_edn(
         schema_report.db_before.basis_t(),
         schema_report.db_after.basis_t(),
@@ -181,8 +190,8 @@ The returned `TxReport` contains:
 The printed EDN report represents these as `:edb/db-before-t`,
 `:edb/db-after-t`, `:edb/tx-data`, and `:edb/tempids`. The first two are basis
 numbers, here `0` and `1`; the Rust report retains the database values themselves.
-Each datom in the printed transaction data has five components:
-`[entity attribute value transaction added?]`.
+Each datom in the printed transaction data has six components:
+`[entity attribute value transaction source added?]`.
 
 The presence of `db_before` and `db_after` shows the local state transition.
 `with_edn` does not persist this information to storage. Retain `db_after` to
@@ -227,7 +236,8 @@ also accept typed data assembled directly in Rust.
 Now that you have the movies ready to go, transact them into the database:
 
 ```rust
-    let movies_report = schema_report.db_after.with_edn(first_movies, 2_000)?;
+    let movies_report = schema_report.db_after
+        .with_edn(first_movies, 2_000, source.clone())?;
     println!("{}", write_edn(&transaction_report_to_edn(
         movies_report.db_before.basis_t(),
         movies_report.db_after.basis_t(),
@@ -465,15 +475,18 @@ the native result also checks that the query returned an entity reference:
 
 Next, issue a transaction telling EDB about the new value for `:movie/genre`.
 Remember from the transacting data section that a local transaction takes a
-database value, transaction data, and a transaction instant. In this case,
-specify one special key, `:db/id`, whose value is the entity ID we just
-retrieved. The transaction looks like this:
+database value, transaction data, a transaction instant, and one source. In this
+case, specify `:db/id`, whose value is the entity ID we just retrieved. The
+transaction source applies to the new assertion and the retraction it causes.
+The transaction looks like this:
 
 ```rust
     let update = format!(
-        r#"[{{:db/id {commando_id} :movie/genre "future governor"}}]"#
+        r#"[{{:db/id {commando_id}
+              :movie/genre "future governor"}}]"#
     );
-    let update_report = movies_report.db_after.with_edn(&update, 3_000)?;
+    let update_report = movies_report.db_after
+        .with_edn(&update, 3_000, source.clone())?;
     println!("{}", write_edn(&transaction_report_to_edn(
         update_report.db_before.basis_t(),
         update_report.db_after.basis_t(),
@@ -482,13 +495,16 @@ retrieved. The transaction looks like this:
     )?)?);
 ```
 
-```edn
+In this schematic report, `source-id` stands for the resolved entity ID of
+`:db.source/system`:
+
+```text
 {:edb/db-before-t 2
  :edb/db-after-t 3
  :edb/tx-data
- [[13194139533315 50 #inst "1970-01-01T00:00:03.000Z" 13194139533315 true]
-  [17592186045419 1000 "action/adventure" 13194139533315 false]
-  [17592186045419 1000 "future governor" 13194139533315 true]]
+ [[13194139533315 50 #inst "1970-01-01T00:00:03.000Z" 13194139533315 source-id true]
+  [17592186045419 1000 "action/adventure" 13194139533315 source-id false]
+  [17592186045419 1000 "future governor" 13194139533315 source-id true]]
  :edb/tempids {}}
 ```
 

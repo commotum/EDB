@@ -71,6 +71,11 @@ placement policy applies. You can override it with an explicit
 
 ### Installing named partitions
 
+The transaction examples below use `99` as an existing source entity id. Supply
+`EntityRef::Id(99)` once through each request or speculation call, or `--source 99`
+through the CLI. Every resulting fact, including the automatic transaction
+instant, carries that source.
+
 To install a new named partition, transact an entity with an ident and reference
 that new entity as a `:db.install/partition` value of the system entity
 `:db.part/db`. For example, this transaction uses reverse-reference notation to
@@ -120,6 +125,9 @@ let install = TxForm::EntityMap(EntityMap {
     ],
 });
 ```
+
+Submit `install` through a transaction request with source `EntityRef::Id(99)`.
+EDB automatically records the transaction instant with the same source.
 
 `AttributeRef::Ident(Keyword::new("db.install", "_partition"))` is also accepted
 for this reverse installation spelling. It lowers to ordinary installation
@@ -173,7 +181,8 @@ cardinality-many ref. See [schema](../03_schema/02_schema_reference.md) and
 ### :db/force-partition
 
 The value of `:db/force-partition` is a map from tempid strings to desired
-partitions. Named partitions are specified by their installed keyword:
+partitions. Named partitions are specified by their installed keyword. Submit
+this data with transaction source `99`:
 
 ```clojure
 [{:db/id "order"
@@ -202,7 +211,7 @@ let text = format!(r#"
  {{:db/id "order" :order/id "55555"}}
  {{:db/force-partition {{"customer" {partition} "order" {partition}}}}}]
 "#);
-let report = database.with_edn(&text, 1_000)?;
+let report = database.with_edn(&text, 1_000, EntityRef::Id(99))?;
 assert_eq!(partition_eid(report.tempids["customer"])?, partition);
 assert_eq!(partition_eid(report.tempids["order"])?, partition);
 ```
@@ -229,7 +238,7 @@ let text = format!(r#"
  {{:db/force-partition {{"order" {partition}}}
    :db/match-partition {{"item1" "order" "item2" "order"}}}}]
 "#);
-let report = database.with_edn(&text, 1_000)?;
+let report = database.with_edn(&text, 1_000, EntityRef::Id(99))?;
 for tempid in ["order", "item1", "item2"] {
     assert_eq!(partition_eid(report.tempids[tempid])?, partition);
 }
@@ -294,7 +303,7 @@ Configure a different default explicitly:
 ```rust
 let defaults = TransactionDefaults::default()
     .with_default_partition(Keyword::new("part", "orders"));
-let preview = database.with_edn_with_defaults(text, instant, &defaults)?;
+let preview = database.with_edn_with_defaults(text, instant, EntityRef::Id(99), &defaults)?;
 let writer = TransactionService::start_with_defaults(config, defaults)?;
 ```
 
@@ -319,13 +328,14 @@ preview the same EDN intent in another terminal:
 mkdir -m 700 /tmp/edb-orders
 edb transactor --database orders --endpoint /tmp/edb-orders/writer.sock \
   --default-partition :part/orders
-edb with --database orders --file order.edn \
+edb with --database orders --file order.edn --source 99 \
   --default-partition :part/orders
 ```
 
 ### Install the partition before fresh use
 
-Using the ordinary default, install a named partition:
+Using the ordinary default, install a named partition with transaction source
+`99`:
 
 ```clojure
 [{:db/ident :part/orders :db.install/_partition :db.part/db}]

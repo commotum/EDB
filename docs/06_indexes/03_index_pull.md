@@ -55,6 +55,11 @@ fn attr(namespace: &str, name: &str) -> AttributeName {
 }
 ```
 
+Index-Pull accepts AVET and AEVT boundaries. To select a source through SAEVT
+or SAVET, use a raw prefix or seek cursor and pull the appropriate entity
+explicitly. Every selected datom still carries its source; ordinary Pull
+projects the shared visible record at the captured basis.
+
 ### AVET
 
 An AVET boundary walks the specified attribute, starting at an optional value,
@@ -64,7 +69,8 @@ when readiness matters; see [ordered indexes](00_indexes_and_log.md).
 
 If the attribute is `:db.cardinality/many`, a starting value must be specified.
 This requirement does not deduplicate results: the walk continues beyond that
-value, and an entity with several values can be pulled more than once.
+value, and an entity with several values can be pulled more than once. Distinct
+surviving source contributions can also produce repeated projections.
 
 First let's pull the names, starting years and ending years of artists, starting
 at `:artist/startYear`:
@@ -225,8 +231,9 @@ validate values against that database's schema.
 
 Components are supplied in index order. `IndexComponents::One(attribute)` starts
 at the beginning of that attribute in forward traversal, or its end in reverse
-traversal. `Two` also specifies the value or entity; `Three` and `Four` can
-include the remaining components for a more precise position. Boundaries are
+traversal. `Two` also specifies the value or entity; `Three`, `Four`, and `Five` can
+include the remaining value/entity, transaction, and source components for a more
+precise position. Boundaries are
 inclusive: forward traversal starts at or above the supplied position, and
 reverse traversal starts at or below it. The supplied position need not itself
 be an existing datom.

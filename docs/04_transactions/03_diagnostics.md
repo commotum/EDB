@@ -70,16 +70,24 @@ intentional operational labels: never put customer identifiers, transaction
 values, credentials, or request keys in them.
 
 Pure `Database::with` and `DatabaseValue::with` expose their counters through the
-enclosing context's `report()` or `measure()` result. For example, even an empty
-transaction produces automatic transaction metadata:
+enclosing context's `report()` or `measure()` result. For example, a transaction
+with no domain changes still supplies a source for its automatic transaction
+metadata:
 
 ```rust
-use edb_core::{Database, OperationContext, OperationKind, Schema, SemanticError};
+use edb_core::{
+    Database, EntityRef, Keyword, OperationContext, OperationKind, Schema,
+    SemanticError, TxOp,
+};
 
 fn main() -> Result<(), SemanticError> {
     let db = Database::new(Schema::default())?;
+    let source = db.entid(&Keyword::new("db.source", "system")).unwrap();
+    let instant = 1_700_000_000_000;
+    let operations: [TxOp; 0] = [];
     let context = OperationContext::diagnostic(OperationKind::Transaction);
-    let (result, report) = context.measure(|| db.with(&[], 1_700_000_000_000));
+    let (result, report) =
+        context.measure(|| db.with(&operations, instant, EntityRef::Id(source)));
     let transaction = result?;
     assert_eq!(report.stats.transaction.assessments, 1);
     assert_eq!(report.stats.transaction.input_operations, 0);
@@ -118,6 +126,9 @@ attempts and nested work accumulate.
 | `composite_datoms` | Number of composite assertions and retractions actually generated. | datoms |
 | `function_calls` | Number of transaction-function expansion attempts, including nested or rejected calls. | calls |
 | `produced_datoms` | Number of material datoms produced by assessment, including automatic transaction metadata. | datoms |
+
+Assertion redundancy and datom deduplication include source: matching EAV from
+a different source is retained. Retractions of a missing EAV remain redundant.
 
 Memory, speculative and durable transactions use the same selective assessment
 algorithm. `function_calls` does not count attribute/entity predicate invocations
@@ -191,7 +202,9 @@ durable receipt hashes/bytes or the native wire receipt format. Reconstructed
 remote/historical reports therefore have `diagnostics: None`; they cannot
 recreate past execution costs honestly.
 
-An exact retry resolves its receipt before current functions or schema are
-assessed. A separately submitted retry has `replayed: true` and zero fresh
-semantic work, although reconstructing its values can perform reads. Shared
-receipt clones retain one `Arc` to their diagnostic snapshot.
+An exact retry includes the same forms and explicit transaction source and resolves
+its receipt before fresh source resolution, clock selection, or assessment of
+current functions or schema. A separately submitted retry has
+`replayed: true` and zero fresh semantic work, although reconstructing its values
+can perform reads. Shared receipt clones retain one `Arc` to their diagnostic
+snapshot.

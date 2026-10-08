@@ -11,14 +11,14 @@ fn between<'a>(text: &'a str, start: &str, end: &str) -> &'a str {
 
 fn schema_data() -> &'static str {
     between(
-        include_str!("../docs-2/01_tutorials/06_transact_schema.md"),
+        include_str!("../docs/01_tutorials/06_transact_schema.md"),
         "<<'EDN'\n",
         "\nEDN",
     )
 }
 
 fn requests() -> (TransactionRequest, TransactionRequest) {
-    let page = include_str!("../docs-2/01_tutorials/10_client_workflow.md");
+    let page = include_str!("../docs/01_tutorials/10_client_workflow.md");
     let rust_key = between(page, "TransactionRequest::from_edn(\"", "\"");
     let rust_source = between(page, "EntityRef::from_edn(\"", "\")?");
     let cli_key = between(page, "--request-key ", " ");

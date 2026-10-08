@@ -81,7 +81,7 @@ fn main() -> ExitCode {
                 );
             }
             eprintln!(
-                "See edb --help and docs-2/01_tutorials/01_application_workflow.md; no rollback is implied by a failed observation."
+                "See edb --help and docs/01_tutorials/01_application_workflow.md; no rollback is implied by a failed observation."
             );
             ExitCode::from(if error.category == ErrorCategory::Incorrect {
                 2

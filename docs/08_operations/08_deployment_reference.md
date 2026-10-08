@@ -161,7 +161,7 @@ durable log.
 When the physical index and excision generation are unchanged, catch-up
 authenticates the new root and verifies that the log extends the captured
 prefix. It applies only the missing canonical transactions to the shared recent
-tier, deriving schema, identifiers and AVET readiness from those transactions.
+tier, deriving schema, identifiers and AVET/SAVET readiness from those transactions.
 It does not rerun the submitted transaction forms. A changed physical index or
 generation opens the new indexed base and its recent tail. Index adoption
 replaces the connection's next capture; previously returned values remain
@@ -198,16 +198,16 @@ Transaction observation and background completion have separate targets:
 | Wait | Completion condition |
 | --- | --- |
 | `sync_to(t, timeout)` | The connection has locally adopted at least basis `t`. |
-| `sync_schema(t, timeout)` | The observed basis covers `t`, and AVET additions required through `t` are ready. |
-| `sync_index(t, timeout)` | The indexed basis covers `t`, with required AVET additions and removals through `t` complete. |
+| `sync_schema(t, timeout)` | The observed basis covers `t`, and AVET/SAVET additions required through `t` are ready. |
+| `sync_index(t, timeout)` | The indexed basis covers `t`, with required AVET/SAVET additions and removals through `t` complete. |
 | `sync_excise(t, timeout)` | The observed basis covers `t`, and excision requests through `t` have committed completion. |
 
 Later work does not extend the requested target. A physical index descriptor
-can contain partially completed AVET work, so its basis alone does not prove
+can contain partially completed AVET/SAVET work, so its basis alone does not prove
 readiness. Readiness checks account for pending work at that descriptor's basis
 separately from later schema transitions: a later disable/re-enable cycle cannot
 hide unfinished earlier work. Adding uniqueness to an attribute with historical
-values still requires a physically ready AVET index; waiting does not provide
+values still requires physically ready AVET/SAVET indexes; waiting does not provide
 an asynchronous uniqueness backfill.
 
 `Connection::sync_to` waits on a condition variable whose predicate is protected

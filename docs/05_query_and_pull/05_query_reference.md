@@ -838,7 +838,7 @@ Now the years when both The Beatles and Janis Joplin released an album can be fo
 data-pattern               = [ src-var? (variable | constant | '_')+ ]
 ```
 
-A data pattern is a tuple that begins with an optional src-var which binds to a relation. The src-var is followed one or more elements that match the tuples of that relation in order. The relation is often an EDB database, so the components are E, A, V, Tx, and Op. The elements of data pattern can be
+A data pattern is a tuple that begins with an optional src-var which binds to a relation. The src-var is followed by one or more elements that match the tuples of that relation in order. The relation is often an EDB database, so the components are E, A, V, Tx, S, and Op: entity, attribute, value, transaction, source, and added boolean. The elements of a data pattern can be
 
 - variables, which unify and bind to values
 - constants, which limit results to tuples that match the constant
@@ -849,12 +849,13 @@ The example below has a single data pattern which operates as follows:
 - `$mbrainz` binds to the db argument
 - the constant `:artist/name` limits results to datoms with that value in their Attribute (A) position
 - the constant "The Beatles" limits results to datoms with that value in their Value (V) position
+- the blank `_` matches any source in the S position
 - the variables `?e`, `?tx`, and `?op` bind to those positions in the matching datoms, if any
 
 ```
 [:find ?e ?tx ?op
  :in $mbrainz
- :where [$mbrainz ?e :artist/name "The Beatles" ?tx ?op]]
+ :where [$mbrainz ?e :artist/name "The Beatles" ?tx _ ?op]]
 ;; inputs: db
 ```
 
@@ -862,12 +863,28 @@ The example below has a single data pattern which operates as follows:
 => [[26757714973567138 13194139533421 true]]
 ```
 
+The source position contains the id of the ordinary entity to whom the assertion
+or retraction is attributed; `?op` is `true` for an assertion and `false` for a
+retraction. Replace the blank with `?source` to join that entity to its ordinary attributes.
+This position is separate from `$mbrainz`, which selects the query's input
+database. In native Rust, `DataPattern.source` names that input, while
+`DataPattern.fact_source: Option<Term>` matches the datom's source.
+
+Short E, E/A, E/A/V, and E/A/V/Tx patterns omit trailing positions. Bind S and
+include it in `:find` or `:with` when contributions from different sources to
+the same E/A/V should remain distinct in the result.
+
+Current and as-of patterns resolve visibility across all sources before
+matching S. A retraction by another source withdraws the value from every
+source's current contributions; constraining S cannot restore an earlier
+assertion. History patterns retain the source of each assertion and retraction.
+
 A database resolves attribute keywords, idents and lookup references against
 its schema and current identity view. Raw relation sources contain literal data:
 an attribute keyword or lookup-reference-shaped value is matched as data and
 is not resolved through a schema. Raw rows shorter than the pattern do not
-match; extra row columns are ignored. Raw relations can have more than five
-columns. Database datom patterns use only E/A/V/Tx/Op positions.
+match; extra row columns are ignored. Raw relations can have more than six
+columns. Database datom patterns use only E/A/V/Tx/S/Op positions.
 
 Repeated variables within one pattern also unify. Each blank is independent.
 A supplied database's current, history, as-of, since and filtered semantics are
@@ -902,11 +919,11 @@ Blanks do not cause [unification.](#implicit-joins) Clauses with multiple blanks
 
 ### Implicit Blanks
 
-In data patterns, you should elide any trailing components you don't care about, rather than explicitly padding with blanks. The previous examples already demonstrates this by omitting the Tx and Op components from the pattern
+In data patterns, you should elide any trailing components you don't care about, rather than explicitly padding with blanks. The previous examples already demonstrate this by omitting the Tx, S, and Op components from the pattern:
 
 ```
 ;; unnecessary trailing blanks
-[_ :artist/name ?name _ _]
+[_ :artist/name ?name _ _ _]
 
 ;; better
 [_ :artist/name ?name]
@@ -948,7 +965,7 @@ You can use a registered pure function as a predicate. Only `false` and `nil` re
 
 The predicates `=`, `!=` (also `not=`), `<=`, `<`, `>`, and `>=` are special:
 direct constraints on a data pattern's value can take advantage of a ready AVET
-index. Bounds may be literals or already-bound inputs. This can avoid examining
+index, or SAVET when its source is bound. Bounds may be literals or already-bound inputs. This can avoid examining
 every value that would be considered by an equivalent string predicate:
 
 ```edn
@@ -1249,19 +1266,19 @@ Given a [tuple](../03_schema/01_identity_and_values.md), the untuple function ca
 
 ```edn
 [(tx-ids $log start end) [?tx ...]]
-[(tx-data $log ?tx) [[?e ?a ?v ?tx ?added]]]
+[(tx-data $log ?tx) [[?e ?a ?v ?tx ?source ?added]]]
 ```
 
 `tx-ids` returns transaction refs in an inclusive-start, exclusive-end range of
 an immutable log. Either bound may be nil; other bounds are nonnegative T
 values, transaction refs or instants. `tx-data` takes one T or transaction ref
-and returns E/A/V/Tx/Op tuples for that transaction.
+and returns E/A/V/Tx/S/Op tuples for that transaction.
 
 ```edn
 [:find ?tx ?e ?a ?v ?added
  :in $log ?start ?end
  :where [(tx-ids $log ?start ?end) [?tx ...]]
-        [(tx-data $log ?tx) [[?e ?a ?v ?tx ?added]]]]
+        [(tx-data $log ?tx) [[?e ?a ?v ?tx _ ?added]]]]
 ;; inputs: captured-log 0 nil
 ```
 
@@ -1269,7 +1286,7 @@ Supply a captured log with `QuerySourceValue::Log(connection.log())` or
 `QueryDataSource::log`. A database or raw relation cannot substitute for the log
 source. Captured logs exclude later commits and may perform storage reads.
 Join `?tx` to a database pattern for `:db/txInstant` or application-defined
-transaction provenance. See [transaction logs](../06_indexes/00_indexes_and_log.md).
+transaction metadata. See [transaction logs](../06_indexes/00_indexes_and_log.md).
 
 ## Calling Native Functions
 

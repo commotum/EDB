@@ -34,7 +34,7 @@ fn documented_report_query_joins_names_and_preserves_retractions() {
         .database_value()
         .with(&[add(EntityRef::Id(42), "Pears")], 2, EntityRef::Id(98))
         .unwrap();
-    let page = include_str!("../docs-2/04_transactions/06_processing_transactions.md");
+    let page = include_str!("../docs/04_transactions/06_processing_transactions.md");
     let query = page
         .split("```edn\n")
         .nth(1)

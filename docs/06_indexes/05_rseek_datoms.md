@@ -8,12 +8,12 @@ consume. You say where to seek and the cursor will return datoms in the
 respective direction from that point in the specified index. It will continue
 conveying datoms lazily until either you stop consuming them or you reach the end
 of the index. Current, history, temporal and filtered database values support
-these cursors, as do all four index orders. The selected view determines which
-datoms are visible; AVET includes only indexed or unique attributes whose
-projection is ready, and VAET includes only reference-valued attributes.
+these cursors, as do all six index orders. The selected view determines which
+datoms are visible; AVET and SAVET include only indexed or unique attributes
+whose shared projection is ready, and VAET includes only reference-valued attributes.
 
 A seek position is not a restriction on the results. Once the cursor passes the
-supplied components, it continues into the next entity, value or attribute in
+supplied components, it continues into the next source, entity, value or attribute in
 that direction. Use `prefix_cursor` when you want only matching datoms. See
 [ordered indexes and the transaction log](00_indexes_and_log.md).
 
@@ -65,16 +65,19 @@ bounds.
 
 | Boundary | Component order |
 | --- | --- |
-| `IndexBoundary::Eavt` | entity, attribute, value, transaction |
-| `IndexBoundary::Aevt` | attribute, entity, value, transaction |
-| `IndexBoundary::Avet` | attribute, value, entity, transaction |
-| `IndexBoundary::Vaet` | value, attribute, entity, transaction |
+| `IndexBoundary::Eavt` | entity, attribute, value, transaction, source |
+| `IndexBoundary::Aevt` | attribute, entity, value, transaction, source |
+| `IndexBoundary::Avet` | attribute, value, entity, transaction, source |
+| `IndexBoundary::Vaet` | value, attribute, entity, transaction, source |
+| `IndexBoundary::Saevt` | source, attribute, entity, value, transaction |
+| `IndexBoundary::Savet` | source, attribute, value, entity, transaction |
 
-`IndexComponents::One` through `Four` supply a contiguous sequence from the left.
+`IndexComponents::One` through `Five` supply a contiguous sequence from the left.
 `Empty` starts at the beginning of the index for forward seek or the end for
-reverse seek. E, A and V sort ascending; T sorts descending. Thus reversing an
-E/A/V history group visits its transactions in ascending order. Entity and
-attribute order use numeric IDs. See the [index model](01_index_model.md).
+reverse seek. E, A, V, and S sort ascending; T sorts descending. S leads in
+SAEVT/SAVET and follows T in the other orders; assertions precede retractions.
+Thus reversing a history group with E/A/V/S fixed visits its transactions in
+ascending order. Entity and attribute order use numeric IDs. See the [index model](01_index_model.md).
 
 Use schema-aware helpers such as `db.avet_boundary(...)` to resolve attribute
 idents, validate values and check AVET readiness against that database value:
@@ -91,13 +94,27 @@ let cursor = db.reverse_seek_cursor(&boundary)?;
 
 This example assumes an indexed `:item/score` long attribute. A transaction
 component uses `IndexTransaction::T(t)` or `IndexTransaction::Tx(tx_entity_id)`;
-there is no fifth assertion/retraction component. At a full E/A/V/T boundary,
-both directions include all datoms tied on those supplied components.
+source components use `EntityIdentifier` in the schema-aware helpers. The
+assertion/retraction boolean is not a boundary component. At an E/A/V/T
+boundary, both directions include all sources tied on those supplied components;
+a fifth source component makes the position more precise.
+
+Current visibility is resolved across all sources before a source boundary or
+filter is applied. A source-restricted seek cannot restore an assertion that
+another source retracted.
+
+For source activity, reverse seek from
+`saevt_boundary(IndexComponents::Two(source, tx_instant_attribute))` and stop
+when S or A changes. Within this range E is a monotonically ordered transaction
+entity, so reverse traversal is newest first. Retrieve each entry's complete
+transaction with `LogValue::tx_data(IndexTransaction::Tx(entry.entity))` using
+the same captured basis. See [source activity](00_indexes_and_log.md#source-activity).
 
 The following tables illustrate different aspects of seek positioning. Each
 shows a slice of AVET. Small entity numbers stand in for allocated IDs, and
-transaction components are omitted. Result tables list the first returned
-datom unless they explicitly show continued traversal.
+transaction, source and assertion/retraction components are omitted. Result
+tables list the first returned datom unless they explicitly show continued
+traversal.
 
 ### Attribute only
 

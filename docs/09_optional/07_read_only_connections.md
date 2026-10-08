@@ -184,8 +184,10 @@ Held live values do not register storage pins. Their lazy reads depend on the
 Read values support the same query, Pull, entity, history and time-view APIs as
 other database values. Captured logs support log reads. Local `with` speculation
 produces an immutable hypothetical result without durably transacting or
-modifying the source database or backup. A read workload can therefore test a
-transaction's effects without possessing a submission endpoint.
+modifying the source database or backup. Speculation requires one explicit
+transaction source; every resulting assertion and retraction, including the
+automatic timestamp assertion, carries it. A read workload can therefore test
+a transaction's effects without possessing a submission endpoint.
 
 Release handles with normal Rust ownership and `drop`. Clones and retained
 database values can keep shared resources alive. Dropping the last application

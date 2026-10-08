@@ -6,14 +6,14 @@ EDB maintains multiple sorted indexes of datoms. For the most part, users do
 not have to request, specify, or otherwise think about these indexes. Rather,
 the indexes are used implicitly to enforce transactional invariants and to
 perform Datalog queries and pulls. The job of background indexing in EDB is to
-build and maintain their durable representation. AVET coverage depends on
-schema and completed projection work; see [ordered indexes](00_indexes_and_log.md).
+build and maintain their durable representation. AVET and SAVET share coverage
+that depends on schema and completed projection work; see [ordered indexes](00_indexes_and_log.md).
 
 ## The Job
 
 Naively, one could sort the entire database on every transaction. To avoid this,
 EDB maintains durable covering trees and a recent tier and merges them to
-produce a sorted view of the entire database. The recent tier is the memory
+produce the six sorted index orders for the database. The recent tier is the memory
 index. The memory index must be very fast for two reasons: First, it incorporates
 every new datom on every transaction. Second, opening a database reconstructs
 the unindexed tail from the log against the durable indexed base. Subsequent
@@ -82,15 +82,15 @@ indexing catch up.
 
 `TransactionService::background_indexing_stats()` and the corresponding
 `TransactionClient` method report the committed target, published indexed basis,
-live and frozen byte/datom counts, pending AVET projections, job counts,
+live and frozen byte/datom counts, pending AVET/SAVET projections, job counts,
 backpressure and failures. Observe these together with foreground latency and
 storage activity. For CPU preparation parallelism and search-build limits, see
 [maintenance controls](../08_operations/04_maintenance_controls.md).
 
 ### Requesting indexing and waiting for publication
 
-Ordinary indexing is automatic. Schema changes affecting AVET membership also
-request publication even below the ordinary byte threshold. To explicitly
+Ordinary indexing is automatic. Schema changes affecting AVET/SAVET membership
+also request publication even below the ordinary byte threshold. To explicitly
 request indexing through the currently observed committed frontier:
 
 ```rust
@@ -109,8 +109,8 @@ Queued, uncommitted transactions are excluded from the target. Requests
 coalesce: `scheduled == false` means existing demand or a publication already
 covers the target, not necessarily that indexing has completed.
 
-`sync_index` waits until the observed indexed basis reaches the target and AVET
-additions and removals relevant through that target are ready. Later commits do
+`sync_index` waits until the observed indexed basis reaches the target and
+AVET/SAVET additions and removals relevant through that target are ready. Later commits do
 not extend the requested target. Waiting does not itself request indexing;
 dropping the request receipt or timing out does not cancel shared work. Service
 shutdown or failure can prevent completion.
@@ -129,10 +129,11 @@ Some operations require work beyond merging a small recent prefix:
    of which tier or segment they live in. EDB rewrites retained history into a
    new generation and rebuilds its indexes. This is broad maintenance work;
    see [administration](../08_operations/01_administration.md).
-2. Adding AVET coverage requires processing the extant values for that
+2. Adding AVET/SAVET coverage requires processing the extant values for that
    attribute. EDB persists bounded backfill progress against a frozen source;
    committing `:db/index` or `:db/unique` does not by itself mean that physical
-   AVET coverage is ready. Removing coverage also requires projection work.
+   AVET and SAVET coverage is ready. Removing coverage also requires projection
+   work.
 3. Fulltext indexing adds tokenization, sorting and search-page writes. A
    compatible previous attachment permits incremental updates; building an
    attachment without one scans the applicable fulltext history. Build limits

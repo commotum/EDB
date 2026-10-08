@@ -137,7 +137,8 @@ implement an appropriate retry policy. A timeout or lost connection after
 attempted transmission can mean `UnknownOutcome`, even if the transaction
 committed.
 
-Retry with the **same request key and identical transaction content**. EDB's
+Retry with the **same request key and identical transaction content, including
+the transaction source**. EDB's
 retained exact receipts return the original committed result without repeating
 the transaction. Receipt lookup precedes fresh-transaction admission, so a
 committed retry does not need to pass the current capacity limits or basis

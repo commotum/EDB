@@ -82,16 +82,20 @@ needs it. The database does not archive native machine code; retain source/build
 artifacts externally. Do not silently reuse a version for incompatible code.
 
 Functions receive exact db-before, `RuntimeValue` arguments and a
-`NativeCallContext`, and return transaction forms. Returned calls expand under the
-same transaction controls. Attribute predicates receive values; ensured entity
-predicates receive the complete proposed db-after. Only literal true accepts a
-predicate; rejection data/errors and panic containment follow the native boundary.
+`NativeCallContext`, and return ordinary transaction forms. Their assertions and
+retractions receive the source supplied once for the enclosing transaction,
+as does its automatic `:db/txInstant` assertion. Returned calls expand under the
+same transaction controls. Expansion does not read the clock. Attribute predicates
+receive values; ensured entity predicates receive the complete proposed db-after.
+Only literal true accepts a predicate; rejection data/errors and panic containment
+follow the native boundary.
 The receipt check happens first: removing or changing a deployment cannot change
 an already accepted request's exact retry. A new request needing missing code fails.
 
 Native schema predicates can name a registered callback directly. After
 registering `demo.people/valid-name?` as an attribute predicate, attach it to
-an existing attribute:
+an existing attribute. These excerpts use an existing source entity `99`; each
+transaction supplies it through its request or `--source 99`:
 
 ```edn
 [[:db/add :person/name :db.attr/preds demo.people/valid-name?]]
@@ -133,13 +137,15 @@ The host uses the same explicit PostgreSQL environment configuration as `edb`,
 prints `READY endpoint=...`, and stops on newline/EOF. Its optional second argument
 is a stable socket path in an owned mode-0700 directory. In another terminal,
 submit this file through `edb transact --database people --endpoint SOCKET
---request-key person-1 --file person.edn`:
+--request-key person-1 --source ':db.source/system' --file person.edn`:
 
 ```edn
 [[demo.people.v1/add-person "person" "  ALICE   Smith  "]]
 ```
 
-The result stores `"alice smith"` under `:person/name`. The stock client does not
+The result stores `"alice smith"` under `:person/name`. Its assertions and the
+automatic transaction timestamp are attributed here to the transaction's
+explicitly supplied `:db.source/system` entity. The stock client does not
 load code; it sends ordinary data to the explicitly extended host. The stock
 transactor has an empty native registry. Restart the custom host with the same
 deployment for new calls; accepted retries retain their original results.

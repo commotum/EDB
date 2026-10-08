@@ -11,7 +11,7 @@ fn between<'a>(text: &'a str, start: &str, end: &str) -> &'a str {
 
 #[test]
 fn connect_tutorial_rust_and_cli_examples_have_one_exact_request_identity() {
-    let page = include_str!("../docs-2/01_tutorials/05_connect_to_a_database.md");
+    let page = include_str!("../docs/01_tutorials/05_connect_to_a_database.md");
     let rust_key = between(page, "TransactionRequest::from_edn(\n    \"", "\"");
     let rust_data = between(page, "r#\"", "\"#");
     let rust_source = between(page, "EntityRef::from_edn(\"", "\")?");

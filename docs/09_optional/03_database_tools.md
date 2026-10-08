@@ -296,14 +296,18 @@ Use a history query to examine assertions and retractions of an attribute:
 ```sh
 cat > history.edn <<'EDN'
 [:find ?e ?name ?tx ?added
- :where [?e :person/name ?name ?tx ?added]]
+ :where [?e :person/name ?name ?tx _ ?added]]
 EDN
 edb query --database edn-demo --history --file history.edn
 ```
 
 The transaction reference and boolean assertion flag distinguish when a datom
-was asserted (`true`) or retracted (`false`). For the complete retained data of
-transactions, supply the log as a source and query a time range:
+was asserted (`true`) or retracted (`false`). The `_` in the fifth position
+skips the datom's source entity. Replace it with `?source` and add `?source` to
+`:find` to return who asserted or retracted the fact.
+
+To query retained transaction data in a time range, supply the log as a query
+input source:
 
 ```sh
 cat > log-source.edn <<'EDN'
@@ -316,7 +320,7 @@ cat > transactions.edn <<'EDN'
 [:find ?tx ?e ?a ?v ?added
  :in $log ?start ?end
  :where [(tx-ids $log ?start ?end) [?tx ...]]
-        [(tx-data $log ?tx) [[?e ?a ?v _ ?added]]]]
+        [(tx-data $log ?tx) [[?e ?a ?v _ _ ?added]]]]
 EDN
 edb query --file transactions.edn --sources log-source.edn \
   --inputs transaction-window.edn
@@ -329,9 +333,10 @@ An empty time window produces no rows. Narrow the bounds to examine a smaller
 interval or move them forward/backward to examine adjacent intervals.
 
 To count transactions in the window, use `:find (count ?tx)` with the `tx-ids`
-clause alone. To count their datoms, use `:find ?tx (count ?e) :with ?a ?v ?added`
-with both clauses. These values can be plotted in an application; the CLI does
-not provide a timeline graph. For an hour's transaction timeline, divide the
+clause alone. To count their datoms, bind the fifth `tx-data` column to `?source`
+and use `:find ?tx (count ?e) :with ?a ?v ?source ?added` with both clauses.
+These values can be plotted in an application; the CLI does not provide a
+timeline graph. For an hour's transaction timeline, divide the
 hour into adjacent one-minute windows and count transactions in each window.
 Each bar then represents transactions during that minute, not the number of
 datoms in those transactions. Convert local clock times to UTC when supplying
@@ -377,7 +382,7 @@ continues through the rest of the index, so the loop stops at the attribute or
 value boundary. For an exact match use `prefix_cursor` with an `IndexPrefix`.
 Index results are datoms in index order, suitable for displaying or consuming
 directly. See [index APIs](../06_indexes/04_index_apis.md) for EAVT, AEVT, AVET,
-VAET, prefixes, reverse seeks, and cursor limits.
+VAET, SAEVT, SAVET, prefixes, reverse seeks, and cursor limits.
 
 For the illustrative music schema above, select AVET and supply the leading
 components A = `:artist/name` and V = `"Foo Fighters"` to retrieve matching
@@ -404,8 +409,8 @@ fn print_artist_datoms(db: &DatabaseValue) -> Result<(), SemanticError> {
 
 Leaving the entity unspecified includes every entity with that exact name; it
 does not require names to be unique. Each returned `Datom` has `entity`,
-`attribute`, `value`, `tx`, and `added` fields. The attribute is a numeric ID,
-and the value is the string `"Foo Fighters"`; the remaining values depend on
+`attribute`, `value`, `tx`, `source`, and `added` fields. The attribute is a numeric
+ID, and the value is the string `"Foo Fighters"`; the remaining values depend on
 the database. A prefix does not have a transaction component. To choose a
 starting position including T, use a four-component AVET boundary and a seek,
 which continues beyond matching components as described above.

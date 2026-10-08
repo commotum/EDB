@@ -11,11 +11,12 @@ below govern required index preparation and explicit maintenance.
 ## Incremental index preparation
 
 `ServiceOptions.index_preparation_parallelism` accepts 1–8, defaulting to one.
-One background job captures a protected immutable prefix, prepares eight
+One background job captures a protected immutable prefix, prepares twelve
 current/history covering indexes on its own transport, and returns a candidate
 to the writer for guarded adoption. Writes can advance while it prepares;
-adoption preserves newer transactions and receipts. A stale source or GC guard
-causes bounded retry, never publication of an unprotected candidate.
+adoption preserves newer transactions and receipts. A changed index source is
+discarded and recaptured; other failures, including a stale GC guard, have bounded retries.
+An unprotected candidate is never published.
 
 Within preparation, selected physical-index edit streams are prepared in groups
 of the configured width. Sorting and canonical edit preparation can overlap;

@@ -155,6 +155,14 @@ Valid genesis or future coordinates return `Ok(None)`. Invalid coordinates
 return errors. A missing transaction within the captured committed range is a
 storage error, not `None`.
 
+For a source's activity, traverse the SAEVT prefix `[source :db/txInstant]`
+on a database value at the same captured basis. Each transaction has one
+immutable timestamp assertion with its source. Transaction entity IDs increase
+with logical T, so reverse traversal gives newest transactions first. Retrieve
+each timestamp datom's complete transaction with
+`tx_data(IndexTransaction::Tx(datom.entity))`. The timeline retains transactions
+whose facts were later replaced or retracted.
+
 ## Retention
 
 Log data comes from authoritative transaction content, including assertions and

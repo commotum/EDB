@@ -5,7 +5,8 @@ use it. Entities are open collections of facts, not rows constrained to one
 table-shaped record type. Reference values connect entities; absence of a fact
 is different from a stored null value.
 
-Install this EDN as an ordinary transaction:
+Install this EDN as an ordinary transaction, supplying source
+`:db.source/system` once through the request or CLI:
 
 ```edn
 [{:db/ident :person/name
@@ -17,7 +18,11 @@ Install this EDN as an ordinary transaction:
   :db/unique :db.unique/identity}]
 ```
 
-Then submit application data in a later transaction:
+Every schema assertion and the automatic transaction timestamp carry that
+ordinary built-in source entity's attribution.
+
+Then submit application data in a later transaction, again supplying
+`:db.source/system` as its source:
 
 ```edn
 [{:person/name "Alice" :person/email "alice@example.com"}]
@@ -45,6 +50,10 @@ See [identity and uniqueness](05_identity_and_uniqueness.md) for entity IDs,
 idents, domain keys, UUIDs and lookup references across transactions and reads.
 
 Cardinality-one replacement retracts the old fact and asserts the new fact.
+Both statements carry the transaction's source; the earlier assertion retains
+its original source in history. Cardinality counts distinct values, so two
+sources asserting the same value in separate transactions still satisfy
+cardinality one.
 Omitting an attribute in a map does not retract it. A cardinality-many attribute
 accepts a single value or a collection of values; wrap a many-reference lookup
 in its outer collection.

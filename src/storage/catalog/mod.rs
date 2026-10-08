@@ -119,7 +119,20 @@ fn decode_identity(
             validate_name(name)?;
             Some(name.to_owned())
         }
-        1 if block.payload.len() == 33 => None,
+        3 if (73..=169).contains(&block.payload.len())
+            && (block.payload.len() - 41).is_multiple_of(32) =>
+        {
+            let roots = &block.payload[41..];
+            if roots.chunks_exact(32).any(|id| id == [0; 32])
+                || roots
+                    .chunks_exact(32)
+                    .zip(roots.chunks_exact(32).skip(1))
+                    .any(|(left, right)| left >= right)
+            {
+                return Err(fault("Noncanonical retired content roots"));
+            }
+            None
+        }
         _ => return Err(fault("Malformed catalog retirement descriptor")),
     };
     Ok(entry(identity, route, name))
@@ -128,15 +141,13 @@ fn put_identity(
     store: &mut PgBlockStore,
     identity: [u8; 16],
     route: [u8; 16],
-    name: Option<&str>,
+    name: &str,
 ) -> Result<ObjectId, SemanticError> {
     let mut payload = identity.to_vec();
     payload.extend_from_slice(&route);
-    payload.push(u8::from(name.is_none()));
-    if let Some(name) = name {
-        validate_name(name)?;
-        payload.extend_from_slice(name.as_bytes());
-    }
+    payload.push(0);
+    validate_name(name)?;
+    payload.extend_from_slice(name.as_bytes());
     store.put(
         &Block {
             kind: IDENTITY_KIND,
@@ -174,29 +185,50 @@ pub(crate) fn creation_conditions(
     }
     let lineage = lineage_key(database.identity);
     let binding = store.read_ref(&lineage)?;
-    if binding.as_ref().is_some_and(|r| r.value.is_some()) {
-        return Err(SemanticError::conflict(
-            "backup/lineage-exists",
-            "This lineage already has an active or reserved route",
-        ));
+    let mut conditions = Vec::new();
+    if let Some(reference) = binding.as_ref().filter(|r| r.value.is_some()) {
+        let descriptor = block(store, reference)?;
+        if descriptor.payload.len() < 33 || descriptor.payload[..16] != database.identity {
+            return Err(fault("Lineage binding differs from its descriptor"));
+        }
+        let route = descriptor.payload[16..32].try_into().unwrap();
+        let entry = decode_identity(store, route, reference)?;
+        if !entry.retired {
+            return Err(SemanticError::conflict(
+                "backup/lineage-exists",
+                "This lineage already has an active or reserved route",
+            ));
+        }
+        if descriptor.payload[32] != 3 {
+            return Err(fault("Retired lineage lacks reclamation evidence"));
+        }
+        let epoch = u64::from_be_bytes(descriptor.payload[33..41].try_into().unwrap());
+        let proof = crate::storage::ownership::reclamation_sweep_guard(store, epoch)?;
+        let mut reclaimed = proof.is_some();
+        for bytes in descriptor.payload[41..].chunks_exact(32) {
+            reclaimed &= !store.object_exists(object_id(bytes)?)?;
+        }
+        if !reclaimed {
+            return Err(SemanticError::conflict(
+                "backup/lineage-not-reclaimed",
+                "Reclaim the retired lineage before restoring it in this catalog",
+            ));
+        }
+        conditions.push(proof.unwrap());
     }
-    Ok(vec![
+    conditions.extend([
         guard(&listing, previous.as_ref()),
         guard(&identity_key(database.route), None),
         guard(&lineage, binding.as_ref()),
-    ])
+    ]);
+    Ok(conditions)
 }
 pub(crate) fn creation_changes(
     store: &mut PgBlockStore,
     database: &BlockDatabase,
     name_id: ObjectId,
 ) -> Result<Vec<RefChange>, SemanticError> {
-    let descriptor = put_identity(
-        store,
-        database.identity,
-        database.route,
-        Some(&database.name),
-    )?;
+    let descriptor = put_identity(store, database.identity, database.route, &database.name)?;
     Ok(vec![
         change(identity_key(database.route), Some(descriptor)),
         change(lineage_key(database.identity), Some(descriptor)),
@@ -556,12 +588,8 @@ impl DatabaseCatalog {
                     name: new_name.to_owned(),
                 };
                 let mapping = put_name(&mut self.store, &database)?;
-                let identity = put_identity(
-                    &mut self.store,
-                    database.identity,
-                    database.route,
-                    Some(new_name),
-                )?;
+                let identity =
+                    put_identity(&mut self.store, database.identity, database.route, new_name)?;
                 let changes = vec![
                     change(name_key(name), None),
                     change(listing_key(name), None),
@@ -628,6 +656,7 @@ impl DatabaseCatalog {
                 guard(&name_key(name), Some(&current.mapping)),
                 guard(&identity_key(route), Some(&current.identity)),
             ];
+            let mut content_roots = Vec::new();
             for key in [
                 &root_key,
                 &lease_key,
@@ -638,12 +667,39 @@ impl DatabaseCatalog {
                 &retired_key,
                 &listing,
             ] {
-                conditions.push(guard(key, self.store.read_ref(key)?.as_ref()));
+                let reference = self.store.read_ref(key)?;
+                if [&root_key, &excision_key, &restore_key, &completions_key].contains(&key)
+                    && let Some(bytes) = reference.as_ref().and_then(|r| r.value.as_deref())
+                {
+                    content_roots.push(object_id(bytes)?);
+                }
+                conditions.push(guard(key, reference.as_ref()));
+            }
+            content_roots.sort();
+            content_roots.dedup();
+            if content_roots.is_empty() {
+                return Err(fault("Active route has no content to retire"));
             }
             let protection = protection(&mut self.store, &conditions)?;
             self.store.set_write_protection(Some(protection.clone()))?;
             let result = (|| {
-                let retired = put_identity(&mut self.store, identity, route, None)?;
+                // Content witnesses are payload, not graph links: retaining
+                // lineage admission evidence must not retain retired facts.
+                let mut payload = identity.to_vec();
+                payload.extend_from_slice(&route);
+                payload.push(3);
+                payload.extend_from_slice(&protection.epoch.to_be_bytes());
+                for id in &content_roots {
+                    payload.extend_from_slice(id);
+                }
+                let retired = self.store.put(
+                    &Block {
+                        kind: IDENTITY_KIND,
+                        links: vec![],
+                        payload,
+                    }
+                    .encode()?,
+                )?;
                 let changes = vec![
                     change(name_key(name), None),
                     change(listing, None),
@@ -652,7 +708,7 @@ impl DatabaseCatalog {
                     change(excision_key, None),
                     change(restore_key, None),
                     change(completions_key, None),
-                    change(lineage, None),
+                    change(lineage, Some(retired)),
                     change(identity_key(route), Some(retired)),
                     change(retired_key, Some(retired)),
                 ];

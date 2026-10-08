@@ -1098,6 +1098,118 @@ mod source_cutover_tests {
     }
 
     #[test]
+    fn binding_replacement_and_nested_invocation_read_the_same_db_before() {
+        let program = |value| Program {
+            kind: ProgramKind::Transaction,
+            arity: 0,
+            instructions: vec![
+                Instruction::PushEntity(EntityRef::Id(242)),
+                Instruction::PushConstant(Value::Long(value)),
+                Instruction::EmitAdd(101),
+                Instruction::Return,
+            ],
+        };
+        let (old_hash, old) = validated(program(1));
+        let (new_hash, new) = validated(program(2));
+        let nested = ProgramCall {
+            function: CallableRef::Database(EntityRef::Ident(Keyword::new("test", "write"))),
+            arguments: vec![],
+        };
+        let (parent_hash, parent) = validated(Program {
+            kind: ProgramKind::Transaction,
+            arity: 0,
+            instructions: vec![
+                Instruction::EmitCall {
+                    function: nested.function.clone(),
+                    argument_count: 0,
+                },
+                Instruction::Return,
+            ],
+        });
+        let bound = database()
+            .with(
+                &[
+                    add(
+                        260,
+                        crate::DB_IDENT as u32,
+                        Value::Keyword(Keyword::new("test", "write")),
+                    ),
+                    add(260, crate::DB_FN as u32, Value::Function(old_hash)),
+                ],
+                1,
+                EntityRef::Id(99),
+            )
+            .unwrap();
+        let before = bound
+            .db_after
+            .database_value()
+            .retain_programs(BTreeMap::from([
+                (old_hash, old),
+                (new_hash, new),
+                (parent_hash, parent),
+            ]));
+        let invocation = TxForm::ProgramCall(ProgramCall {
+            function: CallableRef::ExactHash(parent_hash),
+            arguments: vec![],
+        });
+        let forms = [
+            TxForm::Op(add(260, crate::DB_FN as u32, Value::Function(new_hash))),
+            invocation.clone(),
+        ];
+        let replaced = before.with_forms(&forms, 2, EntityRef::Id(98)).unwrap();
+        assert_eq!(
+            replaced.db_after.values(242, 101).unwrap(),
+            vec![Value::Long(1)]
+        );
+        assert_eq!(
+            replaced.db_after.values(260, crate::DB_FN as u32).unwrap(),
+            vec![Value::Function(new_hash)]
+        );
+        assert!(replaced.tx_data.iter().all(|datom| datom.source == 98));
+        let later = replaced
+            .db_after
+            .with_forms(std::slice::from_ref(&invocation), 3, EntityRef::Id(97))
+            .unwrap();
+        assert_eq!(
+            later.db_after.values(242, 101).unwrap(),
+            vec![Value::Long(2)]
+        );
+        let retained = before
+            .with_forms(&[invocation], 3, EntityRef::Id(96))
+            .unwrap();
+        assert_eq!(
+            retained.db_after.values(242, 101).unwrap(),
+            vec![Value::Long(1)]
+        );
+        let absent = before
+            .with_forms(
+                &[
+                    TxForm::Op(add(
+                        261,
+                        crate::DB_IDENT as u32,
+                        Value::Keyword(Keyword::new("test", "new")),
+                    )),
+                    TxForm::Op(add(261, crate::DB_FN as u32, Value::Function(new_hash))),
+                    TxForm::ProgramCall(ProgramCall {
+                        function: CallableRef::Database(EntityRef::Ident(Keyword::new(
+                            "test", "new",
+                        ))),
+                        arguments: vec![],
+                    }),
+                ],
+                2,
+                EntityRef::Id(98),
+            )
+            .unwrap_err();
+        assert_eq!(absent.code, "program/function-not-found");
+        assert_eq!(
+            before.values(260, crate::DB_FN as u32).unwrap(),
+            vec![Value::Function(old_hash)]
+        );
+        assert!(before.entid(&Keyword::new("test", "new")).is_none());
+    }
+
+    #[test]
     fn nested_calls_maps_and_generated_retractions_inherit_the_request_source() {
         let (child_hash, child) = validated(Program {
             kind: ProgramKind::Transaction,

@@ -194,9 +194,10 @@ Verification is deep by default. It authenticates the reachable object graph,
 checks log structure, read authorization and receipt/provenance coordinates,
 replays the canonical log, and compares retained indexes and search records
 with that replay.
-Allocation frontiers, no-history omissions and partial AVET projections receive
-explicit checks. This work can use memory and I/O proportional to retained
-history and indexes.
+Allocation frontiers, no-history omissions and partial AVET/SAVET projections
+receive explicit checks. Source attribution remains intact in the captured log,
+current and historical indexes, and restored values. This work can use memory
+and I/O proportional to retained history and indexes.
 
 For authenticated reachability without semantic replay:
 
@@ -230,7 +231,7 @@ repository without PostgreSQL credentials:
 ```sh
 edb query --repository /private/backups/application --file query.edn
 edb pull --repository /private/backups/application --file pattern.edn --entity 12345
-edb with --repository /private/backups/application --file transaction.edn
+edb with --repository /private/backups/application --file transaction.edn --source 99
 ```
 
 Add `--backup-basis 42 --backup-generation 0` together for an exact point.

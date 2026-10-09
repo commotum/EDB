@@ -1,0 +1,43 @@
+   Compiling edb-core v0.1.0 (/tmp/edb-cutover-impl-20261007)
+warning: methods `is_after_prefix` and `unbiased` are never used
+   --> src/index/boundary.rs:339:19
+    |
+321 | impl NormalizedIndexBoundary {
+    | ---------------------------- methods in this implementation
+...
+339 |     pub(crate) fn is_after_prefix(&self) -> bool {
+    |                   ^^^^^^^^^^^^^^^
+...
+342 |     pub(crate) fn unbiased(&self) -> &Self {
+    |                   ^^^^^^^^
+    |
+    = note: `#[warn(dead_code)]` on by default
+
+warning: method `all` is never used
+   --> src/index/prepare.rs:365:19
+    |
+329 | impl IndexEavLookup {
+    | ------------------- method in this implementation
+...
+365 |     pub(crate) fn all(
+    |                   ^^^
+
+warning: `edb-core` (lib test) generated 2 warnings
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 18.55s
+     Running unittests src/lib.rs (target/debug/deps/edb_core-b77486e83f53582c)
+
+running 11 tests
+test transaction::assess::tests::anonymous_map_cannot_accidentally_establish_request_source_tempid ... ok
+test transaction::assess::tests::ordinary_explicit_instant_retains_clock_validation ... ok
+test transaction::assess::tests::empty_transaction_has_one_attributed_automatic_instant ... ok
+test transaction::assess::tests::callback_generated_entities_and_explicit_timestamp_share_resolved_source ... ok
+test transaction::assess::tests::same_eavs_is_redundant_but_another_source_is_material ... ok
+test transaction::assess::tests::deferred_edn_tempid_source_retains_ordinary_entity_position_rule ... ok
+test transaction::assess::tests::deferred_edn_source_lookup_uses_authoritative_attribute_and_value_types ... ok
+test transaction::assess::tests::unique_value_holder_survives_contributions_and_global_retraction_releases_it ... ok
+test transaction::assess::tests::cas_and_replacement_count_shared_values_and_withdraw_all_sources ... ok
+test transaction::assess::tests::generated_composite_changes_share_source_and_schema_counts_distinct_values ... ok
+test transaction::assess::tests::source_uses_ordinary_tempid_ident_and_lookup_resolution ... ok
+
+test result: ok. 11 passed; 0 failed; 0 ignored; 0 measured; 12 filtered out; finished in 0.33s
+

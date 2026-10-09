@@ -537,6 +537,7 @@ impl BlockTransactor {
         // preconditions are intentionally checked only after receipt lookup.
         let (digest, bytes) = crate::encoding::canonical_submission_request(
             &request.forms,
+            &request.source,
             request.compare_basis_t,
             request.tx_instant_override,
             MAX_LOG_TRANSACTION_BYTES,
@@ -604,6 +605,7 @@ impl BlockTransactor {
             &request.forms,
             now_ms()?,
             request.tx_instant_override,
+            &request.source,
             limits,
             &self.options.execution,
         )?;

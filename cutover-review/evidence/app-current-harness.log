@@ -1,0 +1,10 @@
+HEALTH address=127.0.0.1:42541 plaintext_status_only=true
+STANDBY database="application-current-local-1202352" waiting_for_authority=true
+
+HEALTH_CHECK GET /health 200
+HEALTH_CHECK GET /ready 503
+HEALTH_CHECK GET /health 200
+HEALTH_CHECK GET /ready 200
+HEALTH_CHECK HEAD /health 200
+HEALTH_CHECK HEAD /ready 200
+Current-format local/TLS/retry/standby/offline application acceptance passed

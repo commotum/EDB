@@ -274,6 +274,7 @@ fn compare_entity_ref(left: &EntityRef, right: &EntityRef) -> Ordering {
                 .cmp(right_attribute)
                 .then_with(|| compare_value(left_value, right_value)),
             (EntityRef::Tx, EntityRef::Tx) => Ordering::Equal,
+            (EntityRef::Edn(left), EntityRef::Edn(right)) => compare_text(left, right),
             (
                 EntityRef::LookupInput {
                     attribute: left_attribute,
@@ -298,6 +299,7 @@ fn entity_ref_rank(entity: &EntityRef) -> u8 {
         EntityRef::Lookup { .. } => 3,
         EntityRef::Tx => 4,
         EntityRef::LookupInput { .. } => 5,
+        EntityRef::Edn(_) => 6,
     }
 }
 

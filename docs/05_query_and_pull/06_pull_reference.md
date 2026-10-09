@@ -2,6 +2,11 @@
 
 Pull is a declarative way to make hierarchical (and possibly nested) selections of information about entities. Pull applies a *pattern* to a collection of entities, building a map for each entity. Pull is available through `Database::pull`, `DatabaseValue::pull`, `pull_many`, and [query Pull expressions](05_query_reference.md#pull-expressions).
 
+Pull projects distinct values from the shared visible record. Several sources
+contributing the same entity, attribute, and value produce one selected value,
+including for nested references and reverse navigation. Raw datom reads and
+history retain those contributions and their attribution.
+
 Patterns support [forward](#attribute-names) and [reverse](#reverse-lookup) attribute navigation, [wildcarding](#wildcards), [nesting](#map-specification-nesting-example), [recursion](#recursion-limits), [naming control](#as-option), [transformation](#xform-option), [defaults](#default-option), and [limits](#limit-option) on the results returned. Entities can be passed to pull as any kind of [entity identifier](../04_transactions/04_transaction_data.md#entity-identifiers): [entity ids](../04_transactions/04_transaction_data.md#entity-ids), [idents](../04_transactions/04_transaction_data.md#idents), or [lookup refs](../04_transactions/04_transaction_data.md#lookup-refs).
 
 Pull patterns are written in the [Extensible Data Notation](https://github.com/edn-format/edn) (edn), which is programming language neutral. In programs, you can create patterns programmatically out of your basic language data types, e.g. Rust `PullPattern` and `PullAttribute` values. Alternatively, compile a serialized EDN string with `parse_pull_edn` and pass the resulting pattern to `pull`.
@@ -327,12 +332,14 @@ pull(&db, r#"[[:artist/name :as "Band Name"]]"#, led_zeppelin)?
 
 By default, Pull will return the first 1000 values for a cardinality-many attribute, but you can control that by providing either a positive number or `nil` for the `:limit` option. All values for a cardinality-many attribute will be returned if you explicitly provide a `nil` limit.
 
-Limits stop attribute cursor consumption before nested projection. A limit of
-10 therefore selects at most 10 visible references to expand, even if some
-nested results are later omitted because they are empty. Wildcard discovery
+Limits count distinct visible values or reverse-reference holders and stop
+attribute cursor consumption before nested projection. A limit of 10 therefore
+selects at most 10 distinct visible references to expand, even if some nested
+results are later omitted because they are empty. Wildcard discovery
 seeks to the next attribute without exhausting the unselected many-valued tail.
-Filters can require examining additional candidates to obtain the selected
-visible prefix; a limit does not promise a fixed total number of reads.
+Filters and repeated source contributions can require examining additional
+candidates to obtain the selected visible prefix; a limit does not promise a
+fixed total number of reads.
 
 ### :limit Option Example
 

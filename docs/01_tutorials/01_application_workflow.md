@@ -5,6 +5,14 @@ The supported `edb` executable owns the transactor process. The
 logical database and local endpoint or authenticated remote discovery, submits application schema/data through
 public APIs, and never provisions PostgreSQL or starts a writer.
 
+Each application request supplies one required `source: EntityRef` alongside
+its transaction data. Every assertion and retraction it produces carries that
+source, including generated changes and the automatic `:db/txInstant` assertion.
+The schema request establishes the ordinary `:application.source/demo` entity
+through a tempid and supplies that tempid as its source. Later requests supply
+its ident. The source is independent of project ownership and other domain
+relationships.
+
 Build both programs:
 
 ```sh
@@ -135,7 +143,7 @@ explicitly discovers. Cloned handles share the route, without holding its lock
 during network work.
 
 An unknown transaction outcome is returned unchanged, not automatically replayed.
-Retry explicitly with identical content and key, never a newly generated key.
+Retry explicitly with identical content, source and key, never a newly generated key.
 The lower-level `Connection::discover_remote_writer`, `transact_remote`, and
 `transact_remote_with_hints` remain supported. A confirmed commit remains confirmed
 if opening its local report subsequently fails (`CommittedTransaction::report`).
@@ -203,6 +211,8 @@ connection lifecycle remain outside its executor task.
 reference through the lazy Entity API. It operates on one captured seed snapshot.
 The same function runs against a complete in-memory database constructed with
 `Database::new`, `with` and `database_value`, including schema and references.
+Each speculative `with` call supplies a source alongside its fixed transaction
+instant; the resulting facts and automatic timestamp carry that source.
 The fixture uses the existing semantic engine; it is not a replacement store.
 
 The example changes one project's hours, reruns the calculation on the retained
@@ -249,6 +259,9 @@ additional time and foreground SQL after the baseline counters. Its generated
 hints are generated locally; the sample does not transport them. The remote SDK
 provides the separate versioned hint channel described below.
 
+`SOURCE_OK` verifies application receipts and speculative results carry that
+ordinary source, with exactly one automatic timestamp each. It also checks
+source-selected current facts and attributed assertion/retraction history.
 `APPLICATION_OK` reports the semantic checks. One explicit `QUERY_WARMUP`
 calculation reports its own time and SQL before the 20-calculation
 loop. The configured eight-entry cache is used throughout. `QUERY_SQL` measures that
@@ -352,8 +365,9 @@ the fixed-dependency closure and stores a temporary staging root that expires
 according to the collection cutoff. Dependencies must already exist; callers
 receive a hash and have no deployment handle to release.
 
-`install_program(client, request_key, ident, &program, &dependencies, timeout)`
-stages the supplied closure and transacts the binding. An exact retry resolves
+`install_program(client, request_key, ident, &program, &dependencies, source, timeout)`
+stages the supplied closure and transacts the binding. The explicit `source: EntityRef`
+attributes the binding assertions and transaction instant. An exact retry resolves
 its acknowledged receipt before requiring deployment dependencies again. Once a
 committed graph references the program, ordinary graph ownership retains it.
 Unbound staging roots expire under the configured retention policy.

@@ -13,7 +13,7 @@ use crate::{DatabaseIdentity, ServiceTransactionReport, TransactionRequest};
 
 const REQUEST: u8 = 11;
 const RESPONSE: u8 = 12;
-pub(super) const VERSION: u8 = 6;
+pub(super) const VERSION: u8 = 7;
 
 pub(crate) struct WireReport {
     pub before: ExactEndpoint,
@@ -38,6 +38,7 @@ pub(crate) fn encode_submission(
     put_string(&mut body, identity.database_id())?;
     put_string(&mut body, identity.lineage_id())?;
     put_string(&mut body, &request.request_key)?;
+    encode_entity_ref(&mut body, &request.source)?;
     body.push(u8::from(request.compare_basis_t.is_some()));
     if let Some(value) = request.compare_basis_t {
         put_u64(&mut body, value);
@@ -68,6 +69,7 @@ pub(crate) fn decode_submission(
     }
     let identity = DatabaseIdentity::new(cursor.string()?, cursor.string()?);
     let request_key = cursor.string()?;
+    let source = decode_entity_ref(&mut cursor)?;
     let compare_basis_t = if cursor.boolean()? {
         Some(cursor.u64()?)
     } else {
@@ -91,6 +93,7 @@ pub(crate) fn decode_submission(
         TransactionRequest {
             request_key,
             forms,
+            source,
             compare_basis_t,
             tx_instant_override,
         },
@@ -199,23 +202,32 @@ fn decode_map(cursor: &mut Cursor<'_>, depth: usize) -> Result<EntityMap, Semant
             3 => AttributeRef::ReverseIdent(decode_keyword(&mut entry)?),
             tag => return Err(invalid_tag("attribute reference", tag)),
         };
-        attributes.push((attribute, decode_map_value(&mut entry, depth + 1)?));
+        attributes.push((attribute, decode_map_value(&mut entry, depth, false)?));
         entry.finish()?;
     }
     Ok(EntityMap { id, attributes })
 }
 
-fn decode_map_value(cursor: &mut Cursor<'_>, depth: usize) -> Result<MapValue, SemanticError> {
-    depth_limit(depth, 32)?;
+fn decode_map_value(
+    cursor: &mut Cursor<'_>,
+    depth: usize,
+    collection_item: bool,
+) -> Result<MapValue, SemanticError> {
     Ok(match cursor.u8()? {
         0 => MapValue::Value(decode_tx_value(cursor)?),
         1 => MapValue::Nested(Box::new(decode_map(cursor, depth + 1)?)),
         2 => {
+            if collection_item {
+                return Err(fault(
+                    "transaction/nested-collection",
+                    "map value collections cannot contain collections",
+                ));
+            }
             let count = cursor.collection_len()?;
             let mut values = Vec::new();
             for _ in 0..count {
                 let mut value = Cursor::new(framed(cursor)?);
-                values.push(decode_map_value(&mut value, depth + 1)?);
+                values.push(decode_map_value(&mut value, depth, true)?);
                 value.finish()?;
             }
             MapValue::Many(values)
@@ -487,4 +499,223 @@ pub(crate) fn decode_submission_outcome(bytes: &[u8]) -> Result<WireOutcome, Sem
     };
     cursor.finish()?;
     Ok(result)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn nested_maps(depth: usize, many: bool) -> EntityMap {
+        let mut map = EntityMap {
+            id: None,
+            attributes: Vec::new(),
+        };
+        for _ in 0..depth {
+            let value = MapValue::Nested(Box::new(map));
+            map = EntityMap {
+                id: None,
+                attributes: vec![(
+                    AttributeRef::Id(100),
+                    if many {
+                        MapValue::Many(vec![value])
+                    } else {
+                        value
+                    },
+                )],
+            };
+        }
+        map
+    }
+
+    #[test]
+    fn native_map_codec_counts_entities_independently_of_many_wrappers() {
+        let identity = DatabaseIdentity::new("map-depth", "lineage");
+        for many in [false, true] {
+            let request = TransactionRequest::from_forms(
+                "depth-32",
+                vec![TxForm::EntityMap(nested_maps(32, many))],
+                EntityRef::Id(99),
+            );
+            let (decoded_identity, decoded) =
+                decode_submission(&encode_submission(&identity, &request).unwrap()).unwrap();
+            assert_eq!(decoded_identity, identity);
+            assert_eq!(
+                crate::submission_request_digest(&decoded.forms, &decoded.source, None, None)
+                    .unwrap(),
+                crate::submission_request_digest(&request.forms, &request.source, None, None)
+                    .unwrap(),
+            );
+            let too_deep = TransactionRequest::from_forms(
+                "depth-33",
+                vec![TxForm::EntityMap(nested_maps(33, many))],
+                EntityRef::Id(99),
+            );
+            assert_eq!(
+                encode_submission(&identity, &too_deep).unwrap_err().code,
+                "transaction/map-depth"
+            );
+
+            // Build a hostile depth-33 map without using its guarded encoder.
+            let mut map = vec![0];
+            put_len(&mut map, 0).unwrap();
+            for _ in 0..33 {
+                let mut value = vec![1];
+                value.extend(map);
+                if many {
+                    let mut collection = vec![2];
+                    put_len(&mut collection, 1).unwrap();
+                    put_framed_bytes(&mut collection, &value).unwrap();
+                    value = collection;
+                }
+                let mut entry = Vec::new();
+                encode_attribute_ref(&mut entry, &AttributeRef::Id(100)).unwrap();
+                entry.extend(value);
+                map = vec![0];
+                put_len(&mut map, 1).unwrap();
+                put_framed_bytes(&mut map, &entry).unwrap();
+            }
+            assert_eq!(
+                decode_map(&mut Cursor::new(&map), 0).unwrap_err().code,
+                "transport/value-depth"
+            );
+        }
+    }
+
+    #[test]
+    fn nested_many_is_rejected_before_recursive_admission_encoding_or_decoding() {
+        let form = TxForm::EntityMap(EntityMap {
+            id: None,
+            attributes: vec![(
+                AttributeRef::Id(100),
+                MapValue::Many(vec![MapValue::Many(vec![])]),
+            )],
+        });
+        assert_eq!(
+            crate::transaction::input::validate_forms_input(std::slice::from_ref(&form))
+                .unwrap_err()
+                .code,
+            "transaction/nested-collection"
+        );
+        let request = TransactionRequest::from_forms("nested-many", vec![form], EntityRef::Id(99));
+        assert_eq!(
+            encode_submission(&DatabaseIdentity::new("map-depth", "lineage"), &request)
+                .unwrap_err()
+                .code,
+            "transaction/nested-collection"
+        );
+        let mut value = vec![2];
+        put_len(&mut value, 1).unwrap();
+        // Only the nested collection tag is needed: rejection precedes reading
+        // its count or recursively entering any of its children.
+        put_framed_bytes(&mut value, &[2]).unwrap();
+        assert_eq!(
+            decode_map_value(&mut Cursor::new(&value), 0, false)
+                .unwrap_err()
+                .code,
+            "transaction/nested-collection"
+        );
+    }
+
+    #[test]
+    fn request_roundtrip_preserves_explicit_source_and_identity() {
+        let identity = DatabaseIdentity::new("catalog", "lineage");
+        for source in [
+            EntityRef::Id(99),
+            EntityRef::Edn(r#"[:source/name "julia"]"#.into()),
+            EntityRef::Ident(Keyword::new("contributor", "julia")),
+            EntityRef::Temp("contributor".into()),
+            EntityRef::Lookup {
+                attribute: crate::DB_IDENT as u32,
+                value: Value::Keyword(Keyword::new("contributor", "julia")),
+            },
+        ] {
+            let request = TransactionRequest::new("key", Vec::new(), source.clone())
+                .comparing_basis(12)
+                .with_tx_instant(34);
+            let (_, decoded) =
+                decode_submission(&encode_submission(&identity, &request).unwrap()).unwrap();
+            assert_eq!(decoded.source, source);
+            assert_eq!(decoded.request_key, "key");
+            assert_eq!(decoded.compare_basis_t, Some(12));
+            assert_eq!(decoded.tx_instant_override, Some(34));
+        }
+        let a = crate::submission_request_digest(&[], &EntityRef::Id(99), None, None).unwrap();
+        let b = crate::submission_request_digest(&[], &EntityRef::Id(98), None, None).unwrap();
+        assert_ne!(a, b);
+    }
+
+    #[test]
+    fn capacity_cutover_request_byte_limit_includes_the_source_reference() {
+        let sources = [
+            EntityRef::Id(99),
+            EntityRef::Ident(Keyword::new("contributor", "j".repeat(128))),
+            EntityRef::Lookup {
+                attribute: crate::DB_IDENT as u32,
+                value: Value::Keyword(Keyword::new("contributor", "j".repeat(128))),
+            },
+            EntityRef::Temp("j".repeat(128)),
+            EntityRef::Edn(format!("[:contributor/name \"{}\"]", "j".repeat(128))),
+        ];
+        let (_, id_bytes) =
+            canonical_submission_request(&[], &sources[0], None, None, usize::MAX).unwrap();
+        for (index, source) in sources.iter().enumerate() {
+            let exact = canonical_submission_request(&[], source, None, None, usize::MAX).unwrap();
+            assert_eq!(
+                canonical_submission_request(&[], source, None, None, exact.1).unwrap(),
+                exact
+            );
+            assert_eq!(
+                canonical_submission_request(&[], source, None, None, exact.1 - 1)
+                    .unwrap_err()
+                    .code,
+                "service/request-byte-capacity"
+            );
+            if index != 0 {
+                assert!(exact.1 > id_bytes);
+                assert_eq!(
+                    canonical_submission_request(&[], source, None, None, id_bytes)
+                        .unwrap_err()
+                        .code,
+                    "service/request-byte-capacity"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn old_submission_version_is_rejected_without_inventing_source() {
+        let old = encode_blob(REQUEST, &[VERSION - 1]).unwrap();
+        assert_eq!(
+            decode_submission(&old).unwrap_err().code,
+            "transport/version"
+        );
+    }
+}
+
+#[cfg(test)]
+#[test]
+fn deferred_edn_source_identity_is_canonical_without_database_resolution() {
+    let a = crate::submission_request_digest(
+        &[],
+        &EntityRef::Edn(r#"[:source/name "julia"]"#.into()),
+        None,
+        None,
+    )
+    .unwrap();
+    let b = crate::submission_request_digest(
+        &[],
+        &EntityRef::Edn("[  :source/name   \"julia\"  ]".into()),
+        None,
+        None,
+    )
+    .unwrap();
+    assert_eq!(a, b);
+    let changed = crate::submission_request_digest(
+        &[],
+        &EntityRef::Edn(r#"[:source/name "jake"]"#.into()),
+        None,
+        None,
+    )
+    .unwrap();
+    assert_ne!(a, changed);
 }

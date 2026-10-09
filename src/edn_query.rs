@@ -946,7 +946,10 @@ impl<'a> Compiler<'a> {
         {
             return self.expression(call, rest, &source, patterns, sources);
         }
-        if parts.len() > 5 {
+        // Short relations retain their supplied arity instead of acquiring the
+        // E/A/V blanks required by DataPattern. Database evaluation converts
+        // this same relation syntax to its ordinary datom probe.
+        if parts.len() < 3 || parts.len() > 6 {
             return Ok(vec![Clause::RelationPattern(Box::new(RelationPattern {
                 source,
                 terms: parts.iter().map(term).collect::<Result<_, _>>()?,
@@ -959,7 +962,8 @@ impl<'a> Compiler<'a> {
             attribute: component(1)?,
             value: component(2)?,
             transaction: (parts.len() > 3).then(|| component(3)).transpose()?,
-            added: (parts.len() > 4).then(|| component(4)).transpose()?,
+            fact_source: (parts.len() > 4).then(|| component(4)).transpose()?,
+            added: (parts.len() > 5).then(|| component(5)).transpose()?,
         }))])
     }
 

@@ -1,0 +1,376 @@
+   Compiling edb-core v0.1.0 (/tmp/edb-cutover-impl-20261007)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 10.90s
+     Running unittests src/lib.rs (target/debug/deps/edb_core-b77486e83f53582c)
+
+running 3 tests
+test backup::tests::source_bearing_backup_restore_preserves_pending_and_partial_six_index_publications ... ok
+test operations::integrity::tests::deep_live_and_offline_inspection_reject_hash_valid_retained_sources_and_search ... ok
+test storage::postgres::error_tests::storage_server_errors_preserve_categories_and_distinguish_commit_uncertainty ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 58 filtered out; finished in 106.70s
+
+     Running unittests src/bin/edb/main.rs (target/debug/deps/edb-6c906e0b04180958)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 0.00s
+
+     Running tests/administration_signal_cutover.rs (target/debug/deps/administration_signal_cutover-0facc5273a737a67)
+
+running 1 test
+test administrative_signals_cancel_between_batches_and_backup_can_resume ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.60s
+
+     Running tests/async_api_source_cutover.rs (target/debug/deps/async_api_source_cutover-63bf248b8d2c240f)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 0.00s
+
+     Running tests/backup_reads_source_cutover.rs (target/debug/deps/backup_reads_source_cutover-0b1db882c413957f)
+
+running 1 test
+test backup_values_keep_offline_source_reads_programs_and_fixed_authority ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.00s
+
+     Running tests/change_consumers_cutover.rs (target/debug/deps/change_consumers_cutover-788903f1fa3992c9)
+
+running 2 tests
+test bounded_consumer_preserves_source_log_and_contiguous_durable_progress ... ok
+test consumer_rejects_formerly_inline_bodies_before_postgres_transfer ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 3.05s
+
+     Running tests/changing_schema_source_cutover.rs (target/debug/deps/changing_schema_source_cutover-dc9a9d31d13e40bb)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 4 filtered out; finished in 0.00s
+
+     Running tests/client_tutorial_cutover.rs (target/debug/deps/client_tutorial_cutover-ce462b89ea2f9b36)
+
+running 1 test
+test client_tutorial_sync_and_async_socket_preserve_source_and_exact_retry ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 0.78s
+
+     Running tests/connect_tutorial_cutover.rs (target/debug/deps/connect_tutorial_cutover-bff565063870055f)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 0.00s
+
+     Running tests/data_model_source_cutover.rs (target/debug/deps/data_model_source_cutover-d65f0b082c4710d4)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 4 filtered out; finished in 0.00s
+
+     Running tests/data_modeling_cutover.rs (target/debug/deps/data_modeling_cutover-05ed5d25aeacf6fb)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 3 filtered out; finished in 0.00s
+
+     Running tests/data_utilities_cutover.rs (target/debug/deps/data_utilities_cutover-d678ab8733c6b8ff)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 2 filtered out; finished in 0.00s
+
+     Running tests/database_filters_source_cutover.rs (target/debug/deps/database_filters_source_cutover-5379ae5eb88b0dba)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 6 filtered out; finished in 0.00s
+
+     Running tests/database_lifecycle_source_cutover.rs (target/debug/deps/database_lifecycle_source_cutover-66b39a22b8ee0ad2)
+
+running 4 tests
+test reclaimed_lineage_gets_a_new_route_without_waiting_for_unrelated_publications ... ok
+test rename_retire_and_name_reuse_preserve_sources_and_captured_identity ... ok
+test retired_lineage_cannot_restore_before_reclamation ... ok
+test retiring_an_incomplete_restore_reservation_fences_its_activation ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 24.38s
+
+     Running tests/database_values_source_cutover.rs (target/debug/deps/database_values_source_cutover-39a311735c4d4611)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 5 filtered out; finished in 0.00s
+
+     Running tests/deployment_source_recovery.rs (target/debug/deps/deployment_source_recovery-dc8aca2149515f45)
+
+running 1 test
+test explicit_recovery_preserves_sources_receipts_and_retained_values ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 3.13s
+
+     Running tests/edb_interfaces.rs (target/debug/deps/edb_interfaces-1c22d90e1067e565)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 6 filtered out; finished in 0.00s
+
+     Running tests/edn_workflow_cutover.rs (target/debug/deps/edn_workflow_cutover-aaa365f28073d7a6)
+
+running 1 test
+test tutorial_cli_preserves_sources_previews_views_and_exact_restart_retries ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 3.77s
+
+     Running tests/entities_source_cutover.rs (target/debug/deps/entities_source_cutover-1c36d5a40e74174c)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 2 filtered out; finished in 0.00s
+
+     Running tests/excision_source_cutover.rs (target/debug/deps/excision_source_cutover-8a69952f5d651da6)
+
+running 1 test
+test durable_excision_preserves_sources_global_visibility_and_frozen_requests ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 3.33s
+
+     Running tests/fulltext_source_cutover.rs (target/debug/deps/fulltext_source_cutover-45047d1a3aa3c977)
+
+running 1 test
+test durable_fulltext_source_roundtrip_recent_tail_and_nohistory_removal ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 2 filtered out; finished in 1.99s
+
+     Running tests/identity_uniqueness_source_cutover.rs (target/debug/deps/identity_uniqueness_source_cutover-52597b2bbbe85ad9)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 9 filtered out; finished in 0.00s
+
+     Running tests/identity_values_source_cutover.rs (target/debug/deps/identity_values_source_cutover-770c6e2083af4144)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 3 filtered out; finished in 0.00s
+
+     Running tests/index_apis_source_cutover.rs (target/debug/deps/index_apis_source_cutover-2539d791656d6a6f)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 3 filtered out; finished in 0.00s
+
+     Running tests/index_pull_source_cutover.rs (target/debug/deps/index_pull_source_cutover-2b41ef277e1f464b)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 3 filtered out; finished in 0.00s
+
+     Running tests/io_stats_source_cutover.rs (target/debug/deps/io_stats_source_cutover-c0c4f21693d731fb)
+
+running 1 test
+test source_index_io_follows_lazy_cursor_context_and_cache_state ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.91s
+
+     Running tests/local_cache_source_cutover.rs (target/debug/deps/local_cache_source_cutover-890f4fd1a28efaba)
+
+running 1 test
+test source_bytes_reuse_disk_after_peer_restart_without_acquiring_authority ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 3 filtered out; finished in 1.29s
+
+     Running tests/log_cache_source_cutover.rs (target/debug/deps/log_cache_source_cutover-fa584b781e6e59d2)
+
+running 2 tests
+test rejected_body_chunks_preserve_metadata_reuse_and_report_partial_lookup_bytes ... ok
+test uniform_log_objects_are_lazy_then_warm_across_pages_and_peer_reopen ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 9.86s
+
+     Running tests/log_source_cutover.rs (target/debug/deps/log_source_cutover-a075619a5541b7e0)
+
+running 2 tests
+test captured_log_bounds_lazy_cursor_and_query_shapes_obey_contract ... ok
+test source_activity_composes_same_basis_log_with_stable_reverse_pages ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.21s
+
+     Running tests/native_deployment_source_cutover.rs (target/debug/deps/native_deployment_source_cutover-d36b94b664a46807)
+
+running 1 test
+test accepted_native_requests_replay_after_deployment_removal_but_fresh_calls_fail ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.71s
+
+     Running tests/observability_source_cutover.rs (target/debug/deps/observability_source_cutover-217180046acf247a)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 3 filtered out; finished in 0.00s
+
+     Running tests/partitions_source_cutover.rs (target/debug/deps/partitions_source_cutover-826ab8b16f076140)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 5 filtered out; finished in 0.00s
+
+     Running tests/peer_snapshot_readiness_source_cutover.rs (target/debug/deps/peer_snapshot_readiness_source_cutover-fd299b8d434be44b)
+
+running 1 test
+test raw_peer_snapshot_shares_avet_savet_readiness_across_publication ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.50s
+
+     Running tests/persisted_program_source_cutover.rs (target/debug/deps/persisted_program_source_cutover-8466f16da08297f1)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 6 filtered out; finished in 0.00s
+
+     Running tests/processing_transactions_cutover.rs (target/debug/deps/processing_transactions_cutover-ff81fb2d9ca828ee)
+
+running 1 test
+test independent_connection_report_queue_preserves_exact_source_reports_and_removal ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 0.71s
+
+     Running tests/programming_edn_cutover.rs (target/debug/deps/programming_edn_cutover-816a6794cff001d0)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 4 filtered out; finished in 0.00s
+
+     Running tests/pull_source_cutover.rs (target/debug/deps/pull_source_cutover-e53865e5e39869a8)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 7 filtered out; finished in 0.00s
+
+     Running tests/query_diagnostics_source_cutover.rs (target/debug/deps/query_diagnostics_source_cutover-9f902433a44a8536)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 3 filtered out; finished in 0.00s
+
+     Running tests/query_source_cutover.rs (target/debug/deps/query_source_cutover-5e3204181b43bf84)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 9 filtered out; finished in 0.00s
+
+     Running tests/release_distribution_cutover.rs (target/debug/deps/release_distribution_cutover-91c67cf06e5e4488)
+
+running 1 test
+test cli_install_reports_the_installed_storage_format_on_repeated_installation ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.05s
+
+     Running tests/rseek_source_cutover.rs (target/debug/deps/rseek_source_cutover-68c377e7c3e5b91c)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 0.00s
+
+     Running tests/schema_source_cutover.rs (target/debug/deps/schema_source_cutover-bed3e33385a18ef8)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 14 filtered out; finished in 0.00s
+
+     Running tests/stored_value_source_cutover.rs (target/debug/deps/stored_value_source_cutover-9d493bc347d8b833)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 0.00s
+
+     Running tests/synchronization_cutover.rs (target/debug/deps/synchronization_cutover-8d83e1407582ad8d)
+
+running 1 test
+test causal_values_local_waits_and_queued_async_deadlines_remain_independent ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.67s
+
+     Running tests/transaction_data_source_cutover.rs (target/debug/deps/transaction_data_source_cutover-8cda919bf0dd2542)
+
+running 1 test
+test durable_equal_explicit_timestamp_forms_keep_override_bounds_and_exact_retry ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 3 filtered out; finished in 0.71s
+
+     Running tests/transaction_diagnostics_source_cutover.rs (target/debug/deps/transaction_diagnostics_source_cutover-f1cafe48134b83a3)
+
+running 1 test
+test durable_diagnostics_follow_queue_scope_material_work_and_receipt_first_replay ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 3 filtered out; finished in 0.65s
+
+     Running tests/transaction_functions_source_cutover.rs (target/debug/deps/transaction_functions_source_cutover-0b18191291e0efac)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 3 filtered out; finished in 0.00s
+
+     Running tests/transaction_hints_source_cutover.rs (target/debug/deps/transaction_hints_source_cutover-566a967e0d49c93d)
+
+running 1 test
+test source_prefix_hints_remain_advisory_across_in_process_and_remote_exact_retries ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 1.15s
+
+     Running tests/transaction_model_durable_cutover.rs (target/debug/deps/transaction_model_durable_cutover-9d188f04e4e0932c)
+
+running 2 tests
+test durable_transaction_model_observes_empty_source_transactions ... ok
+test durable_transaction_model_preserves_attribution_and_receipt_first_retry ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.66s
+
+     Running unittests examples/application_workflow.rs (target/debug/examples/application_workflow-41ae4cff8a4be29d)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests examples/native_transaction_host.rs (target/debug/examples/native_transaction_host-794d1d9362b8bf5d)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests examples/native_workflow.rs (target/debug/examples/native_workflow-c478ce6bec78aa46)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests examples/operations_workflow.rs (target/debug/examples/operations_workflow-a8f6e477217b3372)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests examples/process_workflow.rs (target/debug/examples/process_workflow-4338b5a799885091)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests examples/read_load.rs (target/debug/examples/read_load-41ca750f71e043dc)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests examples/restart_workflow.rs (target/debug/examples/restart_workflow-6cf3a394486b4fd7)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests examples/scale_workflow.rs (target/debug/examples/scale_workflow-699212d51f8a5f36)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+

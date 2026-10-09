@@ -13,6 +13,8 @@ pub(crate) struct IndexRoots {
     aevt: Arc<[Datom]>,
     avet: Arc<[Datom]>,
     vaet: Arc<[Datom]>,
+    saevt: Arc<[Datom]>,
+    savet: Arc<[Datom]>,
 }
 
 impl IndexRoots {
@@ -31,6 +33,8 @@ impl IndexRoots {
                 .collect(),
             IndexOrder::Avet,
         );
+        let saevt = sorted(all.clone(), IndexOrder::Saevt);
+        let savet = sorted(avet.clone(), IndexOrder::Savet);
         let vaet = sorted(
             all.into_iter()
                 .filter(|datom| {
@@ -46,6 +50,8 @@ impl IndexRoots {
             aevt: aevt.into(),
             avet: avet.into(),
             vaet: vaet.into(),
+            saevt: saevt.into(),
+            savet: savet.into(),
         }
     }
 
@@ -55,6 +61,8 @@ impl IndexRoots {
             IndexOrder::Aevt => &self.aevt,
             IndexOrder::Avet => &self.avet,
             IndexOrder::Vaet => &self.vaet,
+            IndexOrder::Saevt => &self.saevt,
+            IndexOrder::Savet => &self.savet,
         }
     }
 

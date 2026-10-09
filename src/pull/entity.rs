@@ -172,11 +172,10 @@ impl Entity {
         } else {
             schema.cardinality == Cardinality::Many
         };
-        if multiple {
-            // EAVT groups equal forward values and VAET groups equal reverse
-            // entities contiguously.  A filtered value can expose more than
-            // one assertion event for the same logical E/A/V, but associative
-            // entity navigation remains set-valued.
+        if reverse && multiple {
+            // VAET groups equal reverse entities contiguously. Forward values
+            // are already distinct under stored equality in DatabaseValue::values;
+            // logical Value equality would collapse distinct decimal scales.
             values.dedup();
         }
         let mut values = values

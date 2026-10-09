@@ -271,8 +271,8 @@ fn report_to_edn(
     budget.bytes(128)?;
     let mut data = Vec::new();
     for datom in datoms {
-        // Row container and four scalar fields; value conversion shares budget.
-        for _ in 0..5 {
+        // Row container and five scalar fields; value conversion shares budget.
+        for _ in 0..6 {
             budget.node(2)?;
         }
         let value = to_edn(&datom.value, budget, 3)?;
@@ -281,6 +281,7 @@ fn report_to_edn(
             integer(u64::from(datom.attribute)),
             value,
             integer(datom.tx),
+            integer(datom.source),
             EdnValue::Bool(datom.added),
         ]));
     }

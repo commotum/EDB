@@ -4,8 +4,8 @@ use edb_core::edn_pull::{entity_identifier_from_edn, parse_pull_edn};
 use edb_core::edn_query::{EdnQueryArgument, EdnQueryInput, parse_query_edn};
 use edb_core::edn_value::{edn_keyword, query_value_to_edn, transaction_report_to_edn};
 use edb_core::{
-    BackupConnection, Connection, DatabaseValue, Datom, ErrorCategory, PullControl, QueryControl,
-    QuerySourceValue, SemanticError, TransactionRequest, postgres_config_from_env,
+    BackupConnection, Connection, DatabaseValue, Datom, EntityRef, ErrorCategory, PullControl,
+    QueryControl, QuerySourceValue, SemanticError, TransactionRequest, postgres_config_from_env,
     remote_client_config_from_env,
 };
 use std::collections::{BTreeMap, BTreeSet};
@@ -15,9 +15,9 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 const MAX_INPUT_BYTES: usize = 16 * 1024 * 1024;
 pub const HELP: &str = "
 EDN data commands (file path '-' reads stdin; results are EDN on stdout):
-  edb transact --database ID --file PATH --request-key KEY
+  edb transact --database ID --file PATH --request-key KEY --source EDN
     (--endpoint PATH | --remote) [--basis N] [--tx-instant MILLIS] [--timeout-ms N]
-  edb with (--database ID | --repository PATH) --file PATH [--tx-instant MILLIS]
+  edb with (--database ID | --repository PATH) --file PATH --source EDN [--tx-instant MILLIS]
     [--default-partition KEYWORD]
   edb query [--database ID | --repository PATH] --file PATH [--inputs PATH] [--sources PATH]
     [--as-of N] [--since N] [--history] [--timeout-ms N] [--max-work N]
@@ -29,6 +29,7 @@ EDN data commands (file path '-' reads stdin; results are EDN on stdout):
 
 transact requires a stable caller-supplied request key; reuse it AND the original
 intent/options after an unknown outcome. --basis is an optional optimistic guard.
+--source is an entity reference for the source of every fact in the transaction.
 with is a local preview and never commits. Its temporary IDs are not reserved.
 Use the same --default-partition as the transactor to preview default placement.
 Explicit partition hints override the default; existing entities never move.
@@ -69,6 +70,7 @@ fn parse(command: &str, raw: &[String]) -> Result<Arguments, SemanticError> {
                 "--database",
                 "--file",
                 "--request-key",
+                "--source",
                 "--endpoint",
                 "--basis",
                 "--tx-instant",
@@ -85,6 +87,7 @@ fn parse(command: &str, raw: &[String]) -> Result<Arguments, SemanticError> {
                 "--file",
                 "--tx-instant",
                 "--default-partition",
+                "--source",
             ],
             &[],
         ),
@@ -166,6 +169,9 @@ fn parse(command: &str, raw: &[String]) -> Result<Arguments, SemanticError> {
         }
     }
     args.required("--file")?;
+    if matches!(command, "transact" | "with") {
+        EntityRef::from_edn(args.required("--source")?)?;
+    }
     diagnostic_context(&args)?;
     super::transaction_defaults(args.values.get("--default-partition").map(String::as_str))?;
     if command == "transact" {
@@ -355,7 +361,11 @@ fn run(args: Arguments) -> Result<(), SemanticError> {
                 return Err(usage("transact requires a live database"));
             };
             let config = postgres_config_from_env()?;
-            let mut request = TransactionRequest::from_edn(args.required("--request-key")?, &text)?;
+            let mut request = TransactionRequest::from_edn(
+                args.required("--request-key")?,
+                &text,
+                EntityRef::from_edn(args.required("--source")?)?,
+            )?;
             if args.values.contains_key("--basis") {
                 request = request.comparing_basis(args.number("--basis", 0)?);
             }
@@ -426,7 +436,12 @@ fn run(args: Arguments) -> Result<(), SemanticError> {
             let defaults = super::transaction_defaults(
                 args.values.get("--default-partition").map(String::as_str),
             )?;
-            let report = db.with_edn_with_defaults(&text, args.preview_instant()?, &defaults)?;
+            let report = db.with_edn_with_defaults(
+                &text,
+                args.preview_instant()?,
+                EntityRef::from_edn(args.required("--source")?)?,
+                &defaults,
+            )?;
             let mut fields = report_fields(
                 report.db_before.basis_t(),
                 report.db_after.basis_t(),

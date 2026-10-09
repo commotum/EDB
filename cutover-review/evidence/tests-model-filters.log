@@ -1,0 +1,23 @@
+   Compiling edb-core v0.1.0 (/tmp/edb-cutover-impl-20261007)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 9.99s
+     Running tests/data_model_source_cutover.rs (target/debug/deps/data_model_source_cutover-d65f0b082c4710d4)
+
+running 4 tests
+test canonical_genesis_is_system_attributed_and_old_envelopes_are_rejected ... ok
+test durable_codec_and_request_identity_preserve_source ... ok
+test cross_source_replacement_retracts_every_contribution ... ok
+test sourced_contributions_share_cardinality_and_global_withdrawal ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.23s
+
+     Running tests/database_filters_source_cutover.rs (target/debug/deps/database_filters_source_cutover-5379ae5eb88b0dba)
+
+running 5 tests
+test speculative_savet_backfill_keeps_same_value_from_both_sources ... ok
+test six_boundaries_normalize_source_and_resolve_visibility_before_seeking ... ok
+test speculative_overlays_keep_contributions_and_global_withdrawal ... ok
+test predicates_cannot_restore_facts_withdrawn_by_another_source ... ok
+test temporal_views_keep_source_contributions_and_project_one_value ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.14s
+

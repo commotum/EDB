@@ -90,7 +90,7 @@ resulting captured value:
 
 ```rust
 use edb_core::{
-    AttributeName, Cardinality, Database, Keyword, SemanticError, Unique, ValueType,
+    AttributeName, Cardinality, Database, EntityRef, Keyword, SemanticError, Unique, ValueType,
 };
 
 fn example() -> Result<(), SemanticError> {
@@ -100,7 +100,7 @@ fn example() -> Result<(), SemanticError> {
        :db/valueType :db.type/string
        :db/cardinality :db.cardinality/one
        :db/unique :db.unique/identity}
-    ]"#, 1_000)?;
+    ]"#, 1_000, EntityRef::Ident(Keyword::new("db.source", "system")))?;
     let db = report.db_after;
     let name = Keyword::new("person", "email");
     let id = db.schema().resolve_ident(&name).expect("installed attribute");
@@ -157,7 +157,8 @@ attribute.indexed || attribute.unique.is_some()
 ```
 
 `indexed` alone is the explicit `:db/index` flag. A unique attribute is configured
-for AVET even if that field is false.
+for AVET even if that field is false. SAVET uses the same schema eligibility
+and physical readiness; `has_avet` covers both orders.
 
 Does this attribute *currently* have a usable AVET index? Call
 `db.has_avet(&AttributeName::Id(attribute.id))`, or supply

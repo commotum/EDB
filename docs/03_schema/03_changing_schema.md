@@ -2,8 +2,9 @@
 
 Changing an existing schema attribute is similar to defining a new schema
 attribute: you submit a transaction with the new facts, including the `:db/id`
-and the new value(s) of the attribute(s). See [schema as database data](00_schema.md)
-for installation and the [schema data reference](02_schema_reference.md) for
+and the new value(s) of the attribute(s), and supply one source for the
+transaction. See [schema as database data](00_schema.md) for installation and the
+[schema data reference](02_schema_reference.md) for
 individual properties and value types.
 
 Logical schema changes happen synchronously with the transaction. The returned
@@ -32,15 +33,19 @@ schema and facts must also pass successor validation. Commit a schema change
 before submitting data that relies on its new transaction behavior.
 
 The examples below assume the named attributes already exist with the
-appropriate value types. Submit each vector as ordinary EDN transaction data.
+appropriate value types and source entity `99` identifies the contributor.
+Submit each vector as ordinary EDN transaction data with source `99` supplied
+once through the transaction request or CLI `--source 99`. Every explicit and
+generated change carries that source, including the automatic transaction
+timestamp.
 
 ## Changing `:db/ident`
 
 This example changes the `:db/ident` of `:person/name` to `:person/full-name`:
 
 ```edn
-[{:db/id    :person/name
-  :db/ident :person/full-name}]
+[{:db/id     :person/name
+  :db/ident  :person/full-name}]
 ```
 
 Idents provide names for things, specifically schema attributes and enumerated
@@ -72,7 +77,7 @@ the cardinality of `:person/email` to one:
 ```
 
 When changing from a multi-valued attribute to a single-valued attribute, there
-must be at most a single value for every entity in the resulting current
+must be at most a single distinct value for every entity in the resulting current
 assertions. Otherwise the change fails with `schema/cardinality-change-conflict`.
 EDB does not choose which current value to retain. Retract unwanted values before
 the change or include their retractions in the same transaction.
@@ -106,8 +111,9 @@ The example below changes `:order/line-items` to be a component, and
 Changing `:db/isComponent` causes subsequent transactions and reads of the new
 database value to use the new component semantics. For example, when it is true,
 `[:db/retractEntity parent-id]` recursively retracts the referenced component
-entities. `:db.fn/retractEntity` is also accepted. Component navigation and Pull
-use the flag from their supplied database value.
+entities, attributing each retraction to source `99`. `:db.fn/retractEntity` is
+also accepted. Component navigation and Pull use the flag from their supplied
+database value.
 
 Only a reference-valued attribute can be a component. Omitting the flag or
 setting it to false disables component behavior. Changing the flag alone does
@@ -265,8 +271,11 @@ derivation is needed again.
 
 Installing a new composite does not populate every existing entity. After
 installation, reassert a constituent value on each target entity to derive its
-tuple, even when that assertion leaves the constituent unchanged. Process large
-populations in bounded transactions and handle any derived uniqueness conflicts.
+tuple, even when a same-source assertion is otherwise redundant. Supply the
+source once for each transaction; derived assertions and retractions carry that
+source. Contributions from different sources in separate transactions remain
+distinct. Process large populations in bounded transactions and handle any
+derived uniqueness conflicts.
 See [schema data reference](02_schema_reference.md) for composite declarations
 and slot rules.
 

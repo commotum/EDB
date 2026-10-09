@@ -7,7 +7,7 @@ room for that discovery.
 
 **EDB is an extensible database: a counterpart to EDN, Extensible Data Notation.**
 EDN provides a language of values. EDB builds on that foundation with a language
-of facts, their descriptions, and their changes through time. New knowledge
+of facts, their descriptions, their sources, and their changes through time. New knowledge
 should fit without requiring a new kind of database structure.
 
 Our design starts with three requirements: **small, self-descriptive, and
@@ -18,8 +18,12 @@ composable.**
 The fundamental unit is a fact:
 
 ```text
-[Entity  Attribute  Value  Transaction  Added-or-retracted]
+[Entity  Attribute  Value  Transaction  Source  Added?]
 ```
+
+Each transaction has one explicitly supplied source. Every assertion and
+retraction it produces retains that source alongside its transaction, with
+`true` for an assertion and `false` for a retraction.
 
 An entity's identity answers “What thing are we talking about?” Its facts answer
 “What do we know about it?” Learning something new adds facts without redefining
@@ -52,12 +56,18 @@ own facts and relationships remain accessible.
 New combinations use the same described relationships. Datalog joins and reusable
 rules carry that principle into asking questions.
 
-## Knowledge grows through time
+## Knowledge grows through time and contribution
 
-Changes are assertions and retractions. Transactions are entities too, so they
-can carry provenance through ordinary attributes. Immutable database values let
-us ask questions against a consistent point in time; retained history lets us
-revisit what was recorded before.
+Changes are assertions and retractions. Source identifies who supplied those
+statements, while domain attributes describe distinct roles such as authorship
+and publishing. Transactions and sources are entities too, described with
+ordinary facts. Immutable database values let us ask questions against a
+consistent point in time; retained history preserves earlier statements and
+their attribution.
+
+Contributors maintain one shared record. Two sources supplying the same value
+remain distinct contributions without multiplying the value. A later retraction
+withdraws that value across sources and records who withdrew it.
 
 Extensibility still requires discipline: attributes have constraints, and changes
 must preserve the model's invariants. The aim is a foundation that supports

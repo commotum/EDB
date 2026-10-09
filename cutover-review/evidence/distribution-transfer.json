@@ -1,0 +1,10 @@
+{
+  "archive": "/tmp/edb-cutover-impl-20261007/target/distribution-proof/edb-source.tar.gz",
+  "sha256": "9c64226dba4f6503e8afe633a4cd9c007e1dc0c6d62fd7659dd276677fddd2ad",
+  "archive_bytes": 32495366,
+  "vendored_crates_across_two_bundles": 256,
+  "verified_vendor_files": 16588,
+  "hidden_config_retained": true,
+  "embedded_sql_retained": true,
+  "original_cargo_home_unchanged": true
+}

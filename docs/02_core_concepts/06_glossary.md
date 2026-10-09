@@ -16,8 +16,8 @@ Use `DatabaseValue::as_of(t)` for logical time or `as_of_time_point` for a
 ## Assertion
 
 An atomic fact in the database, associating an [entity](#entity),
-[attribute](#attribute), [value](#value), and a [tx](#tx). Opposite of a
-[retraction](#retraction). Its datom has `added = true`.
+[attribute](#attribute), [value](#value), [tx](#tx), and [source](#source).
+Opposite of a [retraction](#retraction). Its datom has `added = true`.
 
 ## Attribute
 
@@ -48,8 +48,8 @@ exposes less information.
 
 ## Cardinality
 
-Property of an [attribute](#attribute) that specifies how many values of the
-attribute can be associated with a single entity. Possible values are
+Property of an [attribute](#attribute) that specifies how many distinct values of
+the attribute can be associated with a single entity. Possible values are
 `:db.cardinality/one` and `:db.cardinality/many`.
 
 ## Caches
@@ -122,9 +122,10 @@ transactions without changing a value already held by an application. See
 
 ## Datom
 
-An atomic fact in a database, composed of entity/attribute/value/transaction/added.
-Pronounced like "datum", but pluralized as datoms. The `added` flag distinguishes
-assertions from retractions. See the [data model](01_data_model.md).
+An atomic fact in a database, composed of
+entity/attribute/value/transaction/source/added. Pronounced like "datum", but
+pluralized as datoms. The `added` flag distinguishes assertions from retractions.
+See the [data model](01_data_model.md).
 
 ## Database Identity
 
@@ -226,8 +227,10 @@ A keyword value of the `:db/ident` attribute that uniquely identifies an
 Sorted collection of datoms. Indexes are named by the order in which datom
 components are used for sort. E.g. an index that sorts first by [entity](#entity),
 then [attribute](#attribute), then [value](#value), then [tx](#tx) is called EAVT.
-EDB also provides AEVT, AVET and VAET, with different inclusion rules. Transaction
-coordinates sort descending within the preceding components. See
+EDB also provides AEVT, AVET, VAET, SAEVT and SAVET, with different inclusion
+rules. Entity, attribute, value and source sort ascending; transaction coordinates
+sort descending within the preceding components. All indexes retain all six datom
+fields. See
 [indexes and the transaction log](../06_indexes/00_indexes_and_log.md).
 
 ## Infrastructure
@@ -321,6 +324,9 @@ An atomic fact in the database, dissociating an [entity](#entity) from a
 particular [value](#value) of an [attribute](#attribute). Opposite of an
 [assertion](#assertion). Its datom has `added = false`. Retraction preserves
 history subject to retention and `:db/noHistory`; it is distinct from excision.
+A retraction withdraws current contributions to that entity/attribute/value
+regardless of their original sources. It carries the retracting transaction's
+[source](#source), leaving the original assertions' attribution unchanged.
 
 ## Role
 
@@ -358,6 +364,16 @@ A cache that stores encoded immutable object bytes instead of decoded objects.
 EDB's optional local SSD cache stores authenticated canonical bytes and falls
 back to PostgreSQL on runtime cache failures. See
 [local SSD cache](../09_optional/00_local_cache.md).
+
+## Source
+
+The ordinary [entity](#entity) to whom a transaction and all of its assertions
+and retractions are attributed. The application explicitly supplies one source
+entity reference for every durable or speculative transaction, even with empty
+data. All explicit and generated facts carry that source. A source is described
+by ordinary database facts. Assertions of the same entity/attribute/value from
+different sources in separate transactions retain distinct attribution while
+counting as one value for [cardinality](#cardinality).
 
 ## Storage Resources
 
@@ -403,7 +419,8 @@ basis must be visible. See [synchronization](../04_transactions/09_synchronizati
 An [entity](#entity) representing a [transaction](#transaction). Every
 [datom](#datom) includes the tx that created its assertion or retraction, allowing
 recovery of retained history. Transactions are automatically associated with
-wall-clock time through `:db/txInstant`, but are otherwise ordinary entities.
+wall-clock time through one `:db/txInstant` assertion carrying the transaction's
+[source](#source), but are otherwise ordinary entities.
 In particular, application code can make additional assertions about
 transactions. `t_to_tx` and `tx_to_t` convert between logical time and transaction
 entity IDs. See [transaction data](../04_transactions/04_transaction_data.md).

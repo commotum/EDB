@@ -68,6 +68,10 @@ impl PostgresOperator {
     /// Stage a program closure and bind its ident in one application operation.
     /// Dependencies can be supplied in any order. Exact retries return the
     /// committed outcome before touching deployment dependencies.
+    #[allow(
+        clippy::too_many_arguments,
+        reason = "Source extends the established operation argument order"
+    )]
     pub fn install_program(
         &mut self,
         client: &crate::TransactionClient,
@@ -75,6 +79,7 @@ impl PostgresOperator {
         ident: crate::Keyword,
         program: &crate::Program,
         dependencies: &[crate::Program],
+        source: crate::EntityRef,
         timeout: Duration,
     ) -> Result<crate::ServiceTransactionReport, SemanticError> {
         deployment::install(
@@ -84,6 +89,7 @@ impl PostgresOperator {
             ident,
             program,
             dependencies,
+            source,
             timeout,
         )
     }

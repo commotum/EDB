@@ -71,8 +71,8 @@ pub struct Attribute {
     pub fulltext: bool,
     pub tuple: Option<TupleSpec>,
     pub tuple_discontinued: bool,
-    /// Names of deterministic value predicates. Implementations are supplied
-    /// by the process-local kernel context; persisted deployment is later.
+    /// Names of deterministic value predicates. The executing host supplies
+    /// native deployments or resolves stored-program bindings.
     pub predicates: Vec<String>,
 }
 
@@ -774,23 +774,6 @@ impl Schema {
                 schema.install_ident_alias(ident.clone(), attribute)?;
             }
         }
-        // Exact older genesis profiles predate ordinary partition markers.
-        // Once their explicit vocabulary upgrade is installed, the markers
-        // themselves must remain present rather than being synthesized back.
-        if !schema
-            .attributes
-            .contains_key(&(crate::DB_INSTALL_PARTITION as u32))
-        {
-            for (id, name) in [
-                (crate::DB_PART_DB, "db"),
-                (crate::DB_PART_TX, "tx"),
-                (crate::DB_PART_USER, "user"),
-            ] {
-                schema
-                    .partitions
-                    .insert(id as u32, Keyword::new("db.part", name));
-            }
-        }
         for datom in partition_information
             .iter()
             .filter(|datom| u64::from(datom.attribute) == crate::DB_INSTALL_PARTITION)
@@ -1141,6 +1124,7 @@ pub(crate) fn attribute_information_datoms(
     attribute: &Attribute,
     names: &Schema,
     tx: u64,
+    source: u64,
 ) -> Result<Vec<Datom>, SemanticError> {
     schema_eid_to_attr_id(u64::from(attribute.id))?;
     let entity = u64::from(attribute.id);
@@ -1150,18 +1134,21 @@ pub(crate) fn attribute_information_datoms(
             DB_IDENT,
             Value::Keyword(attribute.ident.clone()),
             tx,
+            source,
         )?,
         information_assertion(
             entity,
             DB_VALUE_TYPE,
             Value::Ref(value_type_entity(attribute.value_type)),
             tx,
+            source,
         )?,
         information_assertion(
             entity,
             DB_CARDINALITY,
             Value::Ref(cardinality_entity(attribute.cardinality)),
             tx,
+            source,
         )?,
     ];
     if let Some(unique) = attribute.unique {
@@ -1170,6 +1157,7 @@ pub(crate) fn attribute_information_datoms(
             DB_UNIQUE,
             Value::Ref(unique_entity(unique)),
             tx,
+            source,
         )?);
     }
     if attribute.indexed {
@@ -1178,6 +1166,7 @@ pub(crate) fn attribute_information_datoms(
             DB_INDEX,
             Value::Bool(true),
             tx,
+            source,
         )?);
     }
     if attribute.component {
@@ -1186,6 +1175,7 @@ pub(crate) fn attribute_information_datoms(
             DB_IS_COMPONENT,
             Value::Bool(true),
             tx,
+            source,
         )?);
     }
     if attribute.no_history {
@@ -1194,6 +1184,7 @@ pub(crate) fn attribute_information_datoms(
             DB_NO_HISTORY,
             Value::Bool(true),
             tx,
+            source,
         )?);
     }
     if attribute.fulltext {
@@ -1202,6 +1193,7 @@ pub(crate) fn attribute_information_datoms(
             crate::DB_FULLTEXT,
             Value::Bool(true),
             tx,
+            source,
         )?);
     }
     match &attribute.tuple {
@@ -1210,6 +1202,7 @@ pub(crate) fn attribute_information_datoms(
             DB_TUPLE_TYPE,
             Value::Keyword(value_type_ident(*value_type)),
             tx,
+            source,
         )?),
         Some(TupleSpec::Heterogeneous(types)) => datoms.push(information_assertion(
             entity,
@@ -1221,6 +1214,7 @@ pub(crate) fn attribute_information_datoms(
                     .collect(),
             ),
             tx,
+            source,
         )?),
         Some(TupleSpec::Composite(attributes)) => {
             let idents = attributes
@@ -1236,6 +1230,7 @@ pub(crate) fn attribute_information_datoms(
                 DB_TUPLE_ATTRS,
                 Value::Tuple(idents),
                 tx,
+                source,
             )?);
         }
         None => {}
@@ -1246,6 +1241,7 @@ pub(crate) fn attribute_information_datoms(
             DB_TUPLE_DISCONTINUED,
             Value::Bool(true),
             tx,
+            source,
         )?);
     }
     for predicate in &attribute.predicates {
@@ -1254,6 +1250,7 @@ pub(crate) fn attribute_information_datoms(
             DB_ATTR_PREDS,
             Value::Symbol(parse_symbol(predicate)),
             tx,
+            source,
         )?);
     }
     datoms.sort_by(|left, right| left.cmp_in(right, IndexOrder::Eavt));
@@ -1265,12 +1262,14 @@ fn information_assertion(
     attribute: u64,
     value: Value,
     tx: u64,
+    source: u64,
 ) -> Result<Datom, SemanticError> {
     Ok(Datom {
         entity,
         attribute: schema_eid_to_attr_id(attribute)?,
         value,
         tx,
+        source,
         added: true,
     })
 }
@@ -1280,13 +1279,18 @@ fn schema_information_error(code: &'static str, message: impl Into<String>) -> S
 }
 
 fn values<'a>(current: &[&'a Datom], entity: u64, attribute: u64) -> Vec<&'a Value> {
-    current
-        .iter()
-        .filter(|datom| {
-            datom.added && datom.entity == entity && u64::from(datom.attribute) == attribute
-        })
-        .map(|datom| &datom.value)
-        .collect()
+    let mut values = Vec::<&Value>::new();
+    for datom in current.iter().filter(|datom| {
+        datom.added && datom.entity == entity && u64::from(datom.attribute) == attribute
+    }) {
+        if !values
+            .iter()
+            .any(|value| value.index_cmp(&datom.value).is_eq())
+        {
+            values.push(&datom.value);
+        }
+    }
+    values
 }
 
 fn exactly_zero_or_one<'a>(

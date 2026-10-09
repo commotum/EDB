@@ -15,20 +15,23 @@ impl Database {
         &self,
         forms: &[TxForm],
         functions: &TxFunctions,
+        source: &EntityRef,
     ) -> Result<Vec<TxOp>, SemanticError> {
-        self.normalize_forms_with_limit(forms, functions, usize::MAX)
+        self.normalize_forms_with_limit(forms, functions, source, usize::MAX)
     }
 
     pub(crate) fn normalize_forms_with_limit(
         &self,
         forms: &[TxForm],
         functions: &TxFunctions,
+        source: &EntityRef,
         max_primitive_ops: usize,
     ) -> Result<Vec<TxOp>, SemanticError> {
         normalize_forms_against(
             &self.database_value(),
             forms,
             Some(functions),
+            source,
             max_primitive_ops,
         )
     }
@@ -40,11 +43,13 @@ impl Database {
         forms: &[TxForm],
         functions: &TxFunctions,
         tx_instant: i64,
+        source: EntityRef,
     ) -> Result<TxReport, SemanticError> {
         self.with_forms_with_defaults(
             forms,
             functions,
             tx_instant,
+            source,
             &crate::TransactionDefaults::default(),
         )
     }
@@ -54,13 +59,15 @@ impl Database {
         forms: &[TxForm],
         functions: &TxFunctions,
         tx_instant: i64,
+        source: EntityRef,
         defaults: &crate::TransactionDefaults,
     ) -> Result<TxReport, SemanticError> {
-        let ops = self.normalize_forms(forms, functions)?;
+        let ops = self.normalize_forms(forms, functions, &source)?;
         let assessed = assess_operations(
             &self.database_value(),
             &ops,
             tx_instant,
+            &source,
             defaults,
             Some(functions),
         )?;
@@ -76,11 +83,13 @@ impl DatabaseValue {
         forms: &[TxForm],
         functions: &TxFunctions,
         tx_instant: i64,
+        source: EntityRef,
     ) -> Result<crate::SpeculativeTransactionReport, SemanticError> {
         self.with_functions_and_defaults(
             forms,
             functions,
             tx_instant,
+            source,
             &crate::TransactionDefaults::default(),
         )
     }
@@ -90,11 +99,13 @@ impl DatabaseValue {
         forms: &[TxForm],
         functions: &TxFunctions,
         tx_instant: i64,
+        source: EntityRef,
         defaults: &crate::TransactionDefaults,
     ) -> Result<crate::SpeculativeTransactionReport, SemanticError> {
         let base = self.speculation_base()?;
-        let ops = normalize_forms_against(&base, forms, Some(functions), usize::MAX)?;
-        let assessed = assess_operations(&base, &ops, tx_instant, defaults, Some(functions))?;
+        let ops = normalize_forms_against(&base, forms, Some(functions), &source, usize::MAX)?;
+        let assessed =
+            assess_operations(&base, &ops, tx_instant, &source, defaults, Some(functions))?;
         Ok(crate::SpeculativeTransactionReport {
             db_before: self.clone(),
             db_after: assessed.db_after.with_speculation_view(self),
@@ -108,12 +119,14 @@ impl DatabaseValue {
         &self,
         ops: &[TxOp],
         tx_instant: i64,
+        source: EntityRef,
         defaults: &crate::TransactionDefaults,
     ) -> Result<crate::SpeculativeTransactionReport, SemanticError> {
         validate_ops_input(ops)?;
         self.with_forms_with_defaults(
             &ops.iter().cloned().map(TxForm::Op).collect::<Vec<_>>(),
             tx_instant,
+            source,
             defaults,
         )
     }
@@ -124,11 +137,13 @@ impl DatabaseValue {
         &self,
         ops: &[TxOp],
         tx_instant: i64,
+        source: EntityRef,
     ) -> Result<crate::SpeculativeTransactionReport, SemanticError> {
         validate_ops_input(ops)?;
         self.with_forms(
             &ops.iter().cloned().map(TxForm::Op).collect::<Vec<_>>(),
             tx_instant,
+            source,
         )
     }
 
@@ -141,19 +156,22 @@ impl DatabaseValue {
         &self,
         forms: &[TxForm],
         tx_instant: i64,
+        source: EntityRef,
     ) -> Result<crate::SpeculativeTransactionReport, SemanticError> {
-        self.with_forms_with_limits(forms, tx_instant, SpeculationLimits::default())
+        self.with_forms_with_limits(forms, tx_instant, source, SpeculationLimits::default())
     }
 
     pub fn with_forms_with_limits(
         &self,
         forms: &[TxForm],
         tx_instant: i64,
+        source: EntityRef,
         limits: SpeculationLimits,
     ) -> Result<crate::SpeculativeTransactionReport, SemanticError> {
         self.with_forms_with_limits_and_defaults(
             forms,
             tx_instant,
+            source,
             limits,
             &crate::TransactionDefaults::default(),
         )
@@ -163,11 +181,13 @@ impl DatabaseValue {
         &self,
         forms: &[TxForm],
         tx_instant: i64,
+        source: EntityRef,
         defaults: &crate::TransactionDefaults,
     ) -> Result<crate::SpeculativeTransactionReport, SemanticError> {
         self.with_forms_with_limits_and_defaults(
             forms,
             tx_instant,
+            source,
             SpeculationLimits::default(),
             defaults,
         )
@@ -178,12 +198,14 @@ impl DatabaseValue {
         &self,
         forms: &[TxForm],
         tx_instant: i64,
+        source: EntityRef,
         limits: SpeculationLimits,
         defaults: &crate::TransactionDefaults,
     ) -> Result<crate::SpeculativeTransactionReport, SemanticError> {
         self.with_forms_with_execution_options(
             forms,
             tx_instant,
+            source,
             limits,
             &crate::TransactionExecutionOptions {
                 defaults: defaults.clone(),
@@ -199,10 +221,11 @@ impl DatabaseValue {
         &self,
         forms: &[TxForm],
         tx_instant: i64,
+        source: EntityRef,
         limits: SpeculationLimits,
         options: &crate::TransactionExecutionOptions,
     ) -> Result<crate::SpeculativeTransactionReport, SemanticError> {
-        let assessed = assess_forms(self, forms, tx_instant, limits, options)?;
+        let assessed = assess_forms(self, forms, tx_instant, &source, limits, options)?;
         Ok(crate::SpeculativeTransactionReport {
             db_before: self.clone(),
             db_after: assessed.db_after.with_speculation_view(self),
@@ -218,9 +241,10 @@ impl DatabaseValue {
     pub(crate) fn normalize_persisted_forms_with_limit(
         &self,
         forms: &[TxForm],
+        source: &EntityRef,
         max_primitive_ops: usize,
     ) -> Result<Vec<TxOp>, SemanticError> {
-        normalize_forms_against(self, forms, None, max_primitive_ops)
+        normalize_forms_against(self, forms, None, source, max_primitive_ops)
     }
 }
 
@@ -230,6 +254,7 @@ pub(crate) fn assess_operations(
     base: &DatabaseValue,
     ops: &[TxOp],
     tx_instant: i64,
+    source: &EntityRef,
     defaults: &crate::TransactionDefaults,
     functions: Option<&TxFunctions>,
 ) -> Result<crate::transaction::assess::TieredAssessment, SemanticError> {
@@ -238,6 +263,7 @@ pub(crate) fn assess_operations(
             base,
             ops,
             tx_instant,
+            source,
             crate::transaction::assess::AssessmentLimits {
                 max_read_datoms: u64::MAX,
                 max_read_bytes: u64::MAX,
@@ -276,10 +302,18 @@ pub(crate) fn assess_forms(
     base: &DatabaseValue,
     forms: &[TxForm],
     tx_instant: i64,
+    source: &EntityRef,
     limits: SpeculationLimits,
     options: &crate::TransactionExecutionOptions,
 ) -> Result<ValidatedTransaction, SemanticError> {
-    assess_forms_with_clock(base, forms, TxClock::Fixed(tx_instant), limits, options)
+    assess_forms_with_clock(
+        base,
+        forms,
+        TxClock::Fixed(tx_instant),
+        source,
+        limits,
+        options,
+    )
 }
 
 /// Durable admission selects the transaction clock only after functions and
@@ -289,6 +323,7 @@ pub(crate) fn assess_durable_forms(
     forms: &[TxForm],
     server_now: i64,
     option_override: Option<i64>,
+    source: &EntityRef,
     limits: SpeculationLimits,
     options: &crate::TransactionExecutionOptions,
 ) -> Result<ValidatedTransaction, SemanticError> {
@@ -299,6 +334,7 @@ pub(crate) fn assess_durable_forms(
             server_now,
             option_override,
         },
+        source,
         limits,
         options,
     )
@@ -316,6 +352,7 @@ fn assess_forms_with_clock(
     base: &DatabaseValue,
     forms: &[TxForm],
     clock: TxClock,
+    source: &EntityRef,
     limits: SpeculationLimits,
     options: &crate::TransactionExecutionOptions,
 ) -> Result<ValidatedTransaction, SemanticError> {
@@ -327,6 +364,7 @@ fn assess_forms_with_clock(
     };
     use std::sync::Mutex;
     validate_forms_input(forms)?;
+    super::input::validate_entity_input(source)?;
     if limits.max_operations == 0
         || limits.max_read_datoms == 0
         || limits.max_read_bytes == 0
@@ -400,7 +438,8 @@ fn assess_forms_with_clock(
             &options.native,
         )?
     };
-    let ops = before.normalize_persisted_forms_with_limit(&expanded, limits.max_operations)?;
+    let ops =
+        before.normalize_persisted_forms_with_limit(&expanded, source, limits.max_operations)?;
     drop(expansion_phase);
     let _assessment_phase = operation.phase(crate::OperationKind::TransactionAssessment);
     let tx_instant = match clock {
@@ -415,6 +454,7 @@ fn assess_forms_with_clock(
         &before,
         &ops,
         tx_instant,
+        source,
         crate::transaction::assess::AssessmentLimits {
             max_read_datoms: remaining.datoms,
             max_read_bytes: remaining.retained_bytes,
@@ -473,11 +513,13 @@ pub(crate) fn select_tx_instant(
             value: TxValue::Scalar(Value::Instant(instant)),
         } = op
             && *attribute == crate::DB_TX_INSTANT as u32
-            && data_override.replace(*instant).is_some()
+            && data_override
+                .replace(*instant)
+                .is_some_and(|previous| previous != *instant)
         {
             return Err(SemanticError::incorrect(
                 "transaction/multiple-tx-instants",
-                ":db/txInstant may be specified only once",
+                ":db/txInstant additions must specify the same instant",
             ));
         }
     }
@@ -537,6 +579,62 @@ impl Default for SpeculationLimits {
             program: durable.program,
             max_program_dependencies: 1_024,
             max_program_bytes: 64 * 1024 * 1024,
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn durable_backward_clock_clamps_automatic_time_but_keeps_explicit_bounds() {
+        let source = EntityRef::Id(99);
+        let previous = Database::bootstrap()
+            .unwrap()
+            .database_value()
+            .with(&[], 100, EntityRef::Id(crate::DB_SOURCE_SYSTEM))
+            .unwrap();
+        let assess = |forms: &[TxForm], now, explicit| {
+            assess_durable_forms(
+                &previous.db_after,
+                forms,
+                now,
+                explicit,
+                &source,
+                SpeculationLimits::default(),
+                &crate::TransactionExecutionOptions::default(),
+            )
+        };
+        let automatic = assess(&[], 90, None).unwrap();
+        assert_eq!(automatic.basis_t, previous.db_after.basis_t() + 1);
+        assert_eq!(automatic.tx_data.len(), 1);
+        let timestamp = &automatic.tx_data[0];
+        assert_eq!(timestamp.entity, crate::t_to_tx(automatic.basis_t).unwrap());
+        assert_eq!(timestamp.attribute, crate::DB_TX_INSTANT as u32);
+        assert_eq!(timestamp.value, Value::Instant(100));
+        assert_eq!(timestamp.tx, timestamp.entity);
+        assert_eq!(timestamp.source, 99);
+        assert!(timestamp.added);
+
+        for (explicit, code) in [
+            (100, "transaction/future-tx-instant"),
+            (90, "transaction/past-tx-instant"),
+        ] {
+            assert_eq!(assess(&[], 90, Some(explicit)).err().unwrap().code, code);
+        }
+        let imported = [TxForm::Op(TxOp::Add {
+            entity: EntityRef::Tx,
+            attribute: crate::DB_TX_INSTANT as u32,
+            value: Value::Instant(100).into(),
+        })];
+        assert_eq!(
+            assess(&imported, 90, None).err().unwrap().code,
+            "transaction/future-tx-instant"
+        );
+        for (forms, explicit) in [(&[][..], Some(100)), (&imported[..], None)] {
+            let boundary = assess(forms, 100, explicit).unwrap();
+            assert_eq!(boundary.tx_data, automatic.tx_data);
         }
     }
 }

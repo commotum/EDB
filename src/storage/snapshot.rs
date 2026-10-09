@@ -1785,7 +1785,12 @@ impl BlockSnapshot {
         prefix: &IndexPrefix,
     ) -> Result<BlockIndexCursor, SemanticError> {
         prefix.validate()?;
-        if let IndexPrefix::Avet { attribute, .. } = prefix {
+        if let IndexPrefix::Avet { attribute, .. }
+        | IndexPrefix::Savet {
+            attribute: Some(attribute),
+            ..
+        } = prefix
+        {
             self.ensure_avet_ready(*attribute)?;
         }
         crate::io_diagnostics::record_index_cursor(prefix.order());

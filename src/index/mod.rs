@@ -3,6 +3,8 @@
 //! Boundaries, recent authenticated events, speculative overlays and durable
 //! tree values share model ordering without sharing mutable ownership policy.
 mod boundary;
+mod visibility;
+pub(crate) use visibility::current_eav_group;
 pub(crate) mod cursor;
 pub(crate) mod eager;
 mod io;
@@ -15,3 +17,6 @@ pub mod tree;
 pub use boundary::{IndexBoundary, IndexComponents, IndexPrefix, IndexTransaction};
 pub(crate) use boundary::{NormalizedIndexBoundary, compare_prefix};
 pub use io::NodeBlockReadStats;
+
+#[cfg(test)]
+mod tests;

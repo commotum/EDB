@@ -338,7 +338,7 @@ fn prepare_tail(
     let entries = recent.entries();
     let mut cache = TreeNodeSet::default();
     let mut lookup = IndexEavLookup::new(io, tree(previous, false, IndexOrder::Eavt), &mut cache)?;
-    let mut changes = BTreeMap::<Vec<u8>, (Option<Datom>, Option<Datom>)>::new();
+    let mut changes = BTreeMap::<Vec<u8>, (Vec<Datom>, Vec<Datom>)>::new();
     for datom in entries
         .iter()
         .flat_map(|entry| entry.transaction.tx_data.iter())
@@ -347,7 +347,7 @@ fn prepare_tail(
         io.stats.input_datoms = io.stats.input_datoms.saturating_add(1);
         let key = prepare::stored_eav_key(datom)?;
         if let std::collections::btree_map::Entry::Vacant(entry) = changes.entry(key) {
-            let found = lookup.exact(io, datom, &mut cache)?;
+            let found = lookup.all(io, datom, &mut cache)?;
             entry.insert((found.clone(), found));
         }
     }
@@ -359,26 +359,33 @@ fn prepare_tail(
         let change = changes
             .get_mut(&prepare::stored_eav_key(datom)?)
             .expect("collected change");
-        if datom.added {
-            if change.1.is_none() || u64::from(datom.attribute) == crate::DB_ALTER_ATTRIBUTE {
-                change.1 = Some(datom.clone());
-            }
-        } else {
-            change.1 = None;
-        }
+        change.1.push(datom.clone());
     }
     let mut removals = Vec::new();
     let mut insertions = Vec::new();
-    for (old, current) in changes.into_values() {
-        if let (Some(old), Some(current)) = (&old, &current)
-            && old.tx == current.tx
-            && old.added == current.added
-            && old.value.stored_eq(&current.value)
-        {
-            continue;
-        }
-        removals.extend(old);
-        insertions.extend(current);
+    for (old, events) in changes.into_values() {
+        let current = crate::index::current_eav_group(events);
+        // A retained contribution preserves its original transaction/source.
+        // Compare complete datoms so another source's identical value remains
+        // material, and a global retraction removes every earlier source.
+        removals.extend(
+            old.iter()
+                .filter(|d| {
+                    current
+                        .binary_search_by(|c| c.cmp_in(d, IndexOrder::Eavt))
+                        .is_err()
+                })
+                .cloned(),
+        );
+        insertions.extend(
+            current
+                .iter()
+                .filter(|d| {
+                    old.binary_search_by(|c| c.cmp_in(d, IndexOrder::Eavt))
+                        .is_err()
+                })
+                .cloned(),
+        );
     }
     // Snapshot construction already folded every transition, including a
     // disable/re-enable cycle hidden by equal base/endpoint schemas.
@@ -419,7 +426,7 @@ fn prepare_tail(
         let mut edits = if old.history {
             let mut edits = prepare::history_edits(old.order, recent, &changed, &empty, &empty)?;
             for pair in &pairs {
-                if !(old.order == IndexOrder::Avet
+                if !(matches!(old.order, IndexOrder::Avet | IndexOrder::Savet)
                     && changed.iter().any(|c| c.0 == pair.retraction.attribute))
                     && metadata::schema_index_member(&endpoint.schema, &pair.retraction, old.order)?
                 {
@@ -516,8 +523,7 @@ fn advance_projection(
     {
         return Err(fault("AVET work differs from frozen schema or source"));
     }
-    let index = tree_index(work.history, IndexOrder::Avet);
-    let target = &descriptor.trees[index];
+    let target = tree(&descriptor, work.history, IndexOrder::Avet);
     let source = if work.clearing { target } else { &work.source };
     let mut cache = TreeNodeSet::default();
     let chunk = prepare::tree_attribute_chunk(
@@ -544,9 +550,15 @@ fn advance_projection(
     io.stats.projection_datoms = io.stats.projection_datoms.saturating_add(datoms);
     io.stats.input_datoms = io.stats.input_datoms.saturating_add(datoms);
     io.stats.projection_steps = io.stats.projection_steps.saturating_add(1);
-    prepare::canonicalize_merge_edits(&mut edits, IndexOrder::Avet);
-    cache = TreeNodeSet::default();
-    descriptor.trees[index] = io.merge(target, &edits, config, &mut cache)?;
+    // Attribute is contiguous only in AVET/AEVT. Use one bounded chunk as
+    // the exact datom witness for both projections, including clearing: a
+    // SAVET attribute may be scattered across every source in the tree.
+    for order in [IndexOrder::Avet, IndexOrder::Savet] {
+        prepare::canonicalize_merge_edits(&mut edits, order);
+        cache = TreeNodeSet::default();
+        let index = tree_index(work.history, order);
+        descriptor.trees[index] = io.merge(&descriptor.trees[index], &edits, config, &mut cache)?;
+    }
     descriptor.fulltext = None;
     if chunk.complete {
         if work.clearing && work.adding {
@@ -567,11 +579,538 @@ fn advance_projection(
 }
 
 fn tree_index(history: bool, order: IndexOrder) -> usize {
-    usize::from(history) * 4 + super::descriptors::order_tag(order) as usize
+    usize::from(history) * 6 + super::descriptors::order_tag(order) as usize
 }
 fn tree(descriptor: &IndexDescriptor, history: bool, order: IndexOrder) -> &TreeDescriptor {
     &descriptor.trees[tree_index(history, order)]
 }
 fn fault(message: &str) -> SemanticError {
     SemanticError::new(ErrorCategory::Fault, "storage/index-preparation", message)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::super::{ObjectReader, SnapshotMetadata};
+    use super::*;
+    use crate::{
+        Attribute, Cardinality, Database, EntityRef, Keyword, Schema, TxOp, TxValue, Value,
+        ValueType, View,
+    };
+
+    const ORDERS: [IndexOrder; 6] = [
+        IndexOrder::Eavt,
+        IndexOrder::Aevt,
+        IndexOrder::Avet,
+        IndexOrder::Vaet,
+        IndexOrder::Saevt,
+        IndexOrder::Savet,
+    ];
+
+    #[derive(Default)]
+    struct Memory(BTreeMap<ObjectId, Vec<u8>>);
+    impl ObjectReader for Memory {
+        fn read_object(&mut self, id: ObjectId) -> Result<Vec<u8>, SemanticError> {
+            self.0
+                .get(&id)
+                .cloned()
+                .ok_or_else(|| fault("Missing test object"))
+        }
+    }
+    impl ObjectWriter for Memory {
+        fn put_object(&mut self, bytes: &[u8]) -> Result<ObjectId, SemanticError> {
+            let id = crate::sha256(bytes);
+            self.0.insert(id, bytes.to_vec());
+            Ok(id)
+        }
+        fn flush_objects(&mut self) -> Result<(), SemanticError> {
+            Ok(())
+        }
+    }
+
+    fn config() -> TreeConfig {
+        TreeConfig {
+            max_leaf_datoms: 7,
+            ..TreeConfig::default()
+        }
+    }
+    fn schema(indexed: bool, no_history: bool) -> Schema {
+        let mut schema = Schema::new();
+        for (id, name, kind) in [
+            (100, "name", ValueType::String),
+            (101, "link", ValueType::Ref),
+        ] {
+            let mut attribute =
+                Attribute::new(id, Keyword::new("test", name), kind, Cardinality::Many);
+            attribute.indexed = indexed;
+            attribute.no_history = no_history;
+            schema.install(attribute).unwrap();
+        }
+        schema
+    }
+    fn add(attribute: u32, value: Value) -> TxOp {
+        TxOp::Add {
+            entity: EntityRef::Id(500),
+            attribute,
+            value: TxValue::Scalar(value),
+        }
+    }
+    fn withdraw(attribute: u32, value: Value) -> TxOp {
+        TxOp::Retract {
+            entity: EntityRef::Id(500),
+            attribute,
+            value: Some(TxValue::Scalar(value)),
+        }
+    }
+    fn descriptor(memory: &mut Memory, db: &Database) -> IndexDescriptor {
+        let mut trees = Vec::new();
+        for history in [false, true] {
+            for order in ORDERS {
+                let built = crate::index::tree::build_tree(
+                    order,
+                    history,
+                    db.datoms(
+                        if history {
+                            View::History
+                        } else {
+                            View::Current
+                        },
+                        order,
+                    ),
+                    &config(),
+                )
+                .unwrap();
+                for (_, bytes) in built.nodes.iter() {
+                    memory.put_object(bytes).unwrap();
+                }
+                trees.push(built.descriptor);
+            }
+        }
+        IndexDescriptor {
+            identity: [7; 16],
+            basis: db.basis_t(),
+            generation: 0,
+            trees,
+            pending_avet: Vec::new(),
+            avet_work: Vec::new(),
+            fulltext: None,
+        }
+    }
+    fn read(
+        memory: &Memory,
+        descriptor: &IndexDescriptor,
+        history: bool,
+        order: IndexOrder,
+    ) -> Vec<Datom> {
+        let nodes = TreeNodeSet::from_nodes(memory.0.clone());
+        crate::index::tree::range_tree(tree(descriptor, history, order), &nodes, None, None)
+            .unwrap()
+            .datoms
+    }
+    fn snapshot(
+        memory: &mut Memory,
+        indexed: &IndexDescriptor,
+        states: &[Database],
+    ) -> (tempfile::TempDir, BlockSnapshot) {
+        let endpoint = states.last().unwrap();
+        let mut log = super::super::log::LogRoot::empty();
+        for db in states {
+            let entry = super::super::log::LogEntry {
+                basis_t: db.basis_t(),
+                eidx_frontier: db.eidx_frontier(),
+                reserved_frontier: db.reserved_allocation().unwrap().frontier(),
+                tx_data: db
+                    .datoms(View::History, IndexOrder::Eavt)
+                    .into_iter()
+                    .filter(|d| crate::tx_to_t(d.tx).ok() == Some(db.basis_t()))
+                    .collect(),
+            };
+            log = log.append(memory, &entry).unwrap();
+        }
+        let metadata = SnapshotMetadata {
+            identity: indexed.identity,
+            basis: endpoint.basis_t(),
+            generation: 0,
+            eidx_frontier: endpoint.eidx_frontier(),
+            reserved_frontier: endpoint.reserved_allocation().unwrap().frontier(),
+            last_tx_instant: endpoint.last_tx_instant(),
+            excision: None,
+        };
+        let metadata = memory.put_object(&metadata.encode().unwrap()).unwrap();
+        let indexes = memory.put_object(&indexed.encode().unwrap()).unwrap();
+        let publication = super::super::root::DatabaseRoot {
+            identity: indexed.identity,
+            basis: endpoint.basis_t(),
+            writer_epoch: 0,
+            log: log.head(),
+            indexes: Some(indexes),
+            metadata: Some(metadata),
+            receipts: None,
+            read_authorization: None,
+        };
+        let value = super::super::root::DatabaseValueRoot::from(&publication);
+        let publication = memory.put_object(&publication.encode().unwrap()).unwrap();
+        let directory = tempfile::tempdir().unwrap();
+        std::fs::create_dir(directory.path().join("objects")).unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            for path in [
+                directory.path().to_path_buf(),
+                directory.path().join("objects"),
+            ] {
+                std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o700)).unwrap();
+            }
+        }
+        for (id, bytes) in &memory.0 {
+            let name: String = id.iter().map(|b| format!("{b:02x}")).collect();
+            std::fs::write(directory.path().join("objects").join(name), bytes).unwrap();
+        }
+        let point = crate::backup::ReadPoint {
+            point: crate::BackupPoint {
+                lineage_id: "test".into(),
+                log_generation: 0,
+                basis_t: value.basis,
+                manifest_hash: [0; 32],
+                objects_written: 0,
+                objects_reused: 0,
+            },
+            publication,
+            value,
+            open_object_reads: 0,
+            open_object_bytes: 0,
+        };
+        let snapshot = BlockSnapshot::open_repository(
+            directory.path(),
+            &point,
+            super::super::BlockReadConfig::default(),
+        )
+        .unwrap();
+        (directory, snapshot)
+    }
+    fn prepared(
+        memory: &mut Memory,
+        indexed: &IndexDescriptor,
+        states: &[Database],
+    ) -> (IndexDescriptor, BlockIndexStats) {
+        let (_directory, snapshot) = snapshot(memory, indexed, states);
+        let mut control = || Ok(());
+        let mut io = PreparationIo {
+            store: memory,
+            control: &mut control,
+            stats: BlockIndexStats::default(),
+        };
+        let descriptor = prepare_tail(
+            &snapshot,
+            indexed,
+            snapshot.avet_unready(),
+            &mut io,
+            &config(),
+            2,
+        )
+        .unwrap();
+        (descriptor, io.stats)
+    }
+
+    #[test]
+    fn durable_tail_keeps_sources_and_global_retraction_in_all_orders() {
+        let initial = Database::new(schema(true, false)).unwrap();
+        let operations = [
+            add(100, Value::String("peaches".into())),
+            add(101, Value::Ref(43)),
+        ];
+        let first = initial
+            .with(&operations, 1, EntityRef::Id(99))
+            .unwrap()
+            .db_after;
+        let second = first
+            .with(&operations, 2, EntityRef::Id(98))
+            .unwrap()
+            .db_after;
+        let mut memory = Memory::default();
+        let old = descriptor(&mut memory, &first);
+        let states = [initial.clone(), first.clone(), second.clone()];
+        let (merged, _) = prepared(&mut memory, &old, &states);
+        assert_eq!(merged.trees.len(), 12);
+        for history in [false, true] {
+            for order in ORDERS {
+                assert_eq!(
+                    read(&memory, &merged, history, order),
+                    second.datoms(
+                        if history {
+                            View::History
+                        } else {
+                            View::Current
+                        },
+                        order
+                    )
+                );
+            }
+        }
+        let removed = second
+            .with(
+                &[
+                    withdraw(100, Value::String("peaches".into())),
+                    withdraw(101, Value::Ref(43)),
+                ],
+                3,
+                EntityRef::Id(97),
+            )
+            .unwrap()
+            .db_after;
+        let readded = removed
+            .with(&operations, 4, EntityRef::Id(96))
+            .unwrap()
+            .db_after;
+        let states = [initial, first.clone(), second, removed, readded.clone()];
+        let (replacement, _) = prepared(&mut memory, &merged, &states);
+        for history in [false, true] {
+            for order in ORDERS {
+                assert_eq!(
+                    read(&memory, &replacement, history, order),
+                    readded.datoms(
+                        if history {
+                            View::History
+                        } else {
+                            View::Current
+                        },
+                        order
+                    )
+                );
+            }
+        }
+        assert_eq!(
+            read(&memory, &old, false, IndexOrder::Saevt),
+            first.datoms(View::Current, IndexOrder::Saevt)
+        );
+    }
+
+    #[test]
+    fn no_history_withdrawal_uses_shared_cross_source_witnesses() {
+        let initial = Database::new(schema(true, true)).unwrap();
+        let operations = [
+            add(100, Value::String("peaches".into())),
+            add(101, Value::Ref(43)),
+        ];
+        let first = initial
+            .with(&operations, 1, EntityRef::Id(99))
+            .unwrap()
+            .db_after;
+        let second = first
+            .with(&operations, 2, EntityRef::Id(98))
+            .unwrap()
+            .db_after;
+        let mut memory = Memory::default();
+        let old = descriptor(&mut memory, &second);
+        let removed = second
+            .with(
+                &[
+                    withdraw(100, Value::String("peaches".into())),
+                    withdraw(101, Value::Ref(43)),
+                ],
+                3,
+                EntityRef::Id(97),
+            )
+            .unwrap()
+            .db_after;
+        let (merged, stats) = prepared(&mut memory, &old, &[initial, first, second, removed]);
+        assert_eq!(stats.no_history_pairs, 4);
+        for history in [false, true] {
+            for order in ORDERS {
+                let facts = read(&memory, &merged, history, order);
+                assert!(
+                    facts.iter().all(|d| d.entity != 500),
+                    "history={history}, order={order:?}, facts={:?}",
+                    facts
+                        .into_iter()
+                        .filter(|d| d.entity == 500)
+                        .collect::<Vec<_>>()
+                );
+            }
+        }
+        assert_eq!(
+            read(&memory, &old, true, IndexOrder::Saevt)
+                .iter()
+                .filter(|d| d.entity == 500)
+                .count(),
+            4
+        );
+    }
+
+    #[test]
+    fn bounded_backfill_and_clear_publish_avet_savet_together() {
+        let mut memory = Memory::default();
+        let genesis = Database::new(schema(false, false)).unwrap();
+        let mut descriptor = descriptor(&mut memory, &genesis);
+        // Scatter the attribute among source-first ranges and force multiple
+        // bounded chunks in both current and history trees.
+        for history in [false, true] {
+            let datoms: Vec<_> = (0..1100)
+                .map(|i| Datom {
+                    entity: 1000 + i,
+                    attribute: 100,
+                    value: Value::String(format!("item-{i}")),
+                    tx: crate::t_to_tx(1).unwrap(),
+                    source: 90 + i % 5,
+                    added: true,
+                })
+                .collect();
+            let mut aevt = read(&memory, &descriptor, history, IndexOrder::Aevt);
+            aevt.extend(datoms);
+            let built =
+                crate::index::tree::build_tree(IndexOrder::Aevt, history, aevt, &config()).unwrap();
+            for (_, bytes) in built.nodes.iter() {
+                memory.put_object(bytes).unwrap();
+            }
+            descriptor.trees[tree_index(history, IndexOrder::Aevt)] = built.descriptor;
+        }
+        descriptor.pending_avet.push(100);
+        descriptor
+            .avet_work
+            .push(new_work(&descriptor, 100, true, false));
+        let original = descriptor.clone();
+        let enabled = schema(true, false);
+        let disabled = schema(false, false);
+        let mut control = || Ok(());
+        let mut steps = 0;
+        while has_projection(&descriptor) {
+            let mut io = PreparationIo {
+                store: &mut memory,
+                control: &mut control,
+                stats: BlockIndexStats::default(),
+            };
+            descriptor = advance_projection(&descriptor, &enabled, &mut io, &config()).unwrap();
+            assert!(io.stats.projection_datoms <= PROJECTION_DATOMS as u64);
+            steps += 1;
+            for history in [false, true] {
+                let mut avet = read(&memory, &descriptor, history, IndexOrder::Avet);
+                let mut savet = read(&memory, &descriptor, history, IndexOrder::Savet);
+                avet.sort_by(|a, b| a.cmp_in(b, IndexOrder::Eavt));
+                savet.sort_by(|a, b| a.cmp_in(b, IndexOrder::Eavt));
+                assert_eq!(avet, savet);
+            }
+            assert!(steps < 20);
+        }
+        assert!(steps >= 6);
+        for history in [false, true] {
+            assert_eq!(
+                read(&memory, &descriptor, history, IndexOrder::Savet)
+                    .iter()
+                    .filter(|d| d.attribute == 100)
+                    .count(),
+                1100
+            );
+            assert!(
+                read(&memory, &original, history, IndexOrder::Savet)
+                    .iter()
+                    .all(|d| d.attribute != 100)
+            );
+        }
+        descriptor
+            .avet_work
+            .push(new_work(&descriptor, 100, false, false));
+        while has_projection(&descriptor) {
+            let mut io = PreparationIo {
+                store: &mut memory,
+                control: &mut control,
+                stats: BlockIndexStats::default(),
+            };
+            descriptor = advance_projection(&descriptor, &disabled, &mut io, &config()).unwrap();
+            assert!(io.stats.projection_datoms <= PROJECTION_DATOMS as u64);
+            for history in [false, true] {
+                let mut avet = read(&memory, &descriptor, history, IndexOrder::Avet);
+                let mut savet = read(&memory, &descriptor, history, IndexOrder::Savet);
+                avet.sort_by(|a, b| a.cmp_in(b, IndexOrder::Eavt));
+                savet.sort_by(|a, b| a.cmp_in(b, IndexOrder::Eavt));
+                assert_eq!(avet, savet);
+            }
+        }
+        for history in [false, true] {
+            for order in [IndexOrder::Avet, IndexOrder::Savet] {
+                assert!(
+                    read(&memory, &descriptor, history, order)
+                        .iter()
+                        .all(|d| d.attribute != 100)
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn fulltext_uses_the_six_order_history_offset_for_incremental_omissions() {
+        let mut schema = Schema::new();
+        let mut attribute = Attribute::new(
+            100,
+            Keyword::new("test", "text"),
+            ValueType::String,
+            Cardinality::Many,
+        )
+        .fulltext();
+        attribute.no_history = true;
+        schema.install(attribute).unwrap();
+        let initial = Database::new(schema).unwrap();
+        let operation = add(100, Value::String("fresh peaches".into()));
+        let first = initial
+            .with(std::slice::from_ref(&operation), 1, EntityRef::Id(99))
+            .unwrap()
+            .db_after;
+        let second = first
+            .with(&[operation], 2, EntityRef::Id(98))
+            .unwrap()
+            .db_after;
+        let mut memory = Memory::default();
+        let mut before = descriptor(&mut memory, &second);
+        let (attachment, stats) = super::super::fulltext::build_for_descriptor(
+            &mut memory,
+            &before,
+            second.schema(),
+            None,
+            &crate::FulltextBuildLimits::default(),
+        )
+        .unwrap()
+        .unwrap();
+        assert_eq!(stats.documents_added, 2);
+        before.fulltext = Some(attachment);
+        let removed = second
+            .with(
+                &[withdraw(100, Value::String("fresh peaches".into()))],
+                3,
+                EntityRef::Id(97),
+            )
+            .unwrap()
+            .db_after;
+        let (after, _) = prepared(
+            &mut memory,
+            &before,
+            &[initial, first, second.clone(), removed.clone()],
+        );
+        let (_, stats) = super::super::fulltext::build_for_descriptor(
+            &mut memory,
+            &after,
+            removed.schema(),
+            Some((&before, second.schema())),
+            &crate::FulltextBuildLimits::default(),
+        )
+        .unwrap()
+        .unwrap();
+        assert_eq!(stats.documents_removed, 2);
+        assert_eq!(stats.documents_added, 0);
+    }
+
+    #[test]
+    fn old_storage_blocks_are_rejected_before_log_payload_interpretation() {
+        let block = super::super::root::Block {
+            kind: super::super::log::LOG_ENTRY_KIND,
+            links: Vec::new(),
+            payload: vec![0; 40],
+        };
+        let bytes = block.encode().unwrap();
+        assert_eq!(&bytes[4..6], &3u16.to_be_bytes());
+        assert_eq!(
+            super::super::root::Block::decode(&crate::sha256(&bytes), &bytes).unwrap(),
+            block
+        );
+        let mut old = bytes;
+        old[4..6].copy_from_slice(&2u16.to_be_bytes());
+        assert!(super::super::root::Block::decode(&crate::sha256(&old), &old).is_err());
+    }
 }

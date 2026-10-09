@@ -80,8 +80,10 @@ compare as sequences, while maps and sets compare independently of entry order.
 Numeric domains remain distinct for EDN equality: `1` and `1N` are distinct keys.
 
 Choose the data structure for the API receiving it. An `EntityMap` has
-`id: Option<EntityRef>` and `attributes: Vec<(AttributeRef, MapValue)>`;
-`TxForm::EntityMap` describes entity assertions, not a stored map value.
+`id: Option<EntityRef>` and
+`attributes: Vec<(AttributeRef, MapValue)>`; `TxForm::EntityMap` describes entity
+assertions, not a stored map value. The enclosing transaction supplies one source
+for all assertions, including nested entity facts.
 `MapValue::Many` describes multiple assertions and `MapValue::Nested` a nested
 entity. Transaction-function arguments use `RuntimeValue::Vector` and
 `RuntimeValue::map`; the latter accepts `(Value, RuntimeValue)` pairs, validates
@@ -163,8 +165,9 @@ characters, nil, and arbitrary tags do not become stored scalar values merely
 because the reader accepts them. Query conversion supports these broader data
 shapes; it rejects map keys that collapse under native query equality.
 
-For transaction data use `edb_core::edn_transaction::read_edn_transaction` or
-`TransactionRequest::from_edn`; the outer form must be a list or vector.
+For transaction data use `edb_core::edn_transaction::read_edn_transaction(text)` or
+`TransactionRequest::from_edn(key, text, source)`; the outer form must be a list or
+vector. The parser returns forms only; the request requires one `EntityRef` source.
 For queries use `edb_core::edn_query::parse_query_edn` or `query_from_edn`.
 These prepare data for their respective APIs; ordinary EDN reading does not
 execute a transaction or query.

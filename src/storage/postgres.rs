@@ -120,8 +120,8 @@ impl PgBlockStore {
 
     /// Add provider-level runtime grants to pre-existing dedicated roles.
     /// Writers may insert/protect objects, but only operators may delete them.
-    /// Peers read objects; both roles maintain opaque references, including
-    /// ephemeral reference cleanup. These are trusted storage credentials, not
+    /// Peers read objects and references; writers maintain opaque references,
+    /// including ephemeral cleanup. These are trusted storage credentials, not
     /// per-database authorization. Existing grants and role memberships can
     /// broaden access; this helper neither audits nor revokes them.
     pub fn grant_runtime_privileges(
@@ -980,27 +980,7 @@ fn read_error(error: postgres::Error) -> SemanticError {
             "Storage SQL parameter type does not match its Rust encoding",
         );
     }
-    let state = error.as_db_error().map(|e| e.code().code());
-    let category = match state {
-        Some("42501") => ErrorCategory::Forbidden,
-        Some("40001" | "40P01" | "23505") => ErrorCategory::Conflict,
-        Some("57014") => ErrorCategory::Interrupted,
-        Some("55P03") => ErrorCategory::Busy,
-        None => ErrorCategory::Unavailable,
-        Some(s) if s.starts_with("08") || matches!(s, "57P01" | "57P02" | "57P03") => {
-            ErrorCategory::Unavailable
-        }
-        _ => ErrorCategory::Fault,
-    };
-    let mut result = SemanticError::new(
-        category,
-        "storage/postgres",
-        "PostgreSQL storage operation failed",
-    );
-    if let Some(state) = state {
-        result = result.detail("postgres_sqlstate", state);
-    }
-    result
+    crate::postgres_connection::postgres_error("storage/postgres", error)
 }
 fn commit_error(error: postgres::Error) -> SemanticError {
     let mut result = read_error(error);
@@ -1010,4 +990,100 @@ fn commit_error(error: postgres::Error) -> SemanticError {
         result.message = "Storage acknowledgement was lost; resolve the intended object/reference before retrying".to_owned();
     }
     result
+}
+
+#[cfg(test)]
+mod error_tests {
+    use super::*;
+
+    fn driver_error() -> postgres::Error {
+        "port=invalid-transport-diagnostic"
+            .parse::<postgres::Config>()
+            .unwrap_err()
+    }
+
+    #[test]
+    fn storage_driver_failure_retains_transport_diagnostics_and_commit_knowledge() {
+        let read = read_error(driver_error());
+        assert_eq!(read.category, ErrorCategory::Unavailable);
+        assert_eq!(read.code, "storage/postgres");
+        assert_eq!(
+            read.details.get("postgres_transport").map(String::as_str),
+            Some("true")
+        );
+        assert_eq!(read.message, "PostgreSQL transport error");
+        assert!(!read.message.contains("invalid-transport-diagnostic"));
+        let commit = commit_error(driver_error());
+        assert_eq!(commit.category, ErrorCategory::UnknownOutcome);
+        assert_eq!(commit.code, "storage/unknown-outcome");
+        assert_eq!(commit.details, read.details);
+    }
+
+    #[test]
+    #[ignore = "requires EDB_TEST_POSTGRES_URL for a disposable PostgreSQL database"]
+    fn storage_server_errors_preserve_categories_and_distinguish_commit_uncertainty() {
+        let mut client = postgres::Client::connect(
+            &std::env::var("EDB_TEST_POSTGRES_URL")
+                .expect("EDB_TEST_POSTGRES_URL must name a disposable PostgreSQL database"),
+            postgres::NoTls,
+        )
+        .unwrap();
+        for (state, category, transport) in [
+            ("23505", ErrorCategory::Conflict, false),
+            ("40001", ErrorCategory::Conflict, false),
+            ("40P01", ErrorCategory::Conflict, false),
+            ("42501", ErrorCategory::Forbidden, false),
+            ("57014", ErrorCategory::Interrupted, false),
+            ("55P03", ErrorCategory::Busy, false),
+            ("22012", ErrorCategory::Fault, false),
+            ("08006", ErrorCategory::Unavailable, true),
+            ("57P01", ErrorCategory::Unavailable, true),
+            ("57P02", ErrorCategory::Unavailable, true),
+            ("57P03", ErrorCategory::Unavailable, true),
+        ] {
+            // Controlled server diagnostics without mutating shared storage.
+            let sql = format!(
+                "DO $$BEGIN RAISE EXCEPTION USING ERRCODE='{state}', MESSAGE='rejected ''private'' value'; END$$"
+            );
+            let read = read_error(client.batch_execute(&sql).unwrap_err());
+            assert_eq!(read.category, category, "{state}");
+            assert_eq!(read.code, "storage/postgres");
+            assert_eq!(
+                read.details.get("postgres_sqlstate").map(String::as_str),
+                Some(state)
+            );
+            assert_eq!(
+                read.details.contains_key("postgres_transport"),
+                transport,
+                "{state}"
+            );
+            assert!(!read.message.contains("private"));
+            let commit = commit_error(client.batch_execute(&sql).unwrap_err());
+            assert_eq!(
+                commit.category,
+                if transport {
+                    ErrorCategory::UnknownOutcome
+                } else {
+                    category
+                },
+                "{state}"
+            );
+            assert_eq!(
+                commit.code,
+                if transport {
+                    "storage/unknown-outcome"
+                } else {
+                    "storage/postgres"
+                }
+            );
+        }
+        let wrong_type = read_error(
+            client
+                .query("SELECT $1::integer", &[&"wrong type"])
+                .unwrap_err(),
+        );
+        assert_eq!(wrong_type.category, ErrorCategory::Fault);
+        assert_eq!(wrong_type.code, "storage/driver-type");
+        assert!(!wrong_type.details.contains_key("postgres_transport"));
+    }
 }

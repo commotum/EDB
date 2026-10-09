@@ -52,20 +52,51 @@ fn selector() -> Result<Program, SemanticError> {
 Invoke it with `ProgramRuntime::execute_query` and one captured `&DatabaseValue`,
 passing an attribute ref/ident and the threshold. Deploying the same artifact
 can use `PostgresOperator::install_program(&client, request_key, ident, &program,
-&dependencies, timeout)`. This stages the complete immutable closure and submits
-ordinary `:db/ident` / `:db/fn` assertions. Dependencies may be supplied in any
-order; an exact retry resolves its durable receipt before inspecting them.
+&dependencies, source, timeout)`. This stages the complete immutable closure and
+submits ordinary `:db/ident` / `:db/fn` assertions. The `source: EntityRef`
+attributes every assertion and retraction in the transaction, including its
+automatically generated `:db/txInstant` assertion. Dependencies may be supplied
+in any order; an exact retry, including the same source, resolves its durable
+receipt before inspecting them.
 
 For applications composing their own binding transaction,
 `PostgresOperator::deploy_program(&program)` returns a `ProgramHash`. Fixed
-dependencies must already be present. Staged code is protected for the GC grace
-period; no application-owned deployment handle or release call is necessary.
+dependencies must already be present. The binding transaction supplies source
+once through its request; its ordinary assertions and automatic timestamp carry
+that source, as described in [transaction data](04_transaction_data.md).
+Staged code is protected for the GC grace period; no application-owned deployment
+handle or release call is necessary.
 Committed database roots retain bound code. Collection removes expired unbound
 staging roots and their otherwise-unreferenced code. Missing dependencies fail
 rather than publishing broken code. Transaction-kind programs can consume
 the query result using ordinary VM instructions and emit transaction forms;
 they still run against the transaction's immutable db-before. Staging alone does
 not install a function binding; `install_program` performs both steps.
+
+Each emitted assertion or retraction receives the enclosing transaction's source.
+The write instructions consume these stack operands, listed bottom to top:
+
+| Instruction | Operands |
+| --- | --- |
+| `EmitAdd(attribute)` / `EmitRetract(attribute)` | `[entity, value]` |
+| `EmitRetractAll(attribute)` | `[entity]` |
+| `EmitCas(attribute)` | `[entity, old, new]` |
+| `EmitRetractEntity` | `[entity]` |
+| `EmitEntityMap` | `[map]` |
+
+Programs emit ordinary transaction forms without attribution arguments.
+`EmitEntityMap` emits an ordinary entity map, including any nested maps; all
+resulting facts receive the enclosing transaction's source. `EmitCall` passes
+the called program's ordinary application arguments. The function binding's
+source describes who installed the binding; the enclosing transaction's source
+attributes its emitted writes. Matching binding contributions from several
+sources still resolve one distinct `:db/fn` value. Database read instructions
+likewise count distinct values across source contributions. The transaction
+source participates in canonical request identity. EDB generates the transaction
+timestamp automatically after
+selecting its instant, without reading the clock during program expansion.
+Ensure and partition instructions retain their existing operands because they
+do not emit datoms.
 
 Native templates support the shared evaluator's predicates, functions, recursive
 rules, `not`/`not-join`, `or`/`or-join`, dynamic attributes, aggregates and Pull.

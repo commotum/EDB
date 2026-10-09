@@ -157,9 +157,9 @@ fn prefix_cursor(&self, prefix: &IndexPrefix)
     -> Result<DatabaseValuePrefixCursor<'_>, SemanticError>;
 ```
 
-Returns datoms from an index. `IndexOrder` is one of `Eavt`, `Aevt`, `Avet` or
-`Vaet`. An optional prefix supplies leading components in index order to narrow
-the result. Collecting methods materialize a vector; cursors yield
+Returns datoms from an index. `IndexOrder` is one of `Eavt`, `Aevt`, `Avet`,
+`Vaet`, `Saevt` or `Savet`. An optional prefix supplies leading components in
+index order to narrow the result. Collecting methods materialize a vector; cursors yield
 `Result<Datom, SemanticError>` incrementally. Prefix traversal terminates when
 the supplied components no longer match.
 
@@ -171,9 +171,11 @@ Datoms expose named Rust fields, rather than keyword or positional lookup:
 | `attribute` | `u32` | Attribute ID. |
 | `value` | `Value` | Attribute value. |
 | `tx` | `u64` | Transaction entity ID; use `tx_to_t` for its logical coordinate. |
+| `source` | `u64` | ID of the entity to whom the assertion or retraction is attributed. |
 | `added` | `bool` | `true` for assertion, `false` for retraction. |
 
-AVET covers available indexed/unique projections, and VAET covers references.
+EAVT, AEVT and SAEVT cover all attributes. AVET and SAVET share available
+indexed/unique projections, and VAET covers references.
 Check `has_avet` before relying on an attribute projection during an index
 transition. See [raw index access](../06_indexes/04_index_apis.md) for prefix
 construction, index readiness and temporal views, and [Datom](types/05_datom.md)
@@ -245,7 +247,7 @@ fn history(self) -> DatabaseValue;
 Returns a database value containing retained assertions and retractions across
 time. A history value can be passed to datom cursors, bounded index scans and
 queries, but not to speculative transactions or Pull. Queries against history
-include retractions as well as assertions. The fifth datom field, `added`, is
+include retractions as well as assertions. The sixth datom field, `added`, is
 true for assertions and false for retractions.
 
 Temporal and custom filters remain in force. Index history is subject to
@@ -427,21 +429,22 @@ This complete in-memory example consumes one prepared row at a time. It requires
 no live database and leaves the earlier value unchanged:
 
 ```rust
-use edb_core::{Database, QueryControl, QuerySourceValue, SemanticError};
+use edb_core::{Database, EntityRef, Keyword, QueryControl, QuerySourceValue, SemanticError};
 use edb_core::edn_query::{EdnQueryArgument, parse_query_edn};
 use edb_core::edn_pull::parse_pull_edn;
 
 fn main() -> Result<(), SemanticError> {
     let initial = Database::bootstrap()?.database_value();
+    let source = EntityRef::Ident(Keyword::new("db.source", "system"));
     let schema = initial.with_edn(r#"[
       {:db/ident :person/name
        :db/valueType :db.type/string
        :db/cardinality :db.cardinality/one}
-    ]"#, 1_000)?;
+    ]"#, 1_000, source.clone())?;
     let report = schema.db_after.with_edn(r#"[
       {:db/id "ada" :person/name "Ada"}
       {:db/id "grace" :person/name "Grace"}
-    ]"#, 2_000)?;
+    ]"#, 2_000, source)?;
     let pattern = parse_pull_edn("[:person/name]")?;
     let expected = report.db_after.pull(&pattern, report.tempids["ada"])?;
     let query = parse_query_edn(
@@ -476,8 +479,8 @@ the point where the supplied components would reside. Missing suffix components
 position after the highest matching suffix. Traversal only terminates at the
 start of the index; callers must supply their own termination logic.
 
-The boundary selects EAVT, AEVT, AVET or VAET and zero through four leading
-components in index order. See [reverse seek](../06_indexes/05_rseek_datoms.md).
+The boundary selects EAVT, AEVT, AVET, VAET, SAEVT or SAVET and zero through
+five leading components in index order. See [reverse seek](../06_indexes/05_rseek_datoms.md).
 
 ## Seek: `DatabaseValue::seek_cursor`
 
@@ -492,8 +495,11 @@ exist. Callers must supply their own termination logic: seek does not filter to
 the boundary of the supplied components.
 
 Build schema-aware boundaries with `eavt_boundary`, `aevt_boundary`,
-`avet_boundary` or `vaet_boundary`. `IndexComponents` specifies zero through
-four leading components; the fourth is an `IndexTransaction`. The cursor yields
+`avet_boundary`, `vaet_boundary`, `saevt_boundary` or `savet_boundary`.
+`IndexComponents` specifies zero through five leading components. The original
+orders put `IndexTransaction` fourth and optional source `EntityIdentifier`
+fifth; source-first orders put source first and transaction fifth. Source
+identifiers resolve like entity identifiers. The cursor yields
 fallible datoms. `collect_seek_datoms` and `collect_reverse_seek_datoms`
 materialize the corresponding traversal. See [seek APIs](../06_indexes/04_index_apis.md#seek-apis).
 
@@ -540,9 +546,22 @@ fn transact(&self, request: TransactionRequest, timeout: Duration)
 ```
 
 Submits a transaction and waits for its result. Construct the request using
-`TransactionRequest::new(request_key, operations)`, `from_forms(request_key, forms)`
-or `from_edn(request_key, text)`. EDN transaction data is an outer vector of
-operation vectors, entity maps and transaction calls. See
+`TransactionRequest::new(request_key, operations, source)`,
+`from_forms(request_key, forms, source)` or `from_edn(request_key, text, source)`.
+The required `source: EntityRef` is supplied once for the transaction, including
+when its data is empty. Source follows ordinary entity-reference resolution;
+a source tempid must be established in entity position in the same transaction.
+EDN transaction data is an outer vector of ordinary operation vectors, entity
+maps and transaction calls. Every assertion and retraction, including generated
+changes and function results, receives the transaction's source. EDB
+automatically asserts exactly one `:db/txInstant` on
+the current transaction with that source. The writer normally selects its
+current clock value, clamped to the previous transaction instant. An explicit
+timestamp value in an ordinary map or add form must not precede the previous
+transaction instant or exceed the writer's clock, and must agree with any
+request-level time override.
+Timestamp data applies only to the current transaction; retraction and
+compare-and-swap of `:db/txInstant` are prohibited. See
 [transaction data](../04_transactions/04_transaction_data.md).
 
 Requires an attached transaction client. Returns a `ServiceTransactionReport`:
@@ -566,8 +585,10 @@ include it.
 There is no default transaction timeout. The supplied duration covers the ticket
 wait and remaining observation wait, beginning after submission. Validation and
 encoding precede that wait. Timeout or disconnection after admission can mean
-`UnknownOutcome`; it does not prove rollback. Preserve the same request key and
-transaction data for exact retries. `submit` returns a ticket whose `wait(timeout)`
+`UnknownOutcome`; it does not prove rollback. Preserve the same request key,
+transaction data, source, basis condition and explicit time option for exact
+retries. Exact retries return the accepted result before fresh entity resolution
+or clock selection. `submit` returns a ticket whose `wait(timeout)`
 has the same outcome rules. Dropping a ticket does not cancel admitted work.
 
 For a separate writer, `transact_socket` and `transact_remote` return a
@@ -609,11 +630,11 @@ retention and excision still apply. See [LogValue](types/08_log.md).
 ## Speculative transaction: `DatabaseValue::with`
 
 ```rust,ignore
-fn with(&self, ops: &[TxOp], tx_instant: i64)
+fn with(&self, ops: &[TxOp], tx_instant: i64, source: EntityRef)
     -> Result<SpeculativeTransactionReport, SemanticError>;
-fn with_forms(&self, forms: &[TxForm], tx_instant: i64)
+fn with_forms(&self, forms: &[TxForm], tx_instant: i64, source: EntityRef)
     -> Result<SpeculativeTransactionReport, SemanticError>;
-fn with_edn(&self, text: &str, tx_instant: i64)
+fn with_edn(&self, text: &str, tx_instant: i64, source: EntityRef)
     -> Result<SpeculativeTransactionReport, SemanticError>;
 ```
 
@@ -624,7 +645,10 @@ while leaving the durable database unaffected. The report contains `db_before`,
 
 The data forms follow the same transaction semantics as durable submission;
 speculation does not need a request key and requires an explicit transaction
-instant in Unix milliseconds. History values cannot transact. Read filters,
+instant in Unix milliseconds and one source. EDB automatically asserts the
+instant with that source, even when the data is empty. An explicit timestamp
+value in ordinary transaction data must agree with the instant argument, which
+must not precede db-before. History values cannot transact. Read filters,
 including as-of/since, apply to the resulting view rather than to transaction
 generation or invariant checking. Speculation does not advance a connection or
 reserve IDs for a later durable transaction. See

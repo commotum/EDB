@@ -1,8 +1,8 @@
 //! Advisory semantic read hints. Hints never supply trusted blocks or facts:
 //! prefetch uses the writer's ordinary authenticated current-value read path.
 use crate::{
-    DatabaseValue, IndexPrefix, OperationContext, OperationKind, SemanticError, SnapshotReference,
-    SpeculationLimits, SpeculativeTransactionReport, TxForm,
+    DatabaseValue, EntityRef, IndexPrefix, OperationContext, OperationKind, SemanticError,
+    SnapshotReference, SpeculationLimits, SpeculativeTransactionReport, TxForm,
 };
 use std::cell::RefCell;
 use std::collections::BTreeSet;
@@ -104,7 +104,9 @@ fn prefix_weight(prefix: &IndexPrefix) -> u64 {
     let value = match prefix {
         IndexPrefix::Eavt { value, .. }
         | IndexPrefix::Aevt { value, .. }
-        | IndexPrefix::Avet { value, .. } => value.as_ref(),
+        | IndexPrefix::Avet { value, .. }
+        | IndexPrefix::Saevt { value, .. }
+        | IndexPrefix::Savet { value, .. } => value.as_ref(),
         IndexPrefix::Vaet { value, .. } => Some(value),
     };
     let bytes = value
@@ -249,6 +251,7 @@ impl DatabaseValue {
         &self,
         forms: &[TxForm],
         tx_instant: i64,
+        source: EntityRef,
         speculation: SpeculationLimits,
         hint_limits: HintLimits,
     ) -> Result<HintedSpeculation, SemanticError> {
@@ -261,7 +264,7 @@ impl DatabaseValue {
             stats: HintTraceStats::default(),
         }));
         let _guard = TraceGuard(TRACE.with(|active| active.replace(Some(Rc::clone(&trace)))));
-        let report = self.with_forms_with_limits(forms, tx_instant, speculation)?;
+        let report = self.with_forms_with_limits(forms, tx_instant, source, speculation)?;
         let mut trace = trace.borrow_mut();
         trace.stats.elapsed_nanos = nanos(started.elapsed());
         let hints = origin.map(|origin| TransactionHints {

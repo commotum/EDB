@@ -1,0 +1,45 @@
+{
+  "checked_at": "2026-10-08T03:16:19.275071+00:00",
+  "protected_files": 349,
+  "protected_changes": [],
+  "runtime_file_changes": [
+    "/home/jake/Developer/Course_Academy/scripts/question_capture/capture.py",
+    "/home/jake/Developer/Course_Academy/scripts/question_capture/capture_repair.py",
+    "/home/jake/Developer/Course_Academy/scripts/question_capture/database.py"
+  ],
+  "processes": [
+    {
+      "pid": 2075,
+      "same_executable": true,
+      "executable": "/usr/local/MATLAB/R2025b/sys/postgresql/glnxa64/PostgreSQL/bin/postgres"
+    },
+    {
+      "pid": 2188,
+      "same_executable": true,
+      "executable": "/usr/bin/python3.12"
+    },
+    {
+      "pid": 2205,
+      "same_executable": true,
+      "executable": "/home/jake/Developer/Course_Academy/.local/edb/course-academy-transactor"
+    },
+    {
+      "pid": 2435,
+      "same_executable": true,
+      "executable": "/usr/bin/python3.12"
+    },
+    {
+      "pid": 3074,
+      "same_executable": true,
+      "executable": "/home/jake/Developer/Course_Academy/.local/graph-explorer/reader-f40f9e37fbac321f"
+    },
+    {
+      "pid": 3075,
+      "same_executable": true,
+      "executable": "/home/jake/Developer/Course_Academy/.local/graph-explorer/learning-1c66b72064dba820"
+    }
+  ],
+  "services": "MainPID=2435\nId=course-academy.service\nActiveState=active\nSubState=running\n\nMainPID=2188\nId=course-academy-writer.service\nActiveState=active\nSubState=running\n\nMainPID=2075\nId=course-academy-postgres.service\nActiveState=active\nSubState=running\n",
+  "old_branch": "master",
+  "old_head": "4b5f7b7a1e57e3c09b709a84e48ff798ff50b89e"
+}

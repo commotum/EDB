@@ -1,0 +1,9 @@
+    Checking edb-core v0.1.0 (/tmp/edb-cutover-impl-20261007)
+error: could not compile `edb-core` (example "process_workflow") due to 2 previous errors
+warning: build failed, waiting for other jobs to finish...
+error: could not compile `edb-core` (example "native_workflow") due to 6 previous errors
+error: could not compile `edb-core` (example "restart_workflow") due to 2 previous errors
+error: could not compile `edb-core` (example "operations_workflow") due to 2 previous errors
+error: could not compile `edb-core` (example "read_load") due to 2 previous errors
+error: could not compile `edb-core` (example "scale_workflow") due to 4 previous errors
+error: could not compile `edb-core` (example "application_workflow") due to 17 previous errors

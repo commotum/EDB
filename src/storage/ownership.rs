@@ -665,6 +665,31 @@ fn sealed_event(
     Ok((epoch <= sealed).then_some((key, reference)))
 }
 
+/// A retired lineage can be reused after its recorded content roots disappear
+/// and the collector has finished the sweep covering its retirement event.
+/// Later cycles can only start from Complete, so a strictly later checkpoint
+/// also proves that sweep finished. New unrelated ownership events do not
+/// invalidate this proof; join the returned checkpoint guard to admission.
+pub(crate) fn reclamation_sweep_guard(
+    store: &mut PgBlockStore,
+    retirement_epoch: u64,
+) -> Result<Option<RefCondition>, SemanticError> {
+    let reference = store.read_ref(STATE_REF)?;
+    let Some(bytes) = reference.as_ref().and_then(|r| r.value.as_deref()) else {
+        return Ok(None);
+    };
+    let state = State::load(store, root_id(bytes)?)?;
+    let finished = state.epoch > retirement_epoch
+        || (state.epoch == retirement_epoch
+            && matches!(
+                state.phase,
+                CollectionPhase::PruningRecords
+                    | CollectionPhase::ClearingEvents
+                    | CollectionPhase::Complete
+            ));
+    Ok(finished.then(|| condition(STATE_REF, reference.as_ref())))
+}
+
 /// A pruning proof is useful only at a settled boundary and must join the
 /// caller's publication CAS. A concurrent ownership change invalidates its clock guard.
 pub(crate) fn settled_count(

@@ -124,6 +124,10 @@ fn database_callable_entity(
     reference: &crate::EntityRef,
 ) -> Result<u64, SemanticError> {
     match reference {
+        crate::EntityRef::Edn(text) => database_callable_entity(
+            database,
+            &crate::edn_transaction::lower_entity_ref(database, text)?,
+        ),
         crate::EntityRef::Id(entity) => Ok(*entity),
         crate::EntityRef::Ident(ident) => database.entid(ident).ok_or_else(|| {
             SemanticError::new(
@@ -182,7 +186,7 @@ fn callable_hash(
 }
 
 /// Shared temporal binding lookup for transaction expansion and direct reads.
-/// Probe at most two visible values: a function binding is cardinality one.
+/// A function binding has one distinct value across all source contributions.
 /// The controlled cursor also admits raw candidates hidden by a view filter.
 pub(crate) fn database_program_hash_with_control(
     database: &DatabaseValue,
@@ -200,15 +204,21 @@ pub(crate) fn database_program_hash_with_control(
             format!("entity {entity} has no :db/fn value"),
         ));
     };
-    match first.value {
-        Value::Function(hash) if values.next_with_control(control).transpose()?.is_none() => {
-            Ok(hash)
-        }
-        _ => Err(fault(
+    let Value::Function(hash) = first.value else {
+        return Err(fault(
             "program/invalid-function-binding",
             format!("entity {entity} has a malformed :db/fn value"),
-        )),
+        ));
+    };
+    while let Some(datom) = values.next_with_control(control).transpose()? {
+        if datom.value != Value::Function(hash) {
+            return Err(fault(
+                "program/invalid-function-binding",
+                format!("entity {entity} has a malformed :db/fn value"),
+            ));
+        }
     }
+    Ok(hash)
 }
 
 fn execute_program_calls(
@@ -791,6 +801,7 @@ fn collect_native_query_dependencies(query: &crate::Query, output: &mut Vec<Dige
                         pattern
                             .transaction
                             .iter()
+                            .chain(pattern.fact_source.iter())
                             .chain(pattern.added.iter())
                             .map(Node::Term),
                     );
@@ -864,12 +875,43 @@ fn collect_native_query_dependencies(query: &crate::Query, output: &mut Vec<Dige
 
 fn collect_entity_program_hashes(reference: &crate::EntityRef, output: &mut Vec<Digest>) {
     match reference {
+        crate::EntityRef::Edn(text) => {
+            if let Ok(value) = crate::edn::read_edn(text) {
+                collect_edn_program_hashes(&value, output);
+            }
+        }
         crate::EntityRef::Lookup { value, .. } => collect_program_hashes_vec(value, output),
         crate::EntityRef::LookupInput { value, .. } => collect_input_program_hashes(value, output),
         crate::EntityRef::Id(_)
         | crate::EntityRef::Ident(_)
         | crate::EntityRef::Temp(_)
         | crate::EntityRef::Tx => {}
+    }
+}
+
+fn collect_edn_program_hashes(value: &crate::edn::EdnValue, output: &mut Vec<Digest>) {
+    use crate::edn::EdnValue;
+    let mut pending = vec![value];
+    while let Some(value) = pending.pop() {
+        match value {
+            EdnValue::List(values) | EdnValue::Vector(values) | EdnValue::Set(values) => {
+                pending.extend(values);
+            }
+            EdnValue::Map(entries) => {
+                for (key, value) in entries {
+                    pending.push(key);
+                    pending.push(value);
+                }
+            }
+            EdnValue::Tagged(_, payload) => {
+                if let Ok(Value::Function(hash)) = crate::edn_value::edn_to_value(value) {
+                    output.push(hash);
+                } else {
+                    pending.push(payload);
+                }
+            }
+            _ => {}
+        }
     }
 }
 
@@ -889,4 +931,486 @@ fn collect_program_hashes_vec(value: &Value, output: &mut Vec<Digest>) {
     let mut hashes = BTreeSet::new();
     collect_program_hashes(value, &mut hashes);
     output.extend(hashes);
+}
+
+#[cfg(test)]
+mod source_cutover_tests {
+    use super::*;
+    use crate::{
+        Attribute, Cardinality, Database, EntityRef, Instruction, Keyword, Program, RuntimeValue,
+        Schema, TxOp, Unique, ValueType,
+    };
+
+    fn database() -> Database {
+        let mut schema = Schema::new();
+        schema
+            .install(
+                Attribute::new(
+                    100,
+                    Keyword::new("item", "name"),
+                    ValueType::String,
+                    Cardinality::One,
+                )
+                .unique(Unique::Identity),
+            )
+            .unwrap();
+        schema
+            .install(Attribute::new(
+                101,
+                Keyword::new("item", "value"),
+                ValueType::Long,
+                Cardinality::One,
+            ))
+            .unwrap();
+        let mut component = Attribute::new(
+            102,
+            Keyword::new("item", "child"),
+            ValueType::Ref,
+            Cardinality::One,
+        );
+        component.component = true;
+        schema.install(component).unwrap();
+        schema
+            .install(Attribute::new(
+                103,
+                Keyword::new("item", "tag"),
+                ValueType::Long,
+                Cardinality::Many,
+            ))
+            .unwrap();
+        Database::new(schema).unwrap()
+    }
+
+    fn add(entity: u64, attribute: u32, value: Value) -> TxOp {
+        TxOp::Add {
+            entity: EntityRef::Id(entity),
+            attribute,
+            value: value.into(),
+        }
+    }
+
+    fn validated(program: Program) -> (ProgramHash, Arc<ValidatedProgram>) {
+        let bytes = crate::encode_program(&program).unwrap();
+        (
+            crate::sha256(&bytes),
+            Arc::new(ValidatedProgram::from_canonical(
+                crate::decode_program(&bytes).unwrap(),
+            )),
+        )
+    }
+
+    #[test]
+    fn duplicate_binding_contributions_resolve_invoke_and_expand_once() {
+        let (hash, program) = validated(Program {
+            kind: ProgramKind::Transaction,
+            arity: 0,
+            instructions: vec![
+                Instruction::PushEntity(EntityRef::Id(242)),
+                Instruction::PushConstant(Value::Long(2)),
+                Instruction::EmitAdd(101),
+                Instruction::Return,
+            ],
+        });
+        let ops = [
+            add(
+                260,
+                crate::DB_IDENT as u32,
+                Value::Keyword(Keyword::new("test", "write")),
+            ),
+            add(260, crate::DB_FN as u32, Value::Function(hash)),
+        ];
+        let first = database().with(&ops, 1, EntityRef::Id(99)).unwrap();
+        let second = first.db_after.with(&ops, 2, EntityRef::Id(98)).unwrap();
+        let db = second
+            .db_after
+            .database_value()
+            .retain_programs(BTreeMap::from([(hash, program)]));
+        assert_eq!(
+            db.values(260, crate::DB_FN as u32).unwrap(),
+            vec![Value::Function(hash)]
+        );
+        let mut candidates = 0;
+        assert_eq!(
+            database_program_hash_with_control(&db, 260, &mut |candidate| {
+                candidates += usize::from(candidate.is_some());
+                Ok(true)
+            })
+            .unwrap(),
+            hash
+        );
+        assert!(candidates >= 2, "every source contribution is admitted");
+        assert_eq!(
+            bound_program_hash(&db, &Keyword::new("test", "write")).unwrap(),
+            hash
+        );
+        let ProgramOutput::Transaction(forms) = db
+            .invoke(
+                Keyword::new("test", "write"),
+                &[],
+                crate::InvokeControl::default(),
+            )
+            .unwrap()
+        else {
+            panic!("expected transaction forms");
+        };
+        assert_eq!(forms.len(), 1);
+        let calls = [TxForm::ProgramCall(ProgramCall {
+            function: CallableRef::Database(EntityRef::Edn(":test/write".into())),
+            arguments: vec![],
+        })];
+        let report = db.with_forms(&calls, 3, EntityRef::Id(97)).unwrap();
+        assert_eq!(report.tx_data.len(), 2);
+        assert!(report.tx_data.iter().all(|datom| datom.source == 97));
+        assert_eq!(
+            report.db_after.values(242, 101).unwrap(),
+            vec![Value::Long(2)]
+        );
+        assert_eq!(
+            report.db_after.values(260, crate::DB_FN as u32).unwrap(),
+            vec![Value::Function(hash)]
+        );
+        // A withdrawal is global; a filtered value cannot revive the binding.
+        let withdrawn = report
+            .db_after
+            .with(
+                &[TxOp::Retract {
+                    entity: EntityRef::Id(260),
+                    attribute: crate::DB_FN as u32,
+                    value: Some(Value::Function(hash).into()),
+                }],
+                4,
+                EntityRef::Id(96),
+            )
+            .unwrap();
+        assert_eq!(
+            database_program_hash_with_control(
+                &withdrawn
+                    .db_after
+                    .clone()
+                    .filter(|_, datom| datom.source == 99),
+                260,
+                &mut |_| Ok(true)
+            )
+            .unwrap_err()
+            .code,
+            "program/not-a-database-function"
+        );
+    }
+
+    #[test]
+    fn binding_replacement_and_nested_invocation_read_the_same_db_before() {
+        let program = |value| Program {
+            kind: ProgramKind::Transaction,
+            arity: 0,
+            instructions: vec![
+                Instruction::PushEntity(EntityRef::Id(242)),
+                Instruction::PushConstant(Value::Long(value)),
+                Instruction::EmitAdd(101),
+                Instruction::Return,
+            ],
+        };
+        let (old_hash, old) = validated(program(1));
+        let (new_hash, new) = validated(program(2));
+        let nested = ProgramCall {
+            function: CallableRef::Database(EntityRef::Ident(Keyword::new("test", "write"))),
+            arguments: vec![],
+        };
+        let (parent_hash, parent) = validated(Program {
+            kind: ProgramKind::Transaction,
+            arity: 0,
+            instructions: vec![
+                Instruction::EmitCall {
+                    function: nested.function.clone(),
+                    argument_count: 0,
+                },
+                Instruction::Return,
+            ],
+        });
+        let bound = database()
+            .with(
+                &[
+                    add(
+                        260,
+                        crate::DB_IDENT as u32,
+                        Value::Keyword(Keyword::new("test", "write")),
+                    ),
+                    add(260, crate::DB_FN as u32, Value::Function(old_hash)),
+                ],
+                1,
+                EntityRef::Id(99),
+            )
+            .unwrap();
+        let before = bound
+            .db_after
+            .database_value()
+            .retain_programs(BTreeMap::from([
+                (old_hash, old),
+                (new_hash, new),
+                (parent_hash, parent),
+            ]));
+        let invocation = TxForm::ProgramCall(ProgramCall {
+            function: CallableRef::ExactHash(parent_hash),
+            arguments: vec![],
+        });
+        let forms = [
+            TxForm::Op(add(260, crate::DB_FN as u32, Value::Function(new_hash))),
+            invocation.clone(),
+        ];
+        let replaced = before.with_forms(&forms, 2, EntityRef::Id(98)).unwrap();
+        assert_eq!(
+            replaced.db_after.values(242, 101).unwrap(),
+            vec![Value::Long(1)]
+        );
+        assert_eq!(
+            replaced.db_after.values(260, crate::DB_FN as u32).unwrap(),
+            vec![Value::Function(new_hash)]
+        );
+        assert!(replaced.tx_data.iter().all(|datom| datom.source == 98));
+        let later = replaced
+            .db_after
+            .with_forms(std::slice::from_ref(&invocation), 3, EntityRef::Id(97))
+            .unwrap();
+        assert_eq!(
+            later.db_after.values(242, 101).unwrap(),
+            vec![Value::Long(2)]
+        );
+        let retained = before
+            .with_forms(&[invocation], 3, EntityRef::Id(96))
+            .unwrap();
+        assert_eq!(
+            retained.db_after.values(242, 101).unwrap(),
+            vec![Value::Long(1)]
+        );
+        let absent = before
+            .with_forms(
+                &[
+                    TxForm::Op(add(
+                        261,
+                        crate::DB_IDENT as u32,
+                        Value::Keyword(Keyword::new("test", "new")),
+                    )),
+                    TxForm::Op(add(261, crate::DB_FN as u32, Value::Function(new_hash))),
+                    TxForm::ProgramCall(ProgramCall {
+                        function: CallableRef::Database(EntityRef::Ident(Keyword::new(
+                            "test", "new",
+                        ))),
+                        arguments: vec![],
+                    }),
+                ],
+                2,
+                EntityRef::Id(98),
+            )
+            .unwrap_err();
+        assert_eq!(absent.code, "program/function-not-found");
+        assert_eq!(
+            before.values(260, crate::DB_FN as u32).unwrap(),
+            vec![Value::Function(old_hash)]
+        );
+        assert!(before.entid(&Keyword::new("test", "new")).is_none());
+    }
+
+    #[test]
+    fn nested_calls_maps_and_generated_retractions_inherit_the_request_source() {
+        let (child_hash, child) = validated(Program {
+            kind: ProgramKind::Transaction,
+            arity: 0,
+            instructions: vec![
+                Instruction::PushEntity(EntityRef::Id(242)),
+                Instruction::PushConstant(Value::Long(2)),
+                Instruction::EmitAdd(101),
+                Instruction::PushEntity(EntityRef::Id(242)),
+                Instruction::PushConstant(Value::Long(7)),
+                Instruction::EmitRetract(103),
+                Instruction::PushEntity(EntityRef::Id(243)),
+                Instruction::PushConstant(Value::Long(9)),
+                Instruction::PushConstant(Value::Long(10)),
+                Instruction::EmitCas(101),
+                Instruction::PushEntity(EntityRef::Id(244)),
+                Instruction::EmitRetractEntity,
+                Instruction::PushEntity(EntityRef::Id(245)),
+                Instruction::EmitRetractAll(103),
+                Instruction::Return,
+            ],
+        });
+        let (parent_hash, parent) = validated(Program {
+            kind: ProgramKind::Transaction,
+            arity: 1,
+            instructions: vec![
+                Instruction::PushArgument(0),
+                Instruction::EmitEntityMap,
+                Instruction::EmitCall {
+                    function: CallableRef::ExactHash(child_hash),
+                    argument_count: 0,
+                },
+                Instruction::Return,
+            ],
+        });
+        let initial = database()
+            .with(
+                &[
+                    add(242, 101, Value::Long(1)),
+                    add(242, 103, Value::Long(7)),
+                    add(243, 101, Value::Long(9)),
+                    add(244, 101, Value::Long(1)),
+                    add(245, 103, Value::Long(3)),
+                    add(245, 103, Value::Long(4)),
+                ],
+                1,
+                EntityRef::Id(99),
+            )
+            .unwrap();
+        let repeated = initial
+            .db_after
+            .with(&[add(242, 101, Value::Long(1))], 2, EntityRef::Id(98))
+            .unwrap();
+        let db = repeated
+            .db_after
+            .database_value()
+            .retain_programs(BTreeMap::from([(child_hash, child), (parent_hash, parent)]));
+        let map = RuntimeValue::map(vec![
+            (
+                Value::Keyword(Keyword::new("db", "id")),
+                RuntimeValue::Entity(EntityRef::Temp("author".into())),
+            ),
+            (
+                Value::Keyword(Keyword::new("item", "name")),
+                Value::String("Contributor".into()).into(),
+            ),
+            (
+                Value::Keyword(Keyword::new("item", "child")),
+                RuntimeValue::map(vec![(
+                    Value::Keyword(Keyword::new("item", "value")),
+                    Value::Long(5).into(),
+                )])
+                .unwrap(),
+            ),
+        ])
+        .unwrap();
+        let forms = [TxForm::ProgramCall(ProgramCall {
+            function: CallableRef::ExactHash(parent_hash),
+            arguments: vec![map],
+        })];
+        let report = db
+            .with_forms(&forms, 3, EntityRef::Edn("\"author\"".into()))
+            .unwrap();
+        let source = report.tempids["author"];
+        assert!(report.tx_data.iter().all(|datom| datom.source == source));
+        assert_eq!(
+            report
+                .tx_data
+                .iter()
+                .filter(|datom| datom.attribute == crate::DB_TX_INSTANT as u32)
+                .count(),
+            1
+        );
+        assert_eq!(
+            report.tx_data.iter().filter(|datom| !datom.added).count(),
+            6
+        );
+        assert_eq!(
+            report.db_after.values(242, 101).unwrap(),
+            vec![Value::Long(2)]
+        );
+        assert_eq!(
+            report.db_after.values(243, 101).unwrap(),
+            vec![Value::Long(10)]
+        );
+        for (entity, attribute) in [(242, 103), (244, 101), (245, 103)] {
+            assert!(
+                report
+                    .db_after
+                    .values(entity, attribute)
+                    .unwrap()
+                    .is_empty()
+            );
+        }
+        let nested_values = report.db_after.values(source, 102).unwrap();
+        let [Value::Ref(nested)] = nested_values.as_slice() else {
+            panic!("expected one nested child");
+        };
+        assert_eq!(
+            report.db_after.values(*nested, 101).unwrap(),
+            vec![Value::Long(5)]
+        );
+    }
+
+    #[test]
+    fn fixed_dependencies_include_raw_edn_lookup_values_and_query_source_terms() {
+        let hash = [7; 32];
+        let tag =
+            crate::edn::write_edn(&crate::edn_value::value_to_edn(&Value::Function(hash)).unwrap())
+                .unwrap();
+        let raw = format!("[:item/code #opaque/wrapper {{:functions #{{{tag}}}}}]");
+        let instructions = vec![Instruction::If {
+            then_branch: vec![Instruction::PushEntity(EntityRef::Edn(raw.clone()))],
+            else_branch: vec![Instruction::EmitCall {
+                function: CallableRef::Database(EntityRef::Edn(raw)),
+                argument_count: 0,
+            }],
+        }];
+        let mut dependencies = Vec::new();
+        collect_fixed_program_dependencies(&instructions, &mut dependencies);
+        assert_eq!(dependencies, vec![hash, hash]);
+        let mut pattern = crate::DataPattern::new(
+            crate::Term::var("entity"),
+            crate::Term::Constant(Value::Ref(101)),
+            crate::Term::var("value"),
+        );
+        pattern.fact_source = Some(crate::Term::Constant(Value::Function([8; 32])));
+        let query = crate::Query::new(
+            crate::FindSpec::Relation(vec![crate::FindElement::Variable("entity".into())]),
+            vec![crate::Clause::Pattern(Box::new(pattern))],
+        );
+        let template = crate::QueryTemplate::native(query, vec![], vec![]).unwrap();
+        let mut dependencies = Vec::new();
+        collect_fixed_program_dependencies(&[Instruction::Query(template)], &mut dependencies);
+        assert_eq!(dependencies, vec![[8; 32]]);
+    }
+
+    #[test]
+    fn raw_function_lookup_closure_identity_survives_program_round_trip() {
+        let (dependency_hash, dependency) = validated(Program {
+            kind: ProgramKind::Transaction,
+            arity: 0,
+            instructions: vec![Instruction::Return],
+        });
+        let tag = crate::edn::write_edn(
+            &crate::edn_value::value_to_edn(&Value::Function(dependency_hash)).unwrap(),
+        )
+        .unwrap();
+        let program = |raw| Program {
+            kind: ProgramKind::Query,
+            arity: 0,
+            instructions: vec![
+                Instruction::PushEntity(EntityRef::Edn(raw)),
+                Instruction::LoadOne(101),
+                Instruction::Return,
+            ],
+        };
+        let left = program(format!("[:item/code {tag}]"));
+        let right = program(format!("[ :item/code ; spelling is not identity\n {tag} ]"));
+        assert_eq!(
+            crate::program_hash(&left).unwrap(),
+            crate::program_hash(&right).unwrap()
+        );
+        let (_, decoded) = validated(right);
+        let mut fixed = Vec::new();
+        collect_fixed_program_dependencies(&decoded.program().instructions, &mut fixed);
+        assert_eq!(fixed, vec![dependency_hash]);
+        let root_hash = crate::program_hash(decoded.program()).unwrap();
+        let all = BTreeMap::from([(root_hash, decoded), (dependency_hash, dependency)]);
+        let mut visited = BTreeSet::new();
+        assert_eq!(
+            visit_program_closure(
+                &mut |hash| Ok(Arc::clone(&all[&hash])),
+                BTreeSet::from([root_hash]),
+                &mut |hash, _| {
+                    visited.insert(hash);
+                }
+            )
+            .unwrap(),
+            BTreeSet::from([root_hash, dependency_hash])
+        );
+        assert_eq!(visited, BTreeSet::from([root_hash, dependency_hash]));
+    }
 }

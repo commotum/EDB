@@ -168,8 +168,8 @@ fn sync_index(
 
 Retrieves a database value indexed through the supplied database coordinate.
 Completion requires the logical basis and the physical indexed-through frontier
-to reach the target, with relevant AVET additions and removals through that
-target complete. Logical basis advancement alone is insufficient.
+to reach the target, with relevant AVET and SAVET additions and removals through
+that target complete. Logical basis advancement alone is insufficient.
 
 This call observes progress through storage and does not schedule indexing.
 Use `request_index` to request work, then wait on the returned finite target.
@@ -189,14 +189,14 @@ fn sync_schema(
 ```
 
 Retrieves a database value aware of schema changes through the supplied database
-coordinate and ready for the AVET additions required through that target.
-The returned value has reached the logical basis and has no pending relevant
-AVET addition at or before the target. This includes readiness associated with
-indexing or uniqueness changes.
+coordinate and ready for the AVET and SAVET additions required through that
+target. The returned value has reached the logical basis and has no pending relevant
+AVET or SAVET addition at or before the target. This includes readiness
+associated with indexing or uniqueness changes.
 
-It need not wait for later schema transitions, AVET removals, or the general
-indexed-through frontier required by `sync_index`. This is a wait, not a request
-to perform a migration. It performs storage observation and can complete on its
+It need not wait for later schema transitions, AVET or SAVET removals, or the
+general indexed-through frontier required by `sync_index`. This is a wait, not a
+request to perform a migration. It performs storage observation and can complete on its
 first check. Timeout checks occur between storage attempts. See
 [changing schema](../../03_schema/03_changing_schema.md).
 
@@ -231,22 +231,31 @@ fn transact(
 
 Submits a [transaction](../../04_transactions/00_transactions.md), blocking until
 a result or wait error is available. Requires an attached transaction endpoint.
-Construct a `TransactionRequest` with `new(request_key, operations)`,
-`from_forms(request_key, forms)`, or `from_edn(request_key, text)`.
-The request key identifies the submission for exact retries.
+Construct a `TransactionRequest` with `new(request_key, operations, source)`,
+`from_forms(request_key, forms, source)`, or `from_edn(request_key, text, source)`.
+The required `source: EntityRef` identifies the contributor for every assertion
+and retraction produced by the transaction. The request key identifies the
+submission for exact retries; source is part of the request identity.
 
 Transaction data can contain any combination of assertions, retractions,
-transaction functions, or entity maps. These EDN examples assume the named
-attributes and transaction function have been installed:
+transaction functions, entity maps, or forms for the transaction instant. These
+EDN examples assume the named attributes and transaction function have been
+installed. Submit them with `EntityRef::Id(99)` as the request source:
 
 | Type | Example |
 | --- | --- |
 | Assertion | `[:db/add 1001 :some-attr/name "Some attr value"]` |
 | Retraction | `[:db/retract 1001 :some-attr/name "Some attr value"]` |
+| Explicit transaction instant | `[:db/add "edb.tx" :db/txInstant #inst "2026-10-01T12:00:00Z"]` |
 | Transaction function | `[:some/fn-name "argument"]` |
 | Entity map | `{:db/id "new-entity" :some-attr/name "some value" :another-attr/name 42}` |
 
-Wrap forms in an outer vector for `from_edn`. See
+Wrap forms in an outer vector for `from_edn`. EDB automatically records exactly
+one transaction instant with the request source, including for empty transaction
+data. Function results and generated changes receive that same source. An
+explicit `:db/txInstant` value must apply to the current transaction, not precede
+the previous instant or exceed the writer's clock, and agree with any
+request-level time override. See
 [transaction data](../../04_transactions/04_transaction_data.md) and
 [transaction functions](../../04_transactions/07_transaction_functions.md).
 
@@ -261,8 +270,8 @@ Use `report.db_after` for reads at the exact committed result; a subsequent
 If execution rejects the transaction, the result is a `SemanticError`. A ticket
 wait timeout or worker disconnection after admission returns category
 `UnknownOutcome`, code `service/unknown-outcome`. This does not establish that
-the transaction aborted. Retain the same request key and transaction data when
-retrying an unknown outcome. See
+the transaction aborted. Retain the same request key, transaction data, source,
+and request options when retrying an unknown outcome. See
 [transaction diagnostics](../../04_transactions/03_diagnostics.md).
 
 The timeout is explicit; there is no global default transaction timeout. It

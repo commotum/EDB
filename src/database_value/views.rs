@@ -6,15 +6,15 @@ use crate::{
     Datom, EntityIdentifier, ErrorCategory, IndexBoundary, IndexComponents, IndexOrder,
     IndexPrefix, SemanticError, TimePoint, Value, tx_to_t,
 };
-use std::collections::VecDeque;
 use std::sync::Arc;
 
-/// Recovered `windowed` as an incremental state machine.
+/// One incremental read window, independent of physical index order.
 ///
 /// The source is retained behind one box to break the recursive cursor shape:
 /// a window wraps a raw-history scan/prefix cursor, while the public cursor in
 /// turn owns the window. No source datoms are retained beyond the current
-/// logical E/A/V group.
+/// logical E/A/V group. Source-first ranges resolve visibility through the
+/// complete EAVT group before selecting a source contribution.
 pub(super) struct DatabaseValueWindowCursor<'a> {
     pub(super) source: DatabaseValueWindowSource<'a>,
     pub(super) filter_database: DatabaseValue,
@@ -22,13 +22,9 @@ pub(super) struct DatabaseValueWindowCursor<'a> {
     pub(super) as_of_t: Option<u64>,
     pub(super) since_t: Option<u64>,
     pub(super) history: bool,
-    pub(super) order: IndexOrder,
-    pub(super) reverse: bool,
     pub(super) forward_boundary: Option<crate::index::NormalizedIndexBoundary>,
     pub(super) group: Option<WindowGroup>,
-    pub(super) retracted_representations: Vec<Value>,
-    pub(super) reverse_pending: Option<Datom>,
-    pub(super) reverse_output: VecDeque<Datom>,
+    pub(super) current_contributions: Vec<Datom>,
     pub(super) failed: bool,
 }
 
@@ -83,12 +79,7 @@ impl WindowGroup {
 }
 
 impl<'a> DatabaseValueWindowCursor<'a> {
-    pub(super) fn new(
-        database: &DatabaseValue,
-        source: DatabaseValueWindowSource<'a>,
-        order: IndexOrder,
-        reverse: bool,
-    ) -> Self {
+    pub(super) fn new(database: &DatabaseValue, source: DatabaseValueWindowSource<'a>) -> Self {
         Self {
             source,
             filter_database: database.without_filters(),
@@ -96,115 +87,58 @@ impl<'a> DatabaseValueWindowCursor<'a> {
             as_of_t: database.as_of_t,
             since_t: database.since_t,
             history: database.history,
-            order,
-            reverse,
             forward_boundary: None,
             group: None,
-            retracted_representations: Vec::new(),
-            reverse_pending: None,
-            reverse_output: VecDeque::new(),
+            current_contributions: Vec::new(),
             failed: false,
         }
     }
 
-    pub(super) fn next_filtered(
+    /// Resolve a complete EAV history range before applying any read selector.
+    /// Source-first order and a seek boundary may omit a retracting source;
+    /// probing EAVT keeps global visibility independent of that access path.
+    pub(super) fn visible_current(
         &mut self,
+        datom: &Datom,
         control: &mut ReadCursorControl<'_>,
-    ) -> Result<Option<Datom>, SemanticError> {
-        loop {
-            let Some(datom) = self.source.next_controlled(control).transpose()? else {
-                return Ok(None);
-            };
-            let t = tx_to_t(datom.tx)?;
-            if self.as_of_t.is_some_and(|as_of| t > as_of)
-                || self.since_t.is_some_and(|since| t <= since)
-                || !self
-                    .filters
-                    .iter()
-                    .all(|predicate| predicate(&self.filter_database, &datom))
-            {
-                continue;
-            }
-            return Ok(Some(datom));
-        }
-    }
-
-    /// Reverse history visits one logical E/A/V group oldest-first. Match
-    /// recovered `rseek-datoms`: temporal/custom predicates run first, then
-    /// the last visible event determines current membership. EDB retains
-    /// one winner per strict stored V representation, consistent with the
-    /// native kernel's representation-distinct top-level BigDecimals.
-    pub(super) fn next_reverse_current(
-        &mut self,
-        control: &mut ReadCursorControl<'_>,
-    ) -> Result<Option<Datom>, SemanticError> {
-        loop {
-            if let Some(datom) = self.reverse_output.pop_front() {
-                return Ok(Some(datom));
-            }
-
-            let first = match self.reverse_pending.take() {
-                Some(datom) => datom,
-                None => {
-                    let Some(datom) = self.next_filtered(control)? else {
-                        return Ok(None);
-                    };
-                    datom
-                }
-            };
-            let group = WindowGroup::from_datom(&first);
-            let mut winners = Vec::<Datom>::new();
-
-            let retain = |candidate: Datom, winners: &mut Vec<Datom>| match winners
-                .binary_search_by(|prior| prior.value.stored_cmp(&candidate.value))
-            {
-                Ok(position) => winners[position] = candidate,
-                Err(position) => winners.insert(position, candidate),
-            };
-            retain(first, &mut winners);
-
-            while let Some(candidate) = self.next_filtered(control)? {
-                if group.matches(&candidate) {
-                    retain(candidate, &mut winners);
-                } else {
-                    self.reverse_pending = Some(candidate);
-                    break;
-                }
-            }
-
-            winners.retain(|datom| datom.added);
-            winners.sort_by(|left, right| right.cmp_in(left, self.order));
-            self.reverse_output.extend(winners);
-        }
-    }
-
-    pub(super) fn visible_current(&mut self, datom: &Datom) -> bool {
+    ) -> Result<bool, SemanticError> {
         if self
             .group
             .as_ref()
             .is_none_or(|group| !group.matches(datom))
         {
             self.group = Some(WindowGroup::from_datom(datom));
-            self.retracted_representations.clear();
-        }
-
-        let stored = self
-            .retracted_representations
-            .binary_search_by(|value| value.stored_cmp(&datom.value));
-        if datom.added {
-            // Recovered `filter-retractions` yields every assertion until a
-            // later visible retraction. EDB deliberately keeps top-level
-            // strict-scale BigDecimal facts representation-distinct, so the
-            // one-group skip set is keyed by stored equality; tuple members
-            // retain their established recursive logical equality.
-            stored.is_err()
-        } else {
-            if let Err(position) = stored {
-                self.retracted_representations
-                    .insert(position, datom.value.clone());
+            let prefix = IndexPrefix::Eavt {
+                entity: datom.entity,
+                attribute: Some(datom.attribute),
+                value: Some(datom.value.clone()),
+            };
+            let mut cursor = self.filter_database.basis_prefix_cursor(
+                true,
+                &prefix,
+                None,
+                self.filter_database.read_context.clone(),
+            )?;
+            let mut candidates = Vec::new();
+            // EAV probes are not in the caller's chosen order. Poll work and
+            // cancellation without presenting them as ordered range candidates.
+            while let Some(candidate) = cursor.next_with_control(&mut |_| control.check(None)) {
+                let candidate = candidate?;
+                let t = tx_to_t(candidate.tx)?;
+                if self.as_of_t.is_none_or(|as_of| t <= as_of) {
+                    candidates.push(candidate);
+                }
             }
-            false
+            self.current_contributions = crate::index::current_eav_group(candidates);
         }
+        Ok(self.current_contributions.iter().any(|live| {
+            live.entity == datom.entity
+                && live.attribute == datom.attribute
+                && live.value.stored_eq(&datom.value)
+                && live.tx == datom.tx
+                && live.source == datom.source
+                && datom.added
+        }))
     }
 
     pub(super) fn with_forward_boundary(
@@ -224,18 +158,9 @@ impl DatabaseValueWindowCursor<'_> {
         if self.failed {
             return None;
         }
-        if self.reverse && !self.history {
-            return match self.next_reverse_current(control) {
-                Ok(Some(datom)) => Some(Ok(datom)),
-                Ok(None) => None,
-                Err(error) => {
-                    self.failed = true;
-                    Some(Err(error))
-                }
-            };
-        }
+
         loop {
-            let datom = match self.next_filtered(control) {
+            let datom = match self.source.next_controlled(control).transpose() {
                 Ok(Some(datom)) => datom,
                 Ok(None) => return None,
                 Err(error) => {
@@ -243,16 +168,43 @@ impl DatabaseValueWindowCursor<'_> {
                     return Some(Err(error));
                 }
             };
-            if self.history || self.visible_current(&datom) {
-                if self
+            let visible = if self.history {
+                Ok(true)
+            } else {
+                self.visible_current(&datom, control)
+            };
+            let visible = match visible {
+                Ok(visible) => visible,
+                Err(error) => {
+                    self.failed = true;
+                    return Some(Err(error));
+                }
+            };
+            if control.stopped {
+                return None;
+            }
+            let t = match tx_to_t(datom.tx) {
+                Ok(t) => t,
+                Err(error) => {
+                    self.failed = true;
+                    return Some(Err(error));
+                }
+            };
+            if !visible
+                || self.as_of_t.is_some_and(|as_of| t > as_of)
+                || self.since_t.is_some_and(|since| t <= since)
+                || !self
+                    .filters
+                    .iter()
+                    .all(|predicate| predicate(&self.filter_database, &datom))
+                || self
                     .forward_boundary
                     .as_ref()
                     .is_some_and(|boundary| boundary.compare_datom(&datom).is_lt())
-                {
-                    continue;
-                }
-                return Some(Ok(datom));
+            {
+                continue;
             }
+            return Some(Ok(datom));
         }
     }
 }

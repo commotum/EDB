@@ -98,10 +98,10 @@ pub fn build_for_descriptor_with_control(
             && before.basis <= descriptor.basis
     }) {
         let prior = load_projection(before, &mut |id| pages.read(id))?;
-        let before_root = pages.root(&before.trees[4])?;
-        let after_root = pages.root(&descriptor.trees[4])?;
-        let before_hash = before.trees[4].root_hash;
-        let after_hash = descriptor.trees[4].root_hash;
+        let before_root = pages.root(&before.trees[6])?;
+        let after_root = pages.root(&descriptor.trees[6])?;
+        let before_hash = before.trees[6].root_hash;
+        let after_hash = descriptor.trees[6].root_hash;
         let mut difference = crate::fulltext::HistoryDifference::from_roots(
             pages.clone(),
             before_root,
@@ -179,7 +179,7 @@ pub fn build_for_descriptor_with_control(
         stats.reused_projections = u64::from(summary.root == prior.root_hash);
         summary
     } else {
-        let root = pages.root(&descriptor.trees[5])?;
+        let root = pages.root(&descriptor.trees[7])?;
         let source = pages.clone();
         let mut records = crate::fulltext::records_from(schema, move |attribute| {
             let mut cursor = DurableTreeCursor::new_prefix(

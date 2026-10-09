@@ -264,9 +264,10 @@ impl DatabaseValue {
         };
         budget.charge(1, candidate.value.retained_heap_bytes() as usize)?;
         let mut cursor = self.prefix_cursor(&prefix)?;
-        // EDB-NOTE: exact-view validation corresponds to source windowed
-        // lookup, but native shared budgets also cover candidates rejected by
-        // time/history filters inside a single cursor advancement.
+        // The ordinary EAV cursor resolves shared visibility before source or
+        // other view filters. An older matching document can validate newer
+        // visible contributions to the same EAV; report their assertion txs.
+        // Shared budgets cover rejected facts inside cursor advancement too.
         while let Some(fact) = cursor.next_with_control(&mut |candidate| {
             budget.charge(usize::from(candidate.is_some()), 0)?;
             Ok(true)

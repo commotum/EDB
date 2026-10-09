@@ -1,0 +1,12 @@
+   Compiling edb-core v0.1.0 (/tmp/edb-cutover-impl-20261007)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 28.13s
+     Running tests/changing_schema_source_cutover.rs (/tmp/edb-cutover-impl-20261007-target/debug/deps/changing_schema_source_cutover-dc9a9d31d13e40bb)
+
+running 4 tests
+test cardinality_and_unique_changes_use_old_replacement_and_upsert_rules ... ok
+test cardinality_cleanup_is_atomic_and_temporal_entity_shapes_use_captured_schema ... ok
+test component_changes_expand_retract_entity_under_db_before_and_share_source ... ok
+test rename_and_alias_repurpose_preserve_captured_names_and_application_datoms ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.16s
+

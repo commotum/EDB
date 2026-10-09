@@ -43,8 +43,8 @@ pub(crate) fn schema_index_member(
     order: IndexOrder,
 ) -> Result<bool, SemanticError> {
     match order {
-        IndexOrder::Eavt | IndexOrder::Aevt => Ok(true),
-        IndexOrder::Avet => {
+        IndexOrder::Eavt | IndexOrder::Aevt | IndexOrder::Saevt => Ok(true),
+        IndexOrder::Avet | IndexOrder::Savet => {
             let attribute = schema.attribute(datom.attribute)?;
             Ok(attribute.indexed || attribute.unique.is_some())
         }
@@ -68,6 +68,7 @@ pub(super) fn same_eav(left: &Datom, right: &Datom) -> bool {
 fn same_stored_datom(left: &Datom, right: &Datom) -> bool {
     left.entity == right.entity
         && left.attribute == right.attribute
+        && left.source == right.source
         && left.tx == right.tx
         && left.added == right.added
         && left.value.stored_eq(&right.value)
@@ -176,31 +177,6 @@ impl MetadataProjection {
         let mut current = self.schema_current.to_vec();
         let mut idents = (*self.idents).clone();
         for transaction in transactions {
-            // Older exact genesis profiles already reserve :db/fulltext's
-            // immutable t=0 ident, but the small schema working set excludes
-            // its entity until the explicit descriptor upgrade. Reattach that
-            // authenticated ident when its install marker arrives; never emit
-            // a new logical assertion or reinterpret the old root.
-            if self.schema.attribute(crate::DB_FULLTEXT as u32).is_err()
-                && transaction.tx_data.iter().any(|datom| {
-                    datom.added
-                        && datom.entity == crate::DB_PART_DB
-                        && datom.attribute == crate::DB_INSTALL_ATTRIBUTE as u32
-                        && datom.value == crate::Value::Ref(crate::DB_FULLTEXT)
-                })
-                && !current.iter().any(|datom| {
-                    datom.entity == crate::DB_FULLTEXT && datom.attribute == crate::DB_IDENT as u32
-                })
-                && let Some(ident) = idents.ident(crate::DB_FULLTEXT)
-            {
-                current.push(Datom {
-                    entity: crate::DB_FULLTEXT,
-                    attribute: crate::DB_IDENT as u32,
-                    value: crate::Value::Keyword(ident.clone()),
-                    tx: crate::t_to_tx(0)?,
-                    added: true,
-                });
-            }
             let mut ident_updates = transaction
                 .tx_data
                 .iter()
@@ -548,6 +524,8 @@ fn order_tag(order: IndexOrder) -> u8 {
         IndexOrder::Aevt => 1,
         IndexOrder::Avet => 2,
         IndexOrder::Vaet => 3,
+        IndexOrder::Saevt => 4,
+        IndexOrder::Savet => 5,
     }
 }
 

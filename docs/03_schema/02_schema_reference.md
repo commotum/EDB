@@ -58,9 +58,11 @@ boolean     = ('true' | 'false')
 
 ### Grammar Notes
 
-The grammar above shows only the attributes that are built-in to EDB schema. Just like all other entities in EDB, schema entities are open and can have any attributes you define added to them.
+The grammar above shows only built-in schema attributes and the map entity identifier. Just like all other entities in EDB, schema entities are open and can have any attributes you define added to them.
 
 The grammar shows only the transaction map form. It is also possible to define schema with the more verbose transaction list form, as these forms are semantically equivalent.
+
+Each transaction requires one source supplied alongside its data through the request or CLI `--source` option. All application transaction examples below use source entity `99`, assumed to exist already. Every explicit and generated assertion or retraction receives that source, including the automatically recorded transaction instant. Source uses ordinary entity-reference resolution; a source tempid must also appear in entity position in that transaction.
 
 Because schema is composed of ordinary EDB data, the schema grammar is a specialization of the transaction grammar. The shared grammar elements `tx-entid`, `identifier`, `eid`, `lookup-ref`, and `ident` are described in the [Transaction Data Reference](../04_transactions/04_transaction_data.md).
 
@@ -114,7 +116,7 @@ The values allowed for `:db/cardinality` are:
 - `:db.cardinality/one` – the attribute is single-valued, it associates a single value with an entity.
 - `:db.cardinality/many` – the attribute is multi-valued, it associates a set of values with an entity.
 
-Cardinality-one assertion replaces a different existing value by retracting the old fact and asserting the new one. Multiple distinct resulting values fail with `transaction/cardinality-one-conflict`. For cardinality-many, asserting an existing value is redundant; a map may supply one scalar or a collection of values. A tuple or lookup reference on a many-valued attribute needs an outer collection:
+Cardinality-one assertion replaces a different existing value by retracting the old fact and asserting the new one. Both statements carry the transaction's supplied source; earlier assertions retain their original attribution. Multiple distinct resulting values fail with `transaction/cardinality-one-conflict`. Cardinality counts distinct values, so assertions of the same value from different sources in separate transactions preserve separate contributions without violating cardinality-one. For either cardinality, reasserting an existing value from the same source is redundant. For cardinality-many, a map may supply one scalar or a collection of values. A tuple or lookup reference on a many-valued attribute needs an outer collection:
 
 ```edn
 ;; :person/friends is a cardinality-many ref attribute.
@@ -138,7 +140,7 @@ The optional `:db/doc` specifies a documentation string, and can be any string v
 {':db/index' boolean}
 ```
 
-The optional `:db/index` requests AVET access for an attribute. It defaults to false. Unique attributes participate in AVET independently of the explicit flag. AVET provides value-oriented lookup and range access; it does not change the attribute's value type or cardinality.
+The optional `:db/index` requests AVET and SAVET access for an attribute. It defaults to false. Unique attributes participate in both independently of the explicit flag. SAVET uses the same eligibility and readiness, adding source-first value lookup and ranges. AVET provides value-oriented lookup and range access; it does not change the attribute's value type or cardinality.
 
 Schema intent and physical index readiness are different. Setting `:db/index` on an existing attribute can require background backfill. Check `DatabaseValue::has_avet` or synchronize schema/index work before relying on the new access path. An already captured database value does not acquire a new attachment in place. See [Indexes and log](../06_indexes/00_indexes_and_log.md).
 
@@ -202,7 +204,7 @@ These characteristics also imply situations where idents should *not* be used:
 - Idents should not be used as unique names or ids on ordinary domain entities. Such entity names should be implemented with a domain-specific attribute that is a unique identity.
 - Idents should not be used as names for test data. Your real data will not have such names, and you don't want test data to behave differently than the real data it simulates.
 
-Use `DatabaseValue::entid` to resolve a keyword to an entity ID. Transactions accept idents in entity and attribute positions and in reference-valued positions. A keyword on a keyword-valued attribute remains a keyword value. Query and Pull adapters resolve identifiers in their schema-aware positions; see [Queries](../05_query_and_pull/00_queries.md) and [Pull and entities](../05_query_and_pull/02_pull_and_entities.md).
+Use `DatabaseValue::entid` to resolve a keyword to an entity ID. Transactions accept idents in entity and attribute positions, in reference-valued positions, and as the supplied transaction source. A keyword on a keyword-valued attribute remains a keyword value. Query and Pull adapters resolve identifiers in their schema-aware positions; see [Queries](../05_query_and_pull/00_queries.md) and [Pull and entities](../05_query_and_pull/02_pull_and_entities.md).
 
 Renaming an ident does not change the entity ID. Historical ident assertions preserve old names as aliases; retracting the current ident does not erase those aliases. A later assertion can repurpose an old name for another entity. Captured database values retain their own mapping. Prefer domain-specific unique attributes for ordinary application identities rather than growing the ident vocabulary with every record.
 
@@ -222,7 +224,7 @@ If using underscores in `:db/ident` values, do not use as the first character in
 
 A component entity is one that exists only as part of a larger parent entity.
 
-The optional `:db/isComponent` attribute specifies that an attribute whose [:db/valueType](#dbvaluetype) is [`:db.type/ref`](#dbvaluetype) refers to a sub-component of the entity to which the attribute is applied. When you retract an entity with `:db.fn/retractEntity`, all sub-components are also retracted. Ordinary references do not establish this cascading ownership relationship. Nested component maps may create anonymous child entities; a nested map through a noncomponent reference requires its own explicit identity or a unique identity attribute. Components also affect default Pull expansion. See [Transactions](../04_transactions/00_transactions.md) and [Pull and entities](../05_query_and_pull/02_pull_and_entities.md).
+The optional `:db/isComponent` attribute specifies that an attribute whose [:db/valueType](#dbvaluetype) is [`:db.type/ref`](#dbvaluetype) refers to a sub-component of the entity to which the attribute is applied. When you retract an entity with `:db.fn/retractEntity`, all sub-components are also retracted, with each retraction attributed to the transaction's supplied source. Ordinary references do not establish this cascading ownership relationship. Nested component maps may create anonymous child entities; a nested map through a noncomponent reference requires its own explicit identity or a unique identity attribute. Components also affect default Pull expansion. See [Transactions](../04_transactions/00_transactions.md) and [Pull and entities](../05_query_and_pull/02_pull_and_entities.md).
 
 Omitting `:db/isComponent` for an entity is semantically equivalent to setting it to `false`.
 
@@ -247,12 +249,12 @@ Changing `:db/noHistory` does not synchronously erase past values. Older facts m
 unique         = (':db.unique/identity' | ':db.unique/value')
 ```
 
-The `:db/unique` attribute specifies a uniqueness constraint for the values of an attribute. EDB will reject a transaction if the resulting database would contain multiple entities with the same value for a unique attribute (of either type). You can submit transaction data with a unique attribute without specifying an existing entity id. When you do, one of two things could happen if that unique AV already exists in the database: unify or reject.
+The `:db/unique` attribute specifies a uniqueness constraint for the values of an attribute. EDB will reject a transaction if the resulting database would contain multiple entities with the same value for a unique attribute (of either type), regardless of source. Multiple sources may assert the same unique value for the same entity in separate transactions. You can submit transaction data with a unique attribute without specifying an existing entity id. When you do, one of two things could happen if that unique AV already exists in the database: unify or reject.
 
 To add a uniqueness constraint to an attribute:
 
 - The attribute must have a `:db/cardinality` of `:db.cardinality/one`
-- If there are values present for that attribute, they must be unique in the set of *current* database assertions.
+- If there are values present for that attribute, each value must belong to only one entity in the *current* database.
 - Bytes attributes cannot be unique, and NaN cannot participate in uniqueness.
 - If the attribute has historical values, AVET must already be physically ready before uniqueness is added. Setting `:db/index true` in the same transaction is not enough to backfill history.
 
@@ -268,7 +270,7 @@ Unique identity is specified through an attribute with `:db/unique` set to `:db.
  :db/valueType   :db.type/string
  :db/cardinality :db.cardinality/one}
 
-;; existing in db
+;; existing in db (entity/attribute/value projection)
 [42 :person/email "johndoe@example.com"]
 
 ;; transaction data in map form
@@ -429,7 +431,7 @@ With this composite installed, EDB enforces unique ownership of each derived sem
 
 Each active composite constituent must be an installed cardinality-one attribute of a permitted tuple scalar type. The composite attribute itself must have cardinality one. Constituents may be declared in the same schema transaction; validation sees the complete proposed schema.
 
-Composite attributes are managed by EDB. Direct assertions and retractions do not set or clear the stored composite. An explicit assertion of a composite with `:db.unique/identity` can serve as an upsert hint during tempid resolution; the constituents still determine the stored tuple. A nonexistent hint without constituents does not populate either the composite or its constituents. See [Composite identity](01_identity_and_values.md#composite-identity-derive-values-supply-identity-when-upserting). Whenever you assert or retract any attribute that is part of a composite, EDB will automatically populate the composite value.
+Composite attributes are managed by EDB. Direct assertions and retractions do not set or clear the stored composite. An explicit assertion of a composite with `:db.unique/identity` can serve as an upsert hint during tempid resolution; the constituents still determine the stored tuple. A nonexistent hint without constituents does not populate either the composite or its constituents. See [Composite identity](01_identity_and_values.md#composite-identity-derive-values-supply-identity-when-upserting). Whenever you assert or retract any attribute that is part of a composite, EDB will automatically populate the composite value. Derived assertions and retractions carry the transaction's source. Contributions from several sources arrive in separate transactions and remain distinct while cardinality and uniqueness still apply to the tuple value.
 
 Given a database with the courses and semesters schema, add some seed data:
 
@@ -450,10 +452,10 @@ Now if you register John for Bio 101 in the fall of 2018 by transacting:
   :reg/student [:student/email "johndoe@university.edu"]}]
 ```
 
-EDB will also add a composite tuple datom. Shown schematically as `[entity attribute value tx added]`:
+EDB will also add a composite tuple datom. Shown schematically as `[entity attribute value tx source added]`:
 
 ```
-[registration-eid composite-aid [course-eid semester-eid student-eid] tx-eid true]
+[registration-eid composite-aid [course-eid semester-eid student-eid] tx-eid 99 true]
 ```
 
 Note that your entity IDs will differ from those in the example above.
@@ -461,7 +463,7 @@ Note that your entity IDs will differ from those in the example above.
 If the current value of an entity does not include all attributes of a composite, the missing attributes will be nil. For example, given a composite 4-tuple `:reg/course+semester+student+grade` that also includes a student’s grade, the assertions above would cause EDB to populate:
 
 ```
-[registration-eid composite-aid [course-eid semester-eid student-eid nil] tx-eid true]
+[registration-eid composite-aid [course-eid semester-eid student-eid nil] tx-eid 99 true]
 ```
 
 Note that nil sorts lower than all other values, so tuples with trailing nils can be useful for range queries.
@@ -477,16 +479,16 @@ If you retract all constituents of a composite, EDB will retract the composite. 
 will cause EDB to retract the composite:
 
 ```
-[registration-eid composite-aid [course-eid semester-eid student-eid] next-tx-eid false]
+[registration-eid composite-aid [course-eid semester-eid student-eid] next-tx-eid 99 false]
 ```
 
 Again, note that you will need to substitute the entity IDs from your initial transaction to replicate this example in your system.
 
 ### Adding Composites to Existing Entities
 
-Adding a composite tuple to a database that contains existing data using those attributes will **not** immediately generate values for the new tuple. The composite tuple will be populated the next time any of the composite member attributes are transacted. This includes "no-op" transactions of the same attribute value. This design allows you to add composite tuples in a systematic and paced manner, so as not to overwhelm a running system.
+Adding a composite tuple to a database that contains existing data using those attributes will **not** immediately generate values for the new tuple. The composite tuple will be populated the next time any of the composite member attributes are transacted. This includes otherwise redundant reassertions of the same attribute value from the same source. This design allows you to add composite tuples in a systematic and paced manner, so as not to overwhelm a running system.
 
-To populate existing data, read current entity/value pairs for a constituent and reassert them in bounded transactions after installing the composite. Track progress explicitly and account for uniqueness collisions, including partial keys with nil slots. Adding the schema alone does not certify that every old entity already has its new composite key.
+To populate existing data, read current entity/value pairs for a constituent and reassert them in bounded transactions, each with an explicit source, after installing the composite. Track progress explicitly and account for uniqueness collisions, including partial keys with nil slots. Adding the schema alone does not certify that every old entity already has its new composite key.
 
 ### Discontinuing Composite Tuples
 
@@ -496,7 +498,7 @@ You discontinue a composite tuple attribute by adding `:db.tuple/discontinued` `
 [:db/add :semester/year+season :db.tuple/discontinued true]
 ```
 
-When you discontinue a composite tuple attribute, EDB permanently stops generating datoms when any of its constituents are transacted. Existing composite tuple datoms remain in the database.
+When you discontinue a composite tuple attribute, EDB permanently stops generating datoms when any of its constituents are transacted. Existing composite tuple datoms remain in the database. The attribute remains database-managed; direct tuple assertions and retractions do not change its stored value.
 
 `:db.tuple/discontinued` only applies to installed composite tuple attributes. It cannot be set to true in the transaction that installs the composite. Discontinuing a composite tuple attribute is permanent. Create a new composite tuple attribute if you later decide you need the discontinued one.
 
@@ -528,7 +530,7 @@ You can then explicitly assert a player's location with a vector of the appropri
 
 Homogeneous tuples provide variable-length composites of a single attribute type. The type of a homogeneous tuple is specified by the keyword attribute `:db/tupleType`.
 
-EDB itself includes a good example of homogeneous tuples in the definitions of the other tuple types. Both `:db/tupleTypes` and `:db/tupleAttrs` are declared as homogeneous tuples of `:db/tupleType` `:db.type/keyword`:
+EDB itself includes a good example of homogeneous tuples in the definitions of the other tuple types. Both `:db/tupleTypes` and `:db/tupleAttrs` are declared as homogeneous tuples of `:db/tupleType` `:db.type/keyword`. These built-in definitions are attributed to `:db.source/system`:
 
 ```
 ;; built in to EDB
@@ -546,7 +548,7 @@ EDB itself includes a good example of homogeneous tuples in the definitions of t
 
 You may want to constrain an attribute value by more than just its value type. For example, an email address is not just a string, but a string with a particular format. In EDB, you can assert *attribute predicates* about an attribute. Attribute predicates are asserted via the `:db.attr/preds` attribute, and are fully qualified symbols naming a predicate of a value. Predicates return literal `true` to indicate success. Every other return value indicates failure and is reported as a transaction error.
 
-Inside a transaction, EDB calls the applicable attribute predicates for values in added transaction datoms and aborts if a predicate fails. Retractions are not value assertions. Redundant reassertions do not necessarily produce added datoms, so do not use a no-op assertion as a retroactive validation procedure.
+Inside a transaction, EDB calls the applicable attribute predicates for values in added transaction datoms and aborts if a predicate fails. Retractions are not value assertions. Redundant reassertions from the same source do not necessarily produce added datoms, so do not use a no-op assertion as a retroactive validation procedure.
 
 For example, the following Rust deployment validates that a user name contains 3–15 Unicode scalar values:
 
@@ -676,7 +678,7 @@ fn score_predicates() -> TxFunctions {
 }
 ```
 
-Supply these callbacks to the local `Database::with_forms` call (or use `DatabaseValue::with_functions` for primitive operations). For a running writer, register the same check with `NativeRegistryBuilder::entity_predicate` and its cooperative context instead. Both receive the complete proposed db-after, while the entity spec and deployment binding are resolved using db-before.
+Supply these callbacks to the local `Database::with_forms` call (or use `DatabaseValue::with_functions` with native transaction forms). For a running writer, register the same check with `NativeRegistryBuilder::entity_predicate` and its cooperative context instead. Both receive the complete proposed db-after, while the entity spec and deployment binding are resolved using db-before.
 
 After installing the score attributes as cardinality-one Long attributes, install the guard:
 
@@ -710,7 +712,7 @@ Schema entities are open and may carry application-defined metadata such as `:ap
 
 NaN cannot be used as a unique identity or unique value. Such assertions fail with `transaction/nan-cannot-identify`.
 
-On a nonunique cardinality-one Float or Double attribute, a finite value can replace NaN in one ordinary transaction. The result contains the old-value retraction and new assertion, just like other replacements. EDB gives NaN stable logical equality for indexing and redundancy: another NaN payload can retract an existing NaN, and reasserting a logically equal NaN is redundant. This does not promise IEEE `==` semantics or preservation of arbitrary NaN payloads. See [NaN rules](01_identity_and_values.md#nan-replace-ordinary-values-never-use-as-a-unique-identity).
+On a nonunique cardinality-one Float or Double attribute, a finite value can replace NaN in one ordinary transaction. The result contains the old-value retraction and new assertion, just like other replacements. EDB gives NaN stable logical equality for indexing and redundancy: another NaN payload can retract an existing NaN, and reasserting a logically equal NaN from the same source is redundant. An assertion from a different source in a later transaction preserves that separate contribution. This does not promise IEEE `==` semantics or preservation of arbitrary NaN payloads. See [NaN rules](01_identity_and_values.md#nan-replace-ordinary-values-never-use-as-a-unique-identity).
 
 ## Schema Evolution
 

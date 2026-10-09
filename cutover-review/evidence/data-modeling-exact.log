@@ -1,0 +1,11 @@
+   Compiling edb-core v0.1.0 (/tmp/edb-cutover-impl-20261007)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.95s
+     Running tests/data_modeling_cutover.rs (target/debug/deps/data_modeling_cutover-05ed5d25aeacf6fb)
+
+running 3 tests
+test db_before_binding_and_representation_choice_remain_ordinary ... ok
+test enumeration_rename_keeps_reference_identity_and_noncomponent_country_survives ... ok
+test exact_enumeration_examples_compose_through_transactions_queries_and_navigation ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.15s
+

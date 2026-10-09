@@ -174,6 +174,16 @@ fn disconnected() -> SemanticError {
         "database notice connection disconnected",
     )
 }
+
+fn valid_notification_channel(channel: &str) -> bool {
+    channel.strip_prefix("edb_r_").is_some_and(|suffix| {
+        suffix.len() == 48
+            && suffix
+                .bytes()
+                .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+    })
+}
+
 impl NoticeListener {
     pub(crate) fn connect(
         config: &PostgresConnectionConfig,
@@ -182,10 +192,7 @@ impl NoticeListener {
         let client = PgBlockStore::connect(config)?;
         let channel = client.notification_channel(&format!("databases/{database}"))?;
         // Provider-generated prefix + lowercase hex only, never caller SQL.
-        if !channel.starts_with("edb_r_")
-            || channel.len() != 57
-            || !channel[9..].bytes().all(|b| b.is_ascii_hexdigit())
-        {
+        if !valid_notification_channel(&channel) {
             return Err(SemanticError::incorrect(
                 "observation/invalid-channel",
                 "database notice channel is invalid",
@@ -306,5 +313,26 @@ impl NoticeListener {
                 Err(_) => Ok(false),
             }
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::valid_notification_channel;
+
+    #[test]
+    fn provider_notice_channel_accepts_only_the_safe_identifier_shape() {
+        let suffix = "0123456789abcdef".repeat(3);
+        assert!(valid_notification_channel(&format!("edb_r_{suffix}")));
+        assert!(!valid_notification_channel(&format!(
+            "edb_r_{}",
+            suffix.to_uppercase()
+        )));
+        assert!(!valid_notification_channel(&format!(
+            "edb_r_{suffix};LISTEN other"
+        )));
+        assert!(!valid_notification_channel(&format!("other_{suffix}")));
+        assert!(!valid_notification_channel("edb_r_012345"));
+        assert!(!valid_notification_channel("edb_r_é"));
     }
 }

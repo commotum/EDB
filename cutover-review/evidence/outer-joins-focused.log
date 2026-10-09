@@ -1,0 +1,11 @@
+   Compiling edb-core v0.1.0 (/tmp/edb-cutover-impl-20261007)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.81s
+     Running tests/outer_joins_source_cutover.rs (target/debug/deps/outer_joins_source_cutover-be4766cafcc71dc7)
+
+running 3 tests
+test optional_attribute_functions_keep_their_documented_validation ... ok
+test exact_artist_examples_preserve_missing_rows_and_distinct_values ... ok
+test outer_join_functions_and_pull_honor_global_withdrawal_before_source_filtering ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.14s
+

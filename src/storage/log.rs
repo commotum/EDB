@@ -1,8 +1,10 @@
 //! Immutable transaction pages with a bounded tail and backward skip links.
 //!
-//! Each append writes an entry and one replacement tail page, independent of
-//! log length. Large entries additionally write payload chunks. Full pages are
-//! sealed without rewriting them: the next page links back by powers of two.
+//! Each append writes metadata, body chunks and one replacement tail page,
+//! independent of log length. Metadata never embeds transaction body bytes,
+//! so admission and endpoint validation need not transfer or decode a body.
+//! Full pages are sealed without rewriting them: the next page links back by
+//! powers of two.
 //! Append accepts objects through ObjectWriter; the caller must flush before
 //! independent reads/publication. Root publication and protection remain separate.
 
@@ -14,10 +16,11 @@ use crate::encoding::{
 use crate::{Datom, ErrorCategory, INITIAL_EIDX_FRONTIER, IndexOrder, MAX_EIDX, SemanticError};
 
 pub const LOG_PAGE_KIND: u16 = 10;
-pub const LOG_ENTRY_KIND: u16 = 11;
+// Kind 11 embedded small transaction bodies. Reject that incompatible shape;
+// all current entries authenticate metadata separately from their body chunks.
+pub const LOG_ENTRY_KIND: u16 = 14;
 pub const LOG_CHUNK_KIND: u16 = 12;
 pub const LOG_PAGE_ENTRIES: usize = 64;
-const INLINE_BYTES: usize = 64 * 1024;
 const CHUNK_BYTES: usize = 4 * 1024 * 1024;
 // Current transaction codecs admit a 64 MiB body plus envelope/lineage data.
 // Preserve that admitted size even when an entry exceeds one physical object.
@@ -66,7 +69,7 @@ impl LogEntry {
         store: &mut dyn ObjectWriter,
         bytes: &[u8],
     ) -> Result<ObjectId, SemanticError> {
-        let mut payload = Vec::with_capacity(ENTRY_HEADER + bytes.len().min(INLINE_BYTES));
+        let mut payload = Vec::with_capacity(ENTRY_HEADER);
         for value in [
             self.basis_t,
             self.eidx_frontier,
@@ -77,21 +80,17 @@ impl LogEntry {
             payload.extend_from_slice(&value.to_be_bytes());
         }
         let mut links = Vec::new();
-        if bytes.len() <= INLINE_BYTES {
-            payload.extend_from_slice(bytes);
-        } else {
-            for chunk in bytes.chunks(CHUNK_BYTES) {
-                links.push(
-                    store.put_object(
-                        &Block {
-                            kind: LOG_CHUNK_KIND,
-                            links: vec![],
-                            payload: chunk.to_vec(),
-                        }
-                        .encode()?,
-                    )?,
-                );
-            }
+        for chunk in bytes.chunks(CHUNK_BYTES) {
+            links.push(
+                store.put_object(
+                    &Block {
+                        kind: LOG_CHUNK_KIND,
+                        links: vec![],
+                        payload: chunk.to_vec(),
+                    }
+                    .encode()?,
+                )?,
+            );
         }
         store.put_object(
             &Block {
@@ -667,7 +666,7 @@ struct EntryMetadata {
 }
 
 fn entry_metadata(block: &Block) -> Result<EntryMetadata, SemanticError> {
-    if block.kind != LOG_ENTRY_KIND || block.payload.len() < ENTRY_HEADER {
+    if block.kind != LOG_ENTRY_KIND || block.payload.len() != ENTRY_HEADER {
         return Err(invalid(
             "storage/log-entry-format",
             "Expected a current log transaction entry",
@@ -683,11 +682,7 @@ fn entry_metadata(block: &Block) -> Result<EntryMetadata, SemanticError> {
     })?;
     if bytes > MAX_LOG_TRANSACTION_BYTES
         || count > bytes / 23
-        || (bytes <= INLINE_BYTES
-            && (!block.links.is_empty() || block.payload.len() != ENTRY_HEADER + bytes))
-        || (bytes > INLINE_BYTES
-            && (block.payload.len() != ENTRY_HEADER
-                || block.links.len() != bytes.div_ceil(CHUNK_BYTES)))
+        || block.links.len() != bytes.div_ceil(CHUNK_BYTES)
     {
         return Err(invalid(
             "storage/log-entry-shape",
@@ -746,23 +741,19 @@ fn read_entry_bounded(
         ));
     }
     let mut bytes = Vec::with_capacity(metadata.bytes);
-    if block.links.is_empty() {
-        bytes.extend_from_slice(&block.payload[ENTRY_HEADER..]);
-    } else {
-        for id in block.links {
-            let chunk = load_block(store, id)?;
-            let expected = CHUNK_BYTES.min(metadata.bytes - bytes.len());
-            if chunk.kind != LOG_CHUNK_KIND
-                || !chunk.links.is_empty()
-                || chunk.payload.len() != expected
-            {
-                return Err(invalid(
-                    "storage/log-chunk-shape",
-                    "Transaction chunk differs from its authenticated position",
-                ));
-            }
-            bytes.extend_from_slice(&chunk.payload);
+    for id in block.links {
+        let chunk = load_block(store, id)?;
+        let expected = CHUNK_BYTES.min(metadata.bytes - bytes.len());
+        if chunk.kind != LOG_CHUNK_KIND
+            || !chunk.links.is_empty()
+            || chunk.payload.len() != expected
+        {
+            return Err(invalid(
+                "storage/log-chunk-shape",
+                "Transaction chunk differs from its authenticated position",
+            ));
         }
+        bytes.extend_from_slice(&chunk.payload);
     }
     let tx_data = decode_canonical_datoms(&bytes, metadata.count)?;
     let entry = LogEntry {
@@ -797,26 +788,21 @@ pub(crate) fn entry_program_links(
     block: &Block,
 ) -> Result<Vec<ObjectId>, SemanticError> {
     let metadata = entry_metadata(block)?;
-    let bytes = if block.links.is_empty() {
-        block.payload[ENTRY_HEADER..].to_vec()
-    } else {
-        let mut content = Vec::with_capacity(metadata.bytes);
-        for id in &block.links {
-            let chunk = load_block(store, *id)?;
-            let expected = CHUNK_BYTES.min(metadata.bytes.saturating_sub(content.len()));
-            if chunk.kind != LOG_CHUNK_KIND
-                || !chunk.links.is_empty()
-                || chunk.payload.len() != expected
-            {
-                return Err(invalid(
-                    "storage/log-chunk-shape",
-                    "Invalid owned transaction chunk",
-                ));
-            }
-            content.extend_from_slice(&chunk.payload);
+    let mut bytes = Vec::with_capacity(metadata.bytes);
+    for id in &block.links {
+        let chunk = load_block(store, *id)?;
+        let expected = CHUNK_BYTES.min(metadata.bytes.saturating_sub(bytes.len()));
+        if chunk.kind != LOG_CHUNK_KIND
+            || !chunk.links.is_empty()
+            || chunk.payload.len() != expected
+        {
+            return Err(invalid(
+                "storage/log-chunk-shape",
+                "Invalid owned transaction chunk",
+            ));
         }
-        content
-    };
+        bytes.extend_from_slice(&chunk.payload);
+    }
     let mut programs = std::collections::BTreeSet::new();
     for datom in decode_canonical_datoms(&bytes, metadata.count)? {
         crate::program_bindings::collect_program_hashes(&datom.value, &mut programs);
@@ -832,4 +818,145 @@ fn validate_frontiers(ordinary: u64, reserved: u64) -> Result<(), SemanticError>
 }
 fn invalid(code: &'static str, message: &'static str) -> SemanticError {
     SemanticError::new(ErrorCategory::Fault, code, message)
+}
+
+#[cfg(test)]
+mod admission_tests {
+    use super::*;
+    use std::collections::BTreeMap;
+
+    #[derive(Default)]
+    struct Memory {
+        objects: BTreeMap<ObjectId, Vec<u8>>,
+        reads: Vec<ObjectId>,
+    }
+    impl ObjectReader for Memory {
+        fn read_object(&mut self, id: ObjectId) -> Result<Vec<u8>, SemanticError> {
+            self.reads.push(id);
+            self.objects
+                .get(&id)
+                .cloned()
+                .ok_or_else(|| invalid("storage/missing-object", "Missing test object"))
+        }
+    }
+    impl ObjectWriter for Memory {
+        fn put_object(&mut self, bytes: &[u8]) -> Result<ObjectId, SemanticError> {
+            let id = crate::sha256(bytes);
+            self.objects.insert(id, bytes.to_vec());
+            Ok(id)
+        }
+        fn flush_objects(&mut self) -> Result<(), SemanticError> {
+            Ok(())
+        }
+    }
+    fn entry(text: Option<String>) -> LogEntry {
+        LogEntry {
+            basis_t: 1,
+            eidx_frontier: INITIAL_EIDX_FRONTIER,
+            reserved_frontier: INITIAL_EIDX_FRONTIER,
+            tx_data: text
+                .into_iter()
+                .map(|text| Datom {
+                    entity: 42,
+                    attribute: 1000,
+                    value: crate::Value::String(text),
+                    tx: crate::t_to_tx(1).unwrap(),
+                    source: 99,
+                    added: true,
+                })
+                .collect(),
+        }
+    }
+
+    #[test]
+    fn small_transaction_admission_and_log_open_never_read_body_chunks() {
+        let mut memory = Memory::default();
+        let transaction = entry(Some("x".repeat(48 * 1024)));
+        let log = LogRoot::empty().append(&mut memory, &transaction).unwrap();
+        let id = log.latest_entry_id().unwrap();
+        let metadata = Block::decode(&id, &memory.objects[&id]).unwrap();
+        assert_eq!(metadata.payload.len(), ENTRY_HEADER);
+        assert_eq!(metadata.links.len(), 1);
+        let bodies = metadata.links.clone();
+        memory.reads.clear();
+        let reopened = LogRoot::open(&mut memory, log.head().unwrap()).unwrap();
+        assert!(bodies.iter().all(|id| !memory.reads.contains(id)));
+        memory.reads.clear();
+        assert_eq!(
+            reopened
+                .read_record_bounded(&mut memory, 1, 1024)
+                .unwrap_err()
+                .code,
+            "storage/log-read-limit"
+        );
+        assert!(bodies.iter().all(|id| !memory.reads.contains(id)));
+        assert_eq!(
+            reopened.read_record(&mut memory, 1).unwrap().unwrap().entry,
+            transaction
+        );
+        assert!(bodies.iter().all(|id| memory.reads.contains(id)));
+    }
+
+    #[test]
+    fn metadata_rejects_former_entries_embedded_bodies_and_wrong_chunk_counts() {
+        let mut memory = Memory::default();
+        let log = LogRoot::empty()
+            .append(&mut memory, &entry(Some("small".into())))
+            .unwrap();
+        let id = log.latest_entry_id().unwrap();
+        let metadata = Block::decode(&id, &memory.objects[&id]).unwrap();
+        let mut old = metadata.clone();
+        old.kind = 11;
+        assert_eq!(
+            entry_metadata(&old).err().unwrap().code,
+            "storage/log-entry-format"
+        );
+        let mut embedded = metadata.clone();
+        embedded.payload.push(0);
+        assert_eq!(
+            entry_metadata(&embedded).err().unwrap().code,
+            "storage/log-entry-format"
+        );
+        for links in [Vec::new(), vec![metadata.links[0]; 2]] {
+            let mut wrong_count = metadata.clone();
+            wrong_count.links = links;
+            assert_eq!(
+                entry_metadata(&wrong_count).err().unwrap().code,
+                "storage/log-entry-shape"
+            );
+        }
+        let mut wrong_length = metadata;
+        let length = number(&wrong_length.payload, 32) + 1;
+        wrong_length.payload[32..40].copy_from_slice(&length.to_be_bytes());
+        let id = memory.put_object(&wrong_length.encode().unwrap()).unwrap();
+        let mut page = log.tail.unwrap();
+        page.entries[0] = id;
+        assert_eq!(
+            read_entry(&mut memory, &page, 1).unwrap_err().code,
+            "storage/log-chunk-shape"
+        );
+    }
+
+    #[test]
+    fn empty_retained_transactions_have_metadata_without_chunks() {
+        let mut memory = Memory::default();
+        let transaction = entry(None);
+        let log = LogRoot::empty().append(&mut memory, &transaction).unwrap();
+        let id = log.latest_entry_id().unwrap();
+        let metadata = Block::decode(&id, &memory.objects[&id]).unwrap();
+        assert!(metadata.links.is_empty());
+        assert_eq!(metadata.payload.len(), ENTRY_HEADER);
+        let reopened = LogRoot::open(&mut memory, log.head().unwrap()).unwrap();
+        let retained = reopened
+            .read_record_bounded(&mut memory, 1, ENTRY_HEADER)
+            .unwrap()
+            .unwrap();
+        assert_eq!(retained.encoded_bytes, ENTRY_HEADER as u64);
+        assert_eq!(retained.entry, transaction);
+        assert!(
+            entry_program_links(&mut memory, &metadata)
+                .unwrap()
+                .is_empty()
+        );
+    }
 }

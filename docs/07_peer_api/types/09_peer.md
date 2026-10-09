@@ -248,11 +248,14 @@ fn example() -> Result<(), SemanticError> {
 ### Tempids
 
 Use `EntityRef::Temp(String)` in typed transaction forms, or string tempids in
-EDN transaction data:
+EDN transaction data. Submit this example with transaction source
+`:db.source/system`:
 
 ```edn
 [{:db/id "person" :person/name "Ada"}]
 ```
+
+EDB automatically records the transaction instant with the transaction's source.
 
 A tempid names the same entity everywhere it appears within that transaction.
 There is no global tempid constructor or reserved negative-number range for
@@ -378,19 +381,22 @@ This complete in-memory example installs schema, transacts information, resolves
 a tempid, and executes a relation query:
 
 ```rust
-use edb_core::{Database, QueryControl, QueryResult, QuerySourceValue, SemanticError};
+use edb_core::{
+    Database, EntityRef, Keyword, QueryControl, QueryResult, QuerySourceValue, SemanticError,
+};
 use edb_core::edn_query::{EdnQueryArgument, parse_query_edn};
 
 fn example() -> Result<(), SemanticError> {
     let initial = Database::bootstrap()?.database_value();
+    let source = EntityRef::Ident(Keyword::new("db.source", "system"));
     let schema = initial.with_edn(r#"[
       {:db/ident :person/name
        :db/valueType :db.type/string
        :db/cardinality :db.cardinality/one}
-    ]"#, 1_000)?;
+    ]"#, 1_000, source.clone())?;
     let report = schema.db_after.with_edn(r#"[
       {:db/id "person" :person/name "Ada"}
-    ]"#, 2_000)?;
+    ]"#, 2_000, source)?;
     assert!(report.tempids.get("person").is_some());
     let query = parse_query_edn("[:find ?name :where [?e :person/name ?name]]")?;
     let bound = query.bind(&[EdnQueryArgument::Source(

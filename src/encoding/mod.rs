@@ -27,7 +27,7 @@ const MAGIC: &[u8; 4] = b"EDBC";
 // stored-first ordering is distinct from index traversal's T/op-first ordering;
 // index and database-root versions reject incompatible comparator generations.
 // There is no old-format reader or administrative upgrade converter.
-const FORMAT_VERSION: u16 = 3;
+const FORMAT_VERSION: u16 = 4;
 const HEADER_LEN: usize = 16;
 const CHECKSUM_LEN: usize = 32;
 const MAX_BLOB_LEN: usize = 64 * 1024 * 1024;
@@ -148,11 +148,13 @@ pub fn program_request_digest(
     tx_instant: i64,
     expected_basis_t: u64,
     predicate_hashes: &[ProgramHash],
+    source: &EntityRef,
 ) -> Result<Digest, SemanticError> {
     let mut body = Vec::new();
     body.extend_from_slice(&hash);
     put_u64(&mut body, expected_basis_t);
     put_i64(&mut body, tx_instant);
+    encode_entity_ref(&mut body, source)?;
     put_len(&mut body, arguments.len())?;
     for argument in arguments {
         encode_value(&mut body, argument)?;
@@ -319,10 +321,10 @@ pub(crate) fn decode_canonical_datoms(
     bytes: &[u8],
     count: usize,
 ) -> Result<Vec<Datom>, SemanticError> {
-    // The shortest possible datom is E(8)+A(4)+Bool value(2)+Tx(8)+op(1).
+    // The shortest datom is E(8)+A(4)+Bool value(2)+Tx(8)+S(8)+op(1).
     // Bound allocation by authenticated remaining bytes, not an arbitrary
     // item-count policy that would reject otherwise legal content.
-    const MIN_ENCODED_DATOM_BYTES: usize = 23;
+    const MIN_ENCODED_DATOM_BYTES: usize = 31;
     if count > bytes.len() / MIN_ENCODED_DATOM_BYTES {
         return Err(fault(
             "encoding/impossible-datom-count",
@@ -415,6 +417,12 @@ pub fn decode_genesis(bytes: &[u8]) -> Result<Vec<Datom>, SemanticError> {
 
 fn validate_index_datom_contents(datoms: &[Datom]) -> Result<(), SemanticError> {
     for datom in datoms {
+        validate_supported_eid(datom.source).map_err(|error| {
+            fault(
+                "encoding/invalid-datom-source",
+                format!("datom source id is invalid: {error}"),
+            )
+        })?;
         let datom_t = tx_to_t(datom.tx).map_err(|error| {
             fault(
                 "encoding/invalid-index-datom-transaction",
@@ -444,33 +452,46 @@ fn validate_index_datom_contents(datoms: &[Datom]) -> Result<(), SemanticError> 
 
 /// Comparator used by current EDBC genesis and transaction values. The native tree comparator intentionally
 /// differs: it places descending T/op before the stored representation tie.
-fn format_v3_datom_cmp(left: &Datom, right: &Datom, order: IndexOrder) -> std::cmp::Ordering {
+fn format_datom_cmp(left: &Datom, right: &Datom, order: IndexOrder) -> std::cmp::Ordering {
     let ordering = match order {
         IndexOrder::Eavt => left
             .entity
             .cmp(&right.entity)
             .then(left.attribute.cmp(&right.attribute))
-            .then_with(|| format_v3_value_cmp(&left.value, &right.value)),
+            .then_with(|| format_value_cmp(&left.value, &right.value)),
         IndexOrder::Aevt => left
             .attribute
             .cmp(&right.attribute)
             .then(left.entity.cmp(&right.entity))
-            .then_with(|| format_v3_value_cmp(&left.value, &right.value)),
+            .then_with(|| format_value_cmp(&left.value, &right.value)),
         IndexOrder::Avet => left
             .attribute
             .cmp(&right.attribute)
-            .then_with(|| format_v3_value_cmp(&left.value, &right.value))
+            .then_with(|| format_value_cmp(&left.value, &right.value))
             .then(left.entity.cmp(&right.entity)),
-        IndexOrder::Vaet => format_v3_value_cmp(&left.value, &right.value)
+        IndexOrder::Vaet => format_value_cmp(&left.value, &right.value)
             .then(left.attribute.cmp(&right.attribute))
+            .then(left.entity.cmp(&right.entity)),
+        IndexOrder::Saevt => left
+            .source
+            .cmp(&right.source)
+            .then(left.attribute.cmp(&right.attribute))
+            .then(left.entity.cmp(&right.entity))
+            .then_with(|| format_value_cmp(&left.value, &right.value)),
+        IndexOrder::Savet => left
+            .source
+            .cmp(&right.source)
+            .then(left.attribute.cmp(&right.attribute))
+            .then_with(|| format_value_cmp(&left.value, &right.value))
             .then(left.entity.cmp(&right.entity)),
     };
     ordering
         .then_with(|| right.tx.cmp(&left.tx))
+        .then(left.source.cmp(&right.source))
         .then_with(|| right.added.cmp(&left.added))
 }
 
-fn format_v3_value_cmp(left: &Value, right: &Value) -> std::cmp::Ordering {
+fn format_value_cmp(left: &Value, right: &Value) -> std::cmp::Ordering {
     left.index_cmp(right).then_with(|| match (left, right) {
         (Value::BigDec(left), Value::BigDec(right)) => left
             .fractional_digit_count()
@@ -483,7 +504,7 @@ fn format_v3_value_cmp(left: &Value, right: &Value) -> std::cmp::Ordering {
                     (None, None) => std::cmp::Ordering::Equal,
                     (None, Some(_)) => std::cmp::Ordering::Less,
                     (Some(_), None) => std::cmp::Ordering::Greater,
-                    (Some(left), Some(right)) => format_v3_value_cmp(left, right),
+                    (Some(left), Some(right)) => format_value_cmp(left, right),
                 };
                 ordering.is_ne().then_some(ordering)
             })
@@ -497,6 +518,7 @@ pub fn request_digest(
     ops: &[TxOp],
     tx_instant: i64,
     expected_basis_t: u64,
+    source: &EntityRef,
 ) -> Result<Digest, SemanticError> {
     let mut encoded_ops = Vec::with_capacity(ops.len());
     for op in ops {
@@ -508,6 +530,7 @@ pub fn request_digest(
     let mut body = Vec::new();
     put_u64(&mut body, expected_basis_t);
     put_i64(&mut body, tx_instant);
+    encode_entity_ref(&mut body, source)?;
     put_len(&mut body, encoded_ops.len())?;
     for encoded in encoded_ops {
         put_framed_bytes(&mut body, &encoded)?;
@@ -522,11 +545,13 @@ pub fn request_digest(
 /// compare-basis and import-time constraints remain part of request identity.
 pub fn submission_request_digest(
     forms: &[TxForm],
+    source: &EntityRef,
     compare_basis_t: Option<u64>,
     tx_instant_override: Option<i64>,
 ) -> Result<Digest, SemanticError> {
     Ok(canonical_submission_request(
         forms,
+        source,
         compare_basis_t,
         tx_instant_override,
         MAX_BLOB_LEN + HEADER_LEN + CHECKSUM_LEN,
@@ -539,6 +564,7 @@ pub fn submission_request_digest(
 /// Dynamic db-before, selected time, and resolved function hashes are absent.
 pub(crate) fn canonical_submission_request(
     forms: &[TxForm],
+    source: &EntityRef,
     compare_basis_t: Option<u64>,
     tx_instant_override: Option<i64>,
     max_bytes: usize,
@@ -561,6 +587,7 @@ pub(crate) fn canonical_submission_request(
     let mut body = Vec::new();
     // One current identity grammar for every supported transaction form.
     body.push(submission::VERSION);
+    encode_entity_ref(&mut body, source)?;
     match compare_basis_t {
         Some(basis) => {
             body.push(1);
@@ -605,7 +632,7 @@ fn transaction_body(transaction: &DurableTransaction) -> Result<Vec<u8>, Semanti
         })
         .collect::<Result<Vec<_>, SemanticError>>()?;
     datoms.sort_by(|(left, left_bytes), (right, right_bytes)| {
-        format_v3_datom_cmp(left, right, crate::IndexOrder::Eavt)
+        format_datom_cmp(left, right, crate::IndexOrder::Eavt)
             .then_with(|| left_bytes.cmp(right_bytes))
     });
     let mut body = Vec::new();
@@ -680,7 +707,17 @@ pub(crate) fn validate_transaction_content(
             "every datom must name the transaction entity for the envelope basis",
         ));
     }
+    if tx_data
+        .first()
+        .is_some_and(|first| tx_data.iter().any(|datom| datom.source != first.source))
+    {
+        return Err(fault(
+            "encoding/mixed-transaction-source",
+            "every datom in a transaction must have the same source",
+        ));
+    }
     for datom in tx_data {
+        validate_issued_entity(datom.source, eidx_frontier, basis_t, "source")?;
         validate_encoded_datom(datom)?;
         validate_issued_entity(datom.entity, eidx_frontier, basis_t, "datom")?;
         validate_issued_value_refs(&datom.value, eidx_frontier, basis_t)?;
@@ -737,15 +774,17 @@ fn validate_genesis(datoms: &[Datom]) -> Result<(), SemanticError> {
             "genesis information cannot be empty",
         ));
     }
-    if datoms.iter().any(|datom| datom.tx != tx || !datom.added) {
+    if datoms.iter().any(|datom| {
+        datom.tx != tx || !datom.added || datom.source != crate::model::vocabulary::DB_SOURCE_SYSTEM
+    }) {
         return Err(fault(
             "encoding/invalid-genesis-datom",
-            "genesis contains only t=0 assertions",
+            "genesis contains only system-attributed t=0 assertions",
         ));
     }
     if datoms
         .windows(2)
-        .any(|pair| !format_v3_datom_cmp(&pair[0], &pair[1], IndexOrder::Eavt).is_lt())
+        .any(|pair| !format_datom_cmp(&pair[0], &pair[1], IndexOrder::Eavt).is_lt())
     {
         return Err(fault(
             "encoding/noncanonical-genesis",
@@ -764,6 +803,12 @@ fn validate_genesis(datoms: &[Datom]) -> Result<(), SemanticError> {
 }
 
 fn validate_encoded_datom(datom: &Datom) -> Result<(), SemanticError> {
+    validate_supported_eid(datom.source).map_err(|error| {
+        fault(
+            "encoding/invalid-datom-source",
+            format!("datom source id is invalid: {error}"),
+        )
+    })?;
     validate_supported_eid(datom.entity).map_err(|error| {
         fault(
             "encoding/invalid-datom-entity",
@@ -1229,6 +1274,7 @@ fn encode_datom(output: &mut Vec<u8>, datom: &Datom) -> Result<(), SemanticError
     put_u32(output, datom.attribute);
     encode_value(output, &datom.value)?;
     put_u64(output, datom.tx);
+    put_u64(output, datom.source);
     output.push(u8::from(datom.added));
     Ok(())
 }
@@ -1238,12 +1284,14 @@ fn decode_datom(cursor: &mut Cursor<'_>) -> Result<Datom, SemanticError> {
     let attribute = cursor.u32()?;
     let value = decode_value(cursor, 0)?;
     let tx = cursor.u64()?;
+    let source = cursor.u64()?;
     let added = cursor.boolean()?;
     Ok(Datom {
         entity,
         attribute,
         value,
         tx,
+        source,
         added,
     })
 }
@@ -1574,7 +1622,7 @@ fn encode_entity_map(
     if depth > 32 {
         return Err(SemanticError::incorrect(
             "transaction/map-depth",
-            "entity maps may contain at most 32 nested collection levels",
+            "entity maps may contain at most 32 nested maps",
         ));
     }
     match &map.id {
@@ -1594,7 +1642,7 @@ fn encode_entity_map(
         .map(|(attribute, value)| {
             let mut encoded = Vec::new();
             encode_attribute_ref(&mut encoded, attribute)?;
-            encode_map_value(&mut encoded, value, depth + 1)?;
+            encode_map_value(&mut encoded, value, depth)?;
             Ok(encoded)
         })
         .collect::<Result<Vec<_>, SemanticError>>()?;
@@ -1636,12 +1684,6 @@ fn encode_map_value(
     value: &MapValue,
     depth: usize,
 ) -> Result<(), SemanticError> {
-    if depth > 32 {
-        return Err(SemanticError::incorrect(
-            "transaction/map-depth",
-            "entity maps may contain at most 32 nested collection levels",
-        ));
-    }
     match value {
         MapValue::Value(value) => {
             output.push(0);
@@ -1656,8 +1698,14 @@ fn encode_map_value(
             let mut values = values
                 .iter()
                 .map(|value| {
+                    if matches!(value, MapValue::Many(_)) {
+                        return Err(SemanticError::incorrect(
+                            "transaction/nested-collection",
+                            "map value collections cannot contain collections",
+                        ));
+                    }
                     let mut encoded = Vec::new();
-                    encode_map_value(&mut encoded, value, depth + 1)?;
+                    encode_map_value(&mut encoded, value, depth)?;
                     Ok(encoded)
                 })
                 .collect::<Result<Vec<_>, SemanticError>>()?;
@@ -1775,6 +1823,10 @@ fn encode_entity_ref(output: &mut Vec<u8>, entity: &EntityRef) -> Result<(), Sem
             encode_value(output, value)?;
         }
         EntityRef::Tx => output.push(4),
+        EntityRef::Edn(text) => {
+            output.push(6);
+            put_string(output, &crate::edn_transaction::canonical_entity_ref(text)?)?;
+        }
         EntityRef::LookupInput { attribute, value } => {
             output.push(5);
             put_u32(output, *attribute);
@@ -1809,6 +1861,17 @@ fn decode_entity_ref_at(cursor: &mut Cursor<'_>, depth: usize) -> Result<EntityR
             value: decode_value(cursor, 0)?,
         },
         4 => EntityRef::Tx,
+        6 => {
+            let text = cursor.string()?;
+            let canonical = crate::edn_transaction::canonical_entity_ref(&text)?;
+            if canonical != text {
+                return Err(fault(
+                    "transport/noncanonical-edn",
+                    "EDN entity reference is not canonical",
+                ));
+            }
+            EntityRef::Edn(canonical)
+        }
         5 => EntityRef::LookupInput {
             attribute: cursor.u32()?,
             value: Box::new(decode_tx_value_at(cursor, depth + 1, false)?),

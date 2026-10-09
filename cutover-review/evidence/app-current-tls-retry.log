@@ -1,0 +1,17 @@
+READ_VALUES_OK mixed_sources=true entity_identity=true avet_ready=true elapsed_ms=6 sql_calls=4
+QUERY_DATA_OK width=7 nested_values=true pure_callbacks=true old_basis=true elapsed_ms=13 sql_calls=6
+COMPUTATION_OK weighted=true native_helpers=true old_basis=true elapsed_us=4329 sql_calls=0
+SOURCE_OK ordinary_entity=true receipts=true automatic_timestamp=true speculation=true current=true history=true
+ASYNC_READ_OK single_thread=true old_basis=true chunk_rows=1 complete_us=10822 stats=AsyncStats { operations: 0, resources: 0, queued: 0, running: 0, peak_operations: 1, peak_running: 2, completed: 4, rejected: 0, cleaned: 3, worker_panics: 0 }
+DIAGNOSTICS_OK named=true reads=true immutable_basis=true
+QUERY_WARMUP calculations=1 elapsed_us=4424 sql_calls=2 errors=0 result_cell_bytes=1356
+QUERY_SQL sql_calls=0 errors=0 result_cell_bytes=0
+QUERY_CACHE before_warmup=CacheStats { hits: 836, misses: 186, evictions: 178, current_entries: 8, current_bytes: 101543, peak_entries: 8, peak_bytes: 105337, oversized_bypasses: 0 } after_warmup=CacheStats { hits: 852, misses: 188, evictions: 180, current_entries: 8, current_bytes: 97749, peak_entries: 8, peak_bytes: 105337, oversized_bypasses: 0 } after_loop=CacheStats { hits: 1212, misses: 188, evictions: 180, current_entries: 8, current_bytes: 97749, peak_entries: 8, peak_bytes: 105337, oversized_bypasses: 0 }
+APPLICATION_OK basis_t=3 old_basis_t=2 seed_replayed=true update_replayed=true projects=2 old_hours=8 current_hours=12 history_events=3
+BASELINE elapsed_ms=1078 repeated_calculations=20 calculation_loop_us=14003 stats_scan_us=5633 history_datoms=169 rss_kib=Some(27252) connection_cursor_sql_reads=28 connection_cursor_sql_bytes=104332 cache=CacheStats { hits: 1212, misses: 190, evictions: 182, current_entries: 8, current_bytes: 97749, peak_entries: 8, peak_bytes: 105337, oversized_bypasses: 0 }
+BLOCK_IO NodeBlockReadStats { compressed_hits: 41, canonical_reads: 149, corrupt_projections: 0, canonical_bytes: 322220, physical_read_bytes: 77424, decode_elapsed_nanos: 39940696 } SSD_CACHE SsdCacheStats { hits: 0, misses: 0, puts: 0, evictions: 0, purged_entries: 0, corruptions: 0, corrupt_entry_bypasses: 0, io_errors: 0, busy_bypasses: 0, oversized_bypasses: 0, disabled_bypasses: 460, physical_read_bytes: 0, physical_write_bytes: 0, canonical_read_bytes: 0, canonical_write_bytes: 0, current_entries: 0, current_bytes: 0, inventory_complete: false, peak_entries: 0, peak_bytes: 0 }
+APPLICATION_SQL sql_calls=356 errors=0 result_cell_bytes=104540
+PROCESS_SQL sql_calls=378 errors=0 result_cell_bytes=111589 by_operation={Application: SqlCallStats { calls: 118, completed_calls: 118, errors: 0, elapsed_nanos: 83600804 }, Query: SqlCallStats { calls: 2, completed_calls: 2, errors: 0, elapsed_nanos: 1288842 }, TransactionReport: SqlCallStats { calls: 252, completed_calls: 252, errors: 0, elapsed_nanos: 154282755 }, PeerObservation: SqlCallStats { calls: 16, completed_calls: 16, errors: 0, elapsed_nanos: 24432071 }}
+PLANNING_OK discarded=true stale_rejected=true logical_ids_remapped=true exact_report=true exact_reference=true basis_t=6 elapsed_ms=628 sql_calls=255 generated_hints=8
+PARTITIONS_OK named=true component_affinity=true uuid_roundtrip=true retry_exact=true reference_exact=true replayed=true basis_t=9 uuid_v7_millis=1791426943554 squuid_millis=1791426943000
+FULLTEXT_OK native=true structured_join=true portable_program=true retry_exact=true replayed=true basis_t=11 index_basis_t=11 hits=2 public_hits=1

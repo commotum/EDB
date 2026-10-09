@@ -11,7 +11,7 @@ use std::sync::{Arc, Mutex};
 
 const PAGE_MAGIC: &[u8; 4] = b"EDBP";
 const HEADER_MAGIC: &[u8; 4] = b"EDBF";
-const FORMAT: u32 = 1;
+const FORMAT: u32 = 2;
 // Unicode lowercase may expand a legal 16MiB string (for example U+0130).
 // Routing-page capacity can still reject pathological combinations explicitly.
 const MAX_KEY: usize = 32 * 1024 * 1024 + 64;

@@ -115,3 +115,53 @@ impl MaintenanceControl {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn shared_cancellation_interrupts_pacing_and_retains_completed_batch_stats() {
+        let control =
+            MaintenanceControl::new(Duration::from_secs(30), Arc::new(AtomicBool::new(false)))
+                .unwrap();
+        let worker_control = control.clone();
+        let (completed, result) = std::sync::mpsc::channel();
+        let worker = std::thread::spawn(move || {
+            completed.send(worker_control.after_batch()).unwrap();
+        });
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while control.stats().pauses == 0 {
+            assert!(Instant::now() < deadline, "worker never entered pacing");
+            std::thread::sleep(Duration::from_millis(1));
+        }
+        control.clone().cancel();
+        let error = result
+            .recv_timeout(Duration::from_secs(5))
+            .expect("cancellation did not interrupt the ongoing pause")
+            .unwrap_err();
+        worker.join().unwrap();
+        assert_eq!(error.category, ErrorCategory::Interrupted);
+        assert_eq!(error.code, "maintenance/canceled");
+        let stats = control.stats();
+        assert_eq!(stats.completed_batches, 1);
+        assert_eq!(stats.pauses, 1);
+        assert!(stats.paused_nanos > 0);
+
+        let unpaced = MaintenanceControl::default();
+        unpaced.after_batch().unwrap();
+        unpaced.cancel();
+        assert_eq!(
+            unpaced.after_batch().unwrap_err().code,
+            "maintenance/canceled"
+        );
+        assert_eq!(
+            unpaced.stats(),
+            MaintenanceStats {
+                completed_batches: 2,
+                pauses: 0,
+                paused_nanos: 0,
+            }
+        );
+    }
+}

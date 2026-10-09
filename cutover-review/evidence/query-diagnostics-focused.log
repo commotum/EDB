@@ -1,0 +1,26 @@
+   Compiling edb-core v0.1.0 (/tmp/edb-cutover-impl-20261007)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 1.03s
+     Running tests/query_diagnostics_source_cutover.rs (target/debug/deps/query_diagnostics_source_cutover-9f902433a44a8536)
+
+running 3 tests
+test stock_cli_query_stats_preserve_predicate_schedule_and_normal_return ... ok
+test capture_limits_preserve_source_query_results_stats_and_resource_failures ... ok
+test source_index_reports_use_existing_counters_and_named_source_labels ... FAILED
+
+failures:
+
+---- source_index_reports_use_existing_counters_and_named_source_labels stdout ----
+
+thread 'source_index_reports_use_existing_counters_and_named_source_labels' panicked at tests/query_diagnostics_source_cutover.rs:119:9:
+assertion `left == right` failed
+  left: 1
+ right: 2
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    source_index_reports_use_existing_counters_and_named_source_labels
+
+test result: FAILED. 2 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.14s
+
+error: test failed, to rerun pass `--test query_diagnostics_source_cutover`

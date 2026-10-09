@@ -1,0 +1,15 @@
+Command: cargo test --locked --test connect_tutorial_cutover
+Working directory: /tmp/edb-cutover-impl-20261007
+PostgreSQL: not required; checks canonical complete input identity before resolution.
+
+   Compiling edb-core v0.1.0 (/tmp/edb-cutover-impl-20261007)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 4.55s
+     Running tests/connect_tutorial_cutover.rs (target/debug/deps/connect_tutorial_cutover-bff565063870055f)
+
+running 1 test
+test connect_tutorial_rust_and_cli_examples_have_one_exact_request_identity ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+Initial rustfmt --check requested a line-wrap adjustment in the new test only.
+Ran rustfmt --edition 2024 tests/connect_tutorial_cutover.rs, then rustfmt --check --edition 2024 tests/connect_tutorial_cutover.rs: exit 0.

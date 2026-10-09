@@ -102,3 +102,96 @@ fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::index::tree::{LeafSegment, encode_tree_node};
+    use crate::{Datom, IndexOrder, Value, t_to_tx};
+
+    fn leaf(source: u64) -> (Digest, Arc<TreeNode>, usize) {
+        let node = Arc::new(TreeNode::Leaf(LeafSegment {
+            order: IndexOrder::Saevt,
+            history: true,
+            entities: vec![42],
+            attributes: vec![1000],
+            values: vec![Value::Long(7)],
+            transactions: vec![t_to_tx(1).unwrap()],
+            sources: vec![source],
+            assertions: vec![true],
+        }));
+        let bytes = encode_tree_node(&node).unwrap();
+        let weight = node.retained_bytes() as usize + bytes.len();
+        (crate::sha256(&bytes), node, weight)
+    }
+
+    #[test]
+    fn eviction_releases_only_cache_ownership_of_source_bearing_nodes() {
+        let (first_hash, first, weight) = leaf(99);
+        let (second_hash, second, _) = leaf(98);
+        let (third_hash, third, _) = leaf(97);
+        let cache = TreeNodeCache::new(2, weight * 3);
+        cache.insert(first_hash, Arc::clone(&first), weight);
+        cache.insert(second_hash, second, weight);
+        let active = cache.get(&first_hash).unwrap();
+        cache.insert(third_hash, third, weight);
+        assert!(cache.get(&second_hash).is_none());
+        assert_eq!(cache.stats().evictions, 1);
+
+        // Replacement is also a recency event, independently of reads.
+        let (_, second, _) = leaf(98);
+        cache.insert(first_hash, Arc::clone(&first), weight);
+        cache.insert(second_hash, second, weight);
+        assert!(cache.get(&third_hash).is_none());
+        let (_, third, _) = leaf(97);
+        cache.insert(third_hash, third, weight);
+        assert!(cache.get(&first_hash).is_none());
+        assert_eq!(cache.stats().evictions, 3);
+        let active_weak = Arc::downgrade(&active);
+        drop(first);
+        drop(cache);
+        assert_eq!(Arc::strong_count(&active), 1);
+        let TreeNode::Leaf(leaf) = active.as_ref() else {
+            panic!("retained leaf");
+        };
+        assert_eq!(
+            leaf.datom(0),
+            Some(Datom {
+                entity: 42,
+                attribute: 1000,
+                value: Value::Long(7),
+                tx: t_to_tx(1).unwrap(),
+                source: 99,
+                added: true,
+            })
+        );
+        drop(active);
+        assert!(active_weak.upgrade().is_none());
+    }
+
+    #[test]
+    fn byte_budget_and_bypass_policy_are_independent_of_entry_budget() {
+        let (first_hash, first, weight) = leaf(99);
+        let (second_hash, second, _) = leaf(98);
+        let cache = TreeNodeCache::new(8, weight);
+        cache.insert(first_hash, Arc::clone(&first), weight);
+        assert_eq!(cache.stats().current_bytes, weight);
+        cache.insert(second_hash, second, weight);
+        assert!(cache.get(&first_hash).is_none());
+        assert!(cache.get(&second_hash).is_some());
+        assert_eq!(cache.stats().current_entries, 1);
+        assert_eq!(cache.stats().current_bytes, weight);
+        assert_eq!(cache.stats().peak_bytes, weight);
+        assert_eq!(cache.stats().evictions, 1);
+
+        for (entries, bytes) in [(0, weight), (8, 0), (8, weight - 1)] {
+            let cache = TreeNodeCache::new(entries, bytes);
+            cache.insert(first_hash, Arc::clone(&first), weight);
+            assert!(cache.get(&first_hash).is_none());
+            assert_eq!(cache.stats().current_entries, 0);
+            assert_eq!(cache.stats().current_bytes, 0);
+            assert_eq!(cache.stats().oversized_bypasses, 1);
+            assert_eq!(cache.stats().evictions, 0);
+        }
+    }
+}

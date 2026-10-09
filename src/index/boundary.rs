@@ -30,52 +30,42 @@ impl IndexTransaction {
     }
 }
 
-/// A left-contiguous sequence of zero through four typed index components.
-///
-/// The type parameters are the component types *in index order*. An enum is
-/// used instead of four `Option`s so a gap such as `[a, nil, v]` cannot be
-/// represented. `Four` deliberately stops at T: assertion/retraction is not a
-/// fifth public raw-index component.
+/// A left-contiguous sequence of zero through five typed index components.
+/// The final assertion/retraction boolean is not a boundary component.
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub enum IndexComponents<First, Second, Third, Fourth> {
+pub enum IndexComponents<First, Second, Third, Fourth, Fifth = std::convert::Infallible> {
     Empty,
     One(First),
     Two(First, Second),
     Three(First, Second, Third),
     Four(First, Second, Third, Fourth),
+    Five(First, Second, Third, Fourth, Fifth),
 }
-
-impl<First, Second, Third, Fourth> IndexComponents<First, Second, Third, Fourth> {
+impl<F, S, T, U, V> IndexComponents<F, S, T, U, V> {
     pub const fn len(&self) -> usize {
         match self {
             Self::Empty => 0,
             Self::One(_) => 1,
-            Self::Two(_, _) => 2,
-            Self::Three(_, _, _) => 3,
-            Self::Four(_, _, _, _) => 4,
+            Self::Two(..) => 2,
+            Self::Three(..) => 3,
+            Self::Four(..) => 4,
+            Self::Five(..) => 5,
         }
     }
-
     pub const fn is_empty(&self) -> bool {
         matches!(self, Self::Empty)
     }
 }
-
-/// A typed virtual position in one of EDB's four raw index orders.
-///
-/// E/A/V/T component order is encoded in each variant. E and A are already
-/// resolved numeric ids and V is already normalized for the attribute. The
-/// immutable database API owns the schema/ident/lookup-ref normalization that
-/// produces this type; [`IndexBoundary::validate`] is the storage-independent
-/// final check before a cursor uses it.
+/// A resolved virtual position in one of EDB's six index orders.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum IndexBoundary {
-    Eavt(IndexComponents<u64, u32, Value, IndexTransaction>),
-    Aevt(IndexComponents<u32, u64, Value, IndexTransaction>),
-    Avet(IndexComponents<u32, Value, u64, IndexTransaction>),
-    Vaet(IndexComponents<Value, u32, u64, IndexTransaction>),
+    Eavt(IndexComponents<u64, u32, Value, IndexTransaction, u64>),
+    Aevt(IndexComponents<u32, u64, Value, IndexTransaction, u64>),
+    Avet(IndexComponents<u32, Value, u64, IndexTransaction, u64>),
+    Vaet(IndexComponents<Value, u32, u64, IndexTransaction, u64>),
+    Saevt(IndexComponents<u64, u32, u64, Value, IndexTransaction>),
+    Savet(IndexComponents<u64, u32, Value, u64, IndexTransaction>),
 }
-
 impl IndexBoundary {
     pub const fn order(&self) -> IndexOrder {
         match self {
@@ -83,154 +73,251 @@ impl IndexBoundary {
             Self::Aevt(_) => IndexOrder::Aevt,
             Self::Avet(_) => IndexOrder::Avet,
             Self::Vaet(_) => IndexOrder::Vaet,
+            Self::Saevt(_) => IndexOrder::Saevt,
+            Self::Savet(_) => IndexOrder::Savet,
         }
     }
-
     pub const fn len(&self) -> usize {
         match self {
-            Self::Eavt(components) => components.len(),
-            Self::Aevt(components) => components.len(),
-            Self::Avet(components) => components.len(),
-            Self::Vaet(components) => components.len(),
+            Self::Eavt(c) => c.len(),
+            Self::Aevt(c) => c.len(),
+            Self::Avet(c) => c.len(),
+            Self::Vaet(c) => c.len(),
+            Self::Saevt(c) => c.len(),
+            Self::Savet(c) => c.len(),
         }
     }
-
     pub const fn is_empty(&self) -> bool {
         match self {
-            Self::Eavt(components) => components.is_empty(),
-            Self::Aevt(components) => components.is_empty(),
-            Self::Avet(components) => components.is_empty(),
-            Self::Vaet(components) => components.is_empty(),
+            Self::Eavt(c) => c.is_empty(),
+            Self::Aevt(c) => c.is_empty(),
+            Self::Avet(c) => c.is_empty(),
+            Self::Vaet(c) => c.is_empty(),
+            Self::Saevt(c) => c.is_empty(),
+            Self::Savet(c) => c.is_empty(),
         }
     }
-
-    /// The qualified attribute whose physical AVET readiness must be checked.
-    /// An empty AVET boundary intentionally has no attribute qualification.
     pub const fn avet_attribute(&self) -> Option<u32> {
         match self {
-            Self::Avet(IndexComponents::One(attribute))
-            | Self::Avet(IndexComponents::Two(attribute, _))
-            | Self::Avet(IndexComponents::Three(attribute, _, _))
-            | Self::Avet(IndexComponents::Four(attribute, _, _, _)) => Some(*attribute),
+            Self::Avet(IndexComponents::One(a)) => Some(*a),
+            Self::Avet(IndexComponents::Two(a, _)) => Some(*a),
+            Self::Avet(IndexComponents::Three(a, _, _)) => Some(*a),
+            Self::Avet(IndexComponents::Four(a, _, _, _)) => Some(*a),
+            Self::Avet(IndexComponents::Five(a, _, _, _, _)) => Some(*a),
+            Self::Savet(IndexComponents::Two(_, a)) => Some(*a),
+            Self::Savet(IndexComponents::Three(_, a, _)) => Some(*a),
+            Self::Savet(IndexComponents::Four(_, a, _, _)) => Some(*a),
+            Self::Savet(IndexComponents::Five(_, a, _, _, _)) => Some(*a),
             _ => None,
         }
     }
-
-    /// Validate resolved identifiers and normalize T/Tx exactly once before
-    /// traversal. Schema-directed V validation and ident/lookup resolution
-    /// remain at the immutable database boundary, where the exact schema and
-    /// ident map are available.
     pub fn validate(&self) -> Result<(), SemanticError> {
         self.normalized().map(|_| ())
     }
-
     pub(crate) fn normalized(&self) -> Result<NormalizedIndexBoundary, SemanticError> {
-        fn entity(entity: u64) -> Result<u64, SemanticError> {
-            validate_permanent_eid(entity)?;
-            Ok(entity)
+        fn eid(e: u64) -> Result<u64, SemanticError> {
+            validate_permanent_eid(e)?;
+            Ok(e)
         }
-
-        fn normalized_value(value: &Value) -> Result<Value, SemanticError> {
-            if let Value::Ref(entity) = value {
-                validate_permanent_eid(*entity)?;
-            }
-            Ok(value.clone())
-        }
-
-        fn vaet_value(value: &Value) -> Result<Value, SemanticError> {
-            if !matches!(value, Value::Ref(_)) {
+        fn value(v: &Value, vaet: bool) -> Result<Value, SemanticError> {
+            if vaet && !matches!(v, Value::Ref(_)) {
                 return Err(SemanticError::incorrect(
                     "index/vaet-value-not-ref",
                     "VAET boundary value must resolve to an entity reference",
                 ));
             }
-            normalized_value(value)
+            if let Value::Ref(e) = v {
+                validate_permanent_eid(*e)?;
+            }
+            Ok(v.clone())
         }
-
         Ok(match self {
-            Self::Eavt(components) => NormalizedIndexBoundary::Eavt(match components {
+            Self::Eavt(c) => NormalizedIndexBoundary::Eavt(match c {
                 IndexComponents::Empty => IndexComponents::Empty,
-                IndexComponents::One(e) => IndexComponents::One(entity(*e)?),
-                IndexComponents::Two(e, a) => IndexComponents::Two(entity(*e)?, *a),
-                IndexComponents::Three(e, a, v) => {
-                    IndexComponents::Three(entity(*e)?, *a, normalized_value(v)?)
+                IndexComponents::One(entity) => IndexComponents::One(eid(*entity)?),
+                IndexComponents::Two(entity, attribute) => {
+                    IndexComponents::Two(eid(*entity)?, *attribute)
                 }
-                IndexComponents::Four(e, a, v, t) => {
-                    IndexComponents::Four(entity(*e)?, *a, normalized_value(v)?, t.stored_tx()?)
+                IndexComponents::Three(entity, attribute, v) => {
+                    IndexComponents::Three(eid(*entity)?, *attribute, value(v, false)?)
                 }
+                IndexComponents::Four(entity, attribute, v, tx) => IndexComponents::Four(
+                    eid(*entity)?,
+                    *attribute,
+                    value(v, false)?,
+                    tx.stored_tx()?,
+                ),
+                IndexComponents::Five(entity, attribute, v, tx, source) => IndexComponents::Five(
+                    eid(*entity)?,
+                    *attribute,
+                    value(v, false)?,
+                    tx.stored_tx()?,
+                    eid(*source)?,
+                ),
             }),
-            Self::Aevt(components) => NormalizedIndexBoundary::Aevt(match components {
+            Self::Aevt(c) => NormalizedIndexBoundary::Aevt(match c {
                 IndexComponents::Empty => IndexComponents::Empty,
-                IndexComponents::One(a) => IndexComponents::One(*a),
-                IndexComponents::Two(a, e) => IndexComponents::Two(*a, entity(*e)?),
-                IndexComponents::Three(a, e, v) => {
-                    IndexComponents::Three(*a, entity(*e)?, normalized_value(v)?)
+                IndexComponents::One(attribute) => IndexComponents::One(*attribute),
+                IndexComponents::Two(attribute, entity) => {
+                    IndexComponents::Two(*attribute, eid(*entity)?)
                 }
-                IndexComponents::Four(a, e, v, t) => {
-                    IndexComponents::Four(*a, entity(*e)?, normalized_value(v)?, t.stored_tx()?)
+                IndexComponents::Three(attribute, entity, v) => {
+                    IndexComponents::Three(*attribute, eid(*entity)?, value(v, false)?)
                 }
+                IndexComponents::Four(attribute, entity, v, tx) => IndexComponents::Four(
+                    *attribute,
+                    eid(*entity)?,
+                    value(v, false)?,
+                    tx.stored_tx()?,
+                ),
+                IndexComponents::Five(attribute, entity, v, tx, source) => IndexComponents::Five(
+                    *attribute,
+                    eid(*entity)?,
+                    value(v, false)?,
+                    tx.stored_tx()?,
+                    eid(*source)?,
+                ),
             }),
-            Self::Avet(components) => NormalizedIndexBoundary::Avet(match components {
+            Self::Avet(c) => NormalizedIndexBoundary::Avet(match c {
                 IndexComponents::Empty => IndexComponents::Empty,
-                IndexComponents::One(a) => IndexComponents::One(*a),
-                IndexComponents::Two(a, v) => IndexComponents::Two(*a, normalized_value(v)?),
-                IndexComponents::Three(a, v, e) => {
-                    IndexComponents::Three(*a, normalized_value(v)?, entity(*e)?)
+                IndexComponents::One(attribute) => IndexComponents::One(*attribute),
+                IndexComponents::Two(attribute, v) => {
+                    IndexComponents::Two(*attribute, value(v, false)?)
                 }
-                IndexComponents::Four(a, v, e, t) => {
-                    IndexComponents::Four(*a, normalized_value(v)?, entity(*e)?, t.stored_tx()?)
+                IndexComponents::Three(attribute, v, entity) => {
+                    IndexComponents::Three(*attribute, value(v, false)?, eid(*entity)?)
                 }
+                IndexComponents::Four(attribute, v, entity, tx) => IndexComponents::Four(
+                    *attribute,
+                    value(v, false)?,
+                    eid(*entity)?,
+                    tx.stored_tx()?,
+                ),
+                IndexComponents::Five(attribute, v, entity, tx, source) => IndexComponents::Five(
+                    *attribute,
+                    value(v, false)?,
+                    eid(*entity)?,
+                    tx.stored_tx()?,
+                    eid(*source)?,
+                ),
             }),
-            Self::Vaet(components) => NormalizedIndexBoundary::Vaet(match components {
+            Self::Vaet(c) => NormalizedIndexBoundary::Vaet(match c {
                 IndexComponents::Empty => IndexComponents::Empty,
-                IndexComponents::One(v) => IndexComponents::One(vaet_value(v)?),
-                IndexComponents::Two(v, a) => IndexComponents::Two(vaet_value(v)?, *a),
-                IndexComponents::Three(v, a, e) => {
-                    IndexComponents::Three(vaet_value(v)?, *a, entity(*e)?)
+                IndexComponents::One(v) => IndexComponents::One(value(v, true)?),
+                IndexComponents::Two(v, attribute) => {
+                    IndexComponents::Two(value(v, true)?, *attribute)
                 }
-                IndexComponents::Four(v, a, e, t) => {
-                    IndexComponents::Four(vaet_value(v)?, *a, entity(*e)?, t.stored_tx()?)
+                IndexComponents::Three(v, attribute, entity) => {
+                    IndexComponents::Three(value(v, true)?, *attribute, eid(*entity)?)
                 }
+                IndexComponents::Four(v, attribute, entity, tx) => IndexComponents::Four(
+                    value(v, true)?,
+                    *attribute,
+                    eid(*entity)?,
+                    tx.stored_tx()?,
+                ),
+                IndexComponents::Five(v, attribute, entity, tx, source) => IndexComponents::Five(
+                    value(v, true)?,
+                    *attribute,
+                    eid(*entity)?,
+                    tx.stored_tx()?,
+                    eid(*source)?,
+                ),
+            }),
+            Self::Saevt(c) => NormalizedIndexBoundary::Saevt(match c {
+                IndexComponents::Empty => IndexComponents::Empty,
+                IndexComponents::One(source) => IndexComponents::One(eid(*source)?),
+                IndexComponents::Two(source, attribute) => {
+                    IndexComponents::Two(eid(*source)?, *attribute)
+                }
+                IndexComponents::Three(source, attribute, entity) => {
+                    IndexComponents::Three(eid(*source)?, *attribute, eid(*entity)?)
+                }
+                IndexComponents::Four(source, attribute, entity, v) => IndexComponents::Four(
+                    eid(*source)?,
+                    *attribute,
+                    eid(*entity)?,
+                    value(v, false)?,
+                ),
+                IndexComponents::Five(source, attribute, entity, v, tx) => IndexComponents::Five(
+                    eid(*source)?,
+                    *attribute,
+                    eid(*entity)?,
+                    value(v, false)?,
+                    tx.stored_tx()?,
+                ),
+            }),
+            Self::Savet(c) => NormalizedIndexBoundary::Savet(match c {
+                IndexComponents::Empty => IndexComponents::Empty,
+                IndexComponents::One(source) => IndexComponents::One(eid(*source)?),
+                IndexComponents::Two(source, attribute) => {
+                    IndexComponents::Two(eid(*source)?, *attribute)
+                }
+                IndexComponents::Three(source, attribute, v) => {
+                    IndexComponents::Three(eid(*source)?, *attribute, value(v, false)?)
+                }
+                IndexComponents::Four(source, attribute, v, entity) => IndexComponents::Four(
+                    eid(*source)?,
+                    *attribute,
+                    value(v, false)?,
+                    eid(*entity)?,
+                ),
+                IndexComponents::Five(source, attribute, v, entity, tx) => IndexComponents::Five(
+                    eid(*source)?,
+                    *attribute,
+                    value(v, false)?,
+                    eid(*entity)?,
+                    tx.stored_tx()?,
+                ),
             }),
         })
     }
-
-    /// Boundary needed to derive a current forward seek from raw history.
-    /// A T-qualified seek must observe the complete logical E/A/V group
-    /// before deciding which filtered/current datoms survive, then apply the
-    /// original four-component boundary to those survivors.
     pub(crate) fn current_group_start(&self) -> Self {
         match self {
-            Self::Eavt(IndexComponents::Four(e, a, v, _)) => {
-                Self::Eavt(IndexComponents::Three(*e, *a, v.clone()))
+            Self::Eavt(IndexComponents::Four(entity, attribute, v, _)) => {
+                Self::Eavt(IndexComponents::Three(*entity, *attribute, v.clone()))
             }
-            Self::Aevt(IndexComponents::Four(a, e, v, _)) => {
-                Self::Aevt(IndexComponents::Three(*a, *e, v.clone()))
+            Self::Eavt(IndexComponents::Five(entity, attribute, v, _, _)) => {
+                Self::Eavt(IndexComponents::Three(*entity, *attribute, v.clone()))
             }
-            Self::Avet(IndexComponents::Four(a, v, e, _)) => {
-                Self::Avet(IndexComponents::Three(*a, v.clone(), *e))
+            Self::Aevt(IndexComponents::Four(attribute, entity, v, _)) => {
+                Self::Aevt(IndexComponents::Three(*attribute, *entity, v.clone()))
             }
-            Self::Vaet(IndexComponents::Four(v, a, e, _)) => {
-                Self::Vaet(IndexComponents::Three(v.clone(), *a, *e))
+            Self::Aevt(IndexComponents::Five(attribute, entity, v, _, _)) => {
+                Self::Aevt(IndexComponents::Three(*attribute, *entity, v.clone()))
             }
+            Self::Avet(IndexComponents::Four(attribute, v, entity, _)) => {
+                Self::Avet(IndexComponents::Three(*attribute, v.clone(), *entity))
+            }
+            Self::Avet(IndexComponents::Five(attribute, v, entity, _, _)) => {
+                Self::Avet(IndexComponents::Three(*attribute, v.clone(), *entity))
+            }
+            Self::Vaet(IndexComponents::Four(v, attribute, entity, _)) => {
+                Self::Vaet(IndexComponents::Three(v.clone(), *attribute, *entity))
+            }
+            Self::Vaet(IndexComponents::Five(v, attribute, entity, _, _)) => {
+                Self::Vaet(IndexComponents::Three(v.clone(), *attribute, *entity))
+            }
+            Self::Saevt(IndexComponents::Five(source, attribute, entity, v, _)) => Self::Saevt(
+                IndexComponents::Four(*source, *attribute, *entity, v.clone()),
+            ),
+            Self::Savet(IndexComponents::Five(source, attribute, v, entity, _)) => Self::Savet(
+                IndexComponents::Four(*source, *attribute, v.clone(), *entity),
+            ),
             _ => self.clone(),
         }
     }
 }
-
-/// Cursor-ready form with the public T/Tx choice normalized to the canonical
-/// transaction entity stored by [`Datom`].
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) enum NormalizedIndexBoundary {
-    Eavt(IndexComponents<u64, u32, Value, u64>),
-    Aevt(IndexComponents<u32, u64, Value, u64>),
-    Avet(IndexComponents<u32, Value, u64, u64>),
-    Vaet(IndexComponents<Value, u32, u64, u64>),
-    /// Internal forward position after every datom equal to the supplied
-    /// logical prefix. It changes neither public components nor stored keys.
+    Eavt(IndexComponents<u64, u32, Value, u64, u64>),
+    Aevt(IndexComponents<u32, u64, Value, u64, u64>),
+    Avet(IndexComponents<u32, Value, u64, u64, u64>),
+    Vaet(IndexComponents<Value, u32, u64, u64, u64>),
+    Saevt(IndexComponents<u64, u32, u64, Value, u64>),
+    Savet(IndexComponents<u64, u32, Value, u64, u64>),
     After(Box<Self>),
 }
-
 impl NormalizedIndexBoundary {
     pub(crate) fn order(&self) -> IndexOrder {
         match self {
@@ -238,170 +325,226 @@ impl NormalizedIndexBoundary {
             Self::Aevt(_) => IndexOrder::Aevt,
             Self::Avet(_) => IndexOrder::Avet,
             Self::Vaet(_) => IndexOrder::Vaet,
-            Self::After(boundary) => boundary.order(),
+            Self::Saevt(_) => IndexOrder::Saevt,
+            Self::Savet(_) => IndexOrder::Savet,
+            Self::After(b) => b.order(),
         }
     }
-
     pub(crate) fn after_prefix(self) -> Self {
         match self {
             Self::After(_) => self,
             _ => Self::After(Box::new(self)),
         }
     }
-
-    pub(crate) fn is_after_prefix(&self) -> bool {
-        matches!(self, Self::After(_))
-    }
-
-    pub(crate) fn unbiased(&self) -> &Self {
+    pub(crate) fn compare_datom(&self, d: &Datom) -> Ordering {
         match self {
-            Self::After(boundary) => boundary,
-            _ => self,
-        }
-    }
-
-    /// Compare an actual datom to this virtual boundary in index order.
-    /// Missing suffix components compare equal, which is the semantic key to
-    /// placing forward seek before the lowest match and reverse seek after the
-    /// highest match without manufacturing minimum/maximum Values. This is the
-    /// direct Rust form of recovered `reverse-datum-spec` (`db.clj:2040-2063`),
-    /// whose increments/MAX fields and `asserting=false` manufacture the same
-    /// upper position for a concrete-datum tree API.
-    pub(crate) fn compare_datom(&self, datom: &Datom) -> Ordering {
-        fn tx(datom: &Datom, boundary_tx: u64) -> Ordering {
-            // Transaction sorts descending in every native index.
-            boundary_tx.cmp(&datom.tx)
-        }
-
-        match self {
-            Self::After(boundary) => boundary.compare_datom(datom).then(Ordering::Less),
-            Self::Eavt(components) => match components {
+            Self::After(b) => b.compare_datom(d).then(Ordering::Less),
+            Self::Eavt(c) => match c {
                 IndexComponents::Empty => Ordering::Equal,
-                IndexComponents::One(e) => datom.entity.cmp(e),
-                IndexComponents::Two(e, a) => {
-                    datom.entity.cmp(e).then_with(|| datom.attribute.cmp(a))
-                }
-                IndexComponents::Three(e, a, v) => datom
+                IndexComponents::One(entity) => d.entity.cmp(entity),
+                IndexComponents::Two(entity, attribute) => d
                     .entity
-                    .cmp(e)
-                    .then_with(|| datom.attribute.cmp(a))
-                    .then_with(|| datom.value.index_cmp(v)),
-                IndexComponents::Four(e, a, v, t) => datom
+                    .cmp(entity)
+                    .then_with(|| d.attribute.cmp(attribute)),
+                IndexComponents::Three(entity, attribute, value) => d
                     .entity
-                    .cmp(e)
-                    .then_with(|| datom.attribute.cmp(a))
-                    .then_with(|| datom.value.index_cmp(v))
-                    .then_with(|| tx(datom, *t)),
+                    .cmp(entity)
+                    .then_with(|| d.attribute.cmp(attribute))
+                    .then_with(|| d.value.index_cmp(value)),
+                IndexComponents::Four(entity, attribute, value, tx) => d
+                    .entity
+                    .cmp(entity)
+                    .then_with(|| d.attribute.cmp(attribute))
+                    .then_with(|| d.value.index_cmp(value))
+                    .then_with(|| tx.cmp(&d.tx)),
+                IndexComponents::Five(entity, attribute, value, tx, source) => d
+                    .entity
+                    .cmp(entity)
+                    .then_with(|| d.attribute.cmp(attribute))
+                    .then_with(|| d.value.index_cmp(value))
+                    .then_with(|| tx.cmp(&d.tx))
+                    .then_with(|| d.source.cmp(source)),
             },
-            Self::Aevt(components) => match components {
+            Self::Aevt(c) => match c {
                 IndexComponents::Empty => Ordering::Equal,
-                IndexComponents::One(a) => datom.attribute.cmp(a),
-                IndexComponents::Two(a, e) => {
-                    datom.attribute.cmp(a).then_with(|| datom.entity.cmp(e))
-                }
-                IndexComponents::Three(a, e, v) => datom
+                IndexComponents::One(attribute) => d.attribute.cmp(attribute),
+                IndexComponents::Two(attribute, entity) => d
                     .attribute
-                    .cmp(a)
-                    .then_with(|| datom.entity.cmp(e))
-                    .then_with(|| datom.value.index_cmp(v)),
-                IndexComponents::Four(a, e, v, t) => datom
+                    .cmp(attribute)
+                    .then_with(|| d.entity.cmp(entity)),
+                IndexComponents::Three(attribute, entity, value) => d
                     .attribute
-                    .cmp(a)
-                    .then_with(|| datom.entity.cmp(e))
-                    .then_with(|| datom.value.index_cmp(v))
-                    .then_with(|| tx(datom, *t)),
+                    .cmp(attribute)
+                    .then_with(|| d.entity.cmp(entity))
+                    .then_with(|| d.value.index_cmp(value)),
+                IndexComponents::Four(attribute, entity, value, tx) => d
+                    .attribute
+                    .cmp(attribute)
+                    .then_with(|| d.entity.cmp(entity))
+                    .then_with(|| d.value.index_cmp(value))
+                    .then_with(|| tx.cmp(&d.tx)),
+                IndexComponents::Five(attribute, entity, value, tx, source) => d
+                    .attribute
+                    .cmp(attribute)
+                    .then_with(|| d.entity.cmp(entity))
+                    .then_with(|| d.value.index_cmp(value))
+                    .then_with(|| tx.cmp(&d.tx))
+                    .then_with(|| d.source.cmp(source)),
             },
-            Self::Avet(components) => match components {
+            Self::Avet(c) => match c {
                 IndexComponents::Empty => Ordering::Equal,
-                IndexComponents::One(a) => datom.attribute.cmp(a),
-                IndexComponents::Two(a, v) => datom
+                IndexComponents::One(attribute) => d.attribute.cmp(attribute),
+                IndexComponents::Two(attribute, value) => d
                     .attribute
-                    .cmp(a)
-                    .then_with(|| datom.value.index_cmp(v)),
-                IndexComponents::Three(a, v, e) => datom
+                    .cmp(attribute)
+                    .then_with(|| d.value.index_cmp(value)),
+                IndexComponents::Three(attribute, value, entity) => d
                     .attribute
-                    .cmp(a)
-                    .then_with(|| datom.value.index_cmp(v))
-                    .then_with(|| datom.entity.cmp(e)),
-                IndexComponents::Four(a, v, e, t) => datom
+                    .cmp(attribute)
+                    .then_with(|| d.value.index_cmp(value))
+                    .then_with(|| d.entity.cmp(entity)),
+                IndexComponents::Four(attribute, value, entity, tx) => d
                     .attribute
-                    .cmp(a)
-                    .then_with(|| datom.value.index_cmp(v))
-                    .then_with(|| datom.entity.cmp(e))
-                    .then_with(|| tx(datom, *t)),
+                    .cmp(attribute)
+                    .then_with(|| d.value.index_cmp(value))
+                    .then_with(|| d.entity.cmp(entity))
+                    .then_with(|| tx.cmp(&d.tx)),
+                IndexComponents::Five(attribute, value, entity, tx, source) => d
+                    .attribute
+                    .cmp(attribute)
+                    .then_with(|| d.value.index_cmp(value))
+                    .then_with(|| d.entity.cmp(entity))
+                    .then_with(|| tx.cmp(&d.tx))
+                    .then_with(|| d.source.cmp(source)),
             },
-            Self::Vaet(components) => match components {
+            Self::Vaet(c) => match c {
                 IndexComponents::Empty => Ordering::Equal,
-                IndexComponents::One(v) => datom.value.index_cmp(v),
-                IndexComponents::Two(v, a) => datom
+                IndexComponents::One(value) => d.value.index_cmp(value),
+                IndexComponents::Two(value, attribute) => d
                     .value
-                    .index_cmp(v)
-                    .then_with(|| datom.attribute.cmp(a)),
-                IndexComponents::Three(v, a, e) => datom
+                    .index_cmp(value)
+                    .then_with(|| d.attribute.cmp(attribute)),
+                IndexComponents::Three(value, attribute, entity) => d
                     .value
-                    .index_cmp(v)
-                    .then_with(|| datom.attribute.cmp(a))
-                    .then_with(|| datom.entity.cmp(e)),
-                IndexComponents::Four(v, a, e, t) => datom
+                    .index_cmp(value)
+                    .then_with(|| d.attribute.cmp(attribute))
+                    .then_with(|| d.entity.cmp(entity)),
+                IndexComponents::Four(value, attribute, entity, tx) => d
                     .value
-                    .index_cmp(v)
-                    .then_with(|| datom.attribute.cmp(a))
-                    .then_with(|| datom.entity.cmp(e))
-                    .then_with(|| tx(datom, *t)),
+                    .index_cmp(value)
+                    .then_with(|| d.attribute.cmp(attribute))
+                    .then_with(|| d.entity.cmp(entity))
+                    .then_with(|| tx.cmp(&d.tx)),
+                IndexComponents::Five(value, attribute, entity, tx, source) => d
+                    .value
+                    .index_cmp(value)
+                    .then_with(|| d.attribute.cmp(attribute))
+                    .then_with(|| d.entity.cmp(entity))
+                    .then_with(|| tx.cmp(&d.tx))
+                    .then_with(|| d.source.cmp(source)),
+            },
+            Self::Saevt(c) => match c {
+                IndexComponents::Empty => Ordering::Equal,
+                IndexComponents::One(source) => d.source.cmp(source),
+                IndexComponents::Two(source, attribute) => d
+                    .source
+                    .cmp(source)
+                    .then_with(|| d.attribute.cmp(attribute)),
+                IndexComponents::Three(source, attribute, entity) => d
+                    .source
+                    .cmp(source)
+                    .then_with(|| d.attribute.cmp(attribute))
+                    .then_with(|| d.entity.cmp(entity)),
+                IndexComponents::Four(source, attribute, entity, value) => d
+                    .source
+                    .cmp(source)
+                    .then_with(|| d.attribute.cmp(attribute))
+                    .then_with(|| d.entity.cmp(entity))
+                    .then_with(|| d.value.index_cmp(value)),
+                IndexComponents::Five(source, attribute, entity, value, tx) => d
+                    .source
+                    .cmp(source)
+                    .then_with(|| d.attribute.cmp(attribute))
+                    .then_with(|| d.entity.cmp(entity))
+                    .then_with(|| d.value.index_cmp(value))
+                    .then_with(|| tx.cmp(&d.tx)),
+            },
+            Self::Savet(c) => match c {
+                IndexComponents::Empty => Ordering::Equal,
+                IndexComponents::One(source) => d.source.cmp(source),
+                IndexComponents::Two(source, attribute) => d
+                    .source
+                    .cmp(source)
+                    .then_with(|| d.attribute.cmp(attribute)),
+                IndexComponents::Three(source, attribute, value) => d
+                    .source
+                    .cmp(source)
+                    .then_with(|| d.attribute.cmp(attribute))
+                    .then_with(|| d.value.index_cmp(value)),
+                IndexComponents::Four(source, attribute, value, entity) => d
+                    .source
+                    .cmp(source)
+                    .then_with(|| d.attribute.cmp(attribute))
+                    .then_with(|| d.value.index_cmp(value))
+                    .then_with(|| d.entity.cmp(entity)),
+                IndexComponents::Five(source, attribute, value, entity, tx) => d
+                    .source
+                    .cmp(source)
+                    .then_with(|| d.attribute.cmp(attribute))
+                    .then_with(|| d.value.index_cmp(value))
+                    .then_with(|| d.entity.cmp(entity))
+                    .then_with(|| tx.cmp(&d.tx)),
             },
         }
     }
-
-    /// Lower-bound comparison used while deriving a current value from raw
-    /// recent history. A four-component boundary must begin at the start of
-    /// its complete logical E/A/V group: only after selecting that group's
-    /// endpoint winner is it safe to apply the T boundary. Starting within
-    /// the history group could resurrect an older assertion hidden by a
-    /// newer operation that sorts just before the requested T.
-    pub(crate) fn compare_current_group_start(&self, datom: &Datom) -> Ordering {
+    pub(crate) fn compare_current_group_start(&self, d: &Datom) -> Ordering {
         match self {
-            Self::After(boundary)
-                if matches!(
-                    boundary.as_ref(),
-                    Self::Eavt(IndexComponents::Four(..))
-                        | Self::Aevt(IndexComponents::Four(..))
-                        | Self::Avet(IndexComponents::Four(..))
-                        | Self::Vaet(IndexComponents::Four(..))
-                ) =>
-            {
-                // T-qualified current reads must still select the winner
-                // from its entire group before applying an exclusive T.
-                boundary.compare_current_group_start(datom)
+            Self::After(b) => b.compare_current_group_start(d),
+            Self::Eavt(IndexComponents::Four(entity, attribute, value, _)) => {
+                Self::Eavt(IndexComponents::Three(*entity, *attribute, value.clone()))
+                    .compare_datom(d)
             }
-            Self::Eavt(IndexComponents::Four(e, a, v, _)) => datom
-                .entity
-                .cmp(e)
-                .then_with(|| datom.attribute.cmp(a))
-                .then_with(|| datom.value.index_cmp(v)),
-            Self::Aevt(IndexComponents::Four(a, e, v, _)) => datom
-                .attribute
-                .cmp(a)
-                .then_with(|| datom.entity.cmp(e))
-                .then_with(|| datom.value.index_cmp(v)),
-            Self::Avet(IndexComponents::Four(a, v, e, _)) => datom
-                .attribute
-                .cmp(a)
-                .then_with(|| datom.value.index_cmp(v))
-                .then_with(|| datom.entity.cmp(e)),
-            Self::Vaet(IndexComponents::Four(v, a, e, _)) => datom
-                .value
-                .index_cmp(v)
-                .then_with(|| datom.attribute.cmp(a))
-                .then_with(|| datom.entity.cmp(e)),
-            _ => self.compare_datom(datom),
+            Self::Eavt(IndexComponents::Five(entity, attribute, value, _, _)) => {
+                Self::Eavt(IndexComponents::Three(*entity, *attribute, value.clone()))
+                    .compare_datom(d)
+            }
+            Self::Aevt(IndexComponents::Four(attribute, entity, value, _)) => {
+                Self::Aevt(IndexComponents::Three(*attribute, *entity, value.clone()))
+                    .compare_datom(d)
+            }
+            Self::Aevt(IndexComponents::Five(attribute, entity, value, _, _)) => {
+                Self::Aevt(IndexComponents::Three(*attribute, *entity, value.clone()))
+                    .compare_datom(d)
+            }
+            Self::Avet(IndexComponents::Four(attribute, value, entity, _)) => {
+                Self::Avet(IndexComponents::Three(*attribute, value.clone(), *entity))
+                    .compare_datom(d)
+            }
+            Self::Avet(IndexComponents::Five(attribute, value, entity, _, _)) => {
+                Self::Avet(IndexComponents::Three(*attribute, value.clone(), *entity))
+                    .compare_datom(d)
+            }
+            Self::Vaet(IndexComponents::Four(value, attribute, entity, _)) => {
+                Self::Vaet(IndexComponents::Three(value.clone(), *attribute, *entity))
+                    .compare_datom(d)
+            }
+            Self::Vaet(IndexComponents::Five(value, attribute, entity, _, _)) => {
+                Self::Vaet(IndexComponents::Three(value.clone(), *attribute, *entity))
+                    .compare_datom(d)
+            }
+            Self::Saevt(IndexComponents::Five(source, attribute, entity, value, _)) => Self::Saevt(
+                IndexComponents::Four(*source, *attribute, *entity, value.clone()),
+            )
+            .compare_datom(d),
+            Self::Savet(IndexComponents::Five(source, attribute, value, entity, _)) => Self::Savet(
+                IndexComponents::Four(*source, *attribute, value.clone(), *entity),
+            )
+            .compare_datom(d),
+            _ => self.compare_datom(d),
         }
     }
 }
-
-/// A typed prefix for one of EDB's four index orders.
-///
-/// The shape prevents callers from accidentally supplying components in the
-/// wrong order. Optional components must be contiguous from the left.
+/// A matching prefix. Optional components must be contiguous from the left.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum IndexPrefix {
     Eavt {
@@ -424,102 +567,19 @@ pub enum IndexPrefix {
         attribute: Option<u32>,
         entity: Option<u64>,
     },
+    Saevt {
+        source: u64,
+        attribute: Option<u32>,
+        entity: Option<u64>,
+        value: Option<Value>,
+    },
+    Savet {
+        source: u64,
+        attribute: Option<u32>,
+        value: Option<Value>,
+        entity: Option<u64>,
+    },
 }
-
-impl PartialOrd for IndexPrefix {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        Some(self.cmp(other))
-    }
-}
-
-impl Ord for IndexPrefix {
-    fn cmp(&self, other: &Self) -> Ordering {
-        prefix_rank(self)
-            .cmp(&prefix_rank(other))
-            .then_with(|| match (self, other) {
-                (
-                    Self::Eavt {
-                        entity: left_entity,
-                        attribute: left_attribute,
-                        value: left_value,
-                    },
-                    Self::Eavt {
-                        entity: right_entity,
-                        attribute: right_attribute,
-                        value: right_value,
-                    },
-                ) => left_entity
-                    .cmp(right_entity)
-                    .then_with(|| left_attribute.cmp(right_attribute))
-                    .then_with(|| compare_optional_value(left_value, right_value)),
-                (
-                    Self::Aevt {
-                        attribute: left_attribute,
-                        entity: left_entity,
-                        value: left_value,
-                    },
-                    Self::Aevt {
-                        attribute: right_attribute,
-                        entity: right_entity,
-                        value: right_value,
-                    },
-                ) => left_attribute
-                    .cmp(right_attribute)
-                    .then_with(|| left_entity.cmp(right_entity))
-                    .then_with(|| compare_optional_value(left_value, right_value)),
-                (
-                    Self::Avet {
-                        attribute: left_attribute,
-                        value: left_value,
-                        entity: left_entity,
-                    },
-                    Self::Avet {
-                        attribute: right_attribute,
-                        value: right_value,
-                        entity: right_entity,
-                    },
-                ) => left_attribute
-                    .cmp(right_attribute)
-                    .then_with(|| compare_optional_value(left_value, right_value))
-                    .then_with(|| left_entity.cmp(right_entity)),
-                (
-                    Self::Vaet {
-                        value: left_value,
-                        attribute: left_attribute,
-                        entity: left_entity,
-                    },
-                    Self::Vaet {
-                        value: right_value,
-                        attribute: right_attribute,
-                        entity: right_entity,
-                    },
-                ) => left_value
-                    .index_cmp(right_value)
-                    .then_with(|| left_attribute.cmp(right_attribute))
-                    .then_with(|| left_entity.cmp(right_entity)),
-                _ => Ordering::Equal,
-            })
-    }
-}
-
-fn prefix_rank(prefix: &IndexPrefix) -> u8 {
-    match prefix {
-        IndexPrefix::Eavt { .. } => 0,
-        IndexPrefix::Aevt { .. } => 1,
-        IndexPrefix::Avet { .. } => 2,
-        IndexPrefix::Vaet { .. } => 3,
-    }
-}
-
-fn compare_optional_value(left: &Option<Value>, right: &Option<Value>) -> Ordering {
-    match (left, right) {
-        (None, None) => Ordering::Equal,
-        (None, Some(_)) => Ordering::Less,
-        (Some(_), None) => Ordering::Greater,
-        (Some(left), Some(right)) => left.index_cmp(right),
-    }
-}
-
 impl IndexPrefix {
     pub fn order(&self) -> IndexOrder {
         match self {
@@ -527,11 +587,12 @@ impl IndexPrefix {
             Self::Aevt { .. } => IndexOrder::Aevt,
             Self::Avet { .. } => IndexOrder::Avet,
             Self::Vaet { .. } => IndexOrder::Vaet,
+            Self::Saevt { .. } => IndexOrder::Saevt,
+            Self::Savet { .. } => IndexOrder::Savet,
         }
     }
-
     pub(crate) fn validate(&self) -> Result<(), SemanticError> {
-        let has_gap = match self {
+        let gap = match self {
             Self::Eavt {
                 attribute, value, ..
             } => attribute.is_none() && value.is_some(),
@@ -540,8 +601,26 @@ impl IndexPrefix {
             Self::Vaet {
                 attribute, entity, ..
             } => attribute.is_none() && entity.is_some(),
+            Self::Saevt {
+                attribute,
+                entity,
+                value,
+                ..
+            } => {
+                (attribute.is_none() && (entity.is_some() || value.is_some()))
+                    || entity.is_none() && value.is_some()
+            }
+            Self::Savet {
+                attribute,
+                value,
+                entity,
+                ..
+            } => {
+                (attribute.is_none() && (value.is_some() || entity.is_some()))
+                    || value.is_none() && entity.is_some()
+            }
         };
-        if has_gap {
+        if gap {
             return Err(SemanticError::incorrect(
                 "index/non-contiguous-prefix",
                 "index prefix components must be contiguous from the left",
@@ -550,13 +629,11 @@ impl IndexPrefix {
         Ok(())
     }
 }
-
 impl TryFrom<&IndexPrefix> for IndexBoundary {
     type Error = SemanticError;
-
-    fn try_from(prefix: &IndexPrefix) -> Result<Self, Self::Error> {
-        prefix.validate()?;
-        Ok(match prefix {
+    fn try_from(p: &IndexPrefix) -> Result<Self, SemanticError> {
+        p.validate()?;
+        Ok(match p {
             IndexPrefix::Eavt {
                 entity,
                 attribute: None,
@@ -617,63 +694,265 @@ impl TryFrom<&IndexPrefix> for IndexBoundary {
                 attribute: Some(attribute),
                 entity: Some(entity),
             } => Self::Vaet(IndexComponents::Three(value.clone(), *attribute, *entity)),
-            // `validate` rejects these gap shapes before this match. Keeping
-            // the arm explicit prevents a future prefix variant from silently
-            // acquiring different matching semantics.
-            _ => unreachable!("validated IndexPrefix has no component gap"),
+            IndexPrefix::Saevt {
+                source,
+                attribute: None,
+                entity: None,
+                value: None,
+            } => Self::Saevt(IndexComponents::One(*source)),
+            IndexPrefix::Saevt {
+                source,
+                attribute: Some(attribute),
+                entity: None,
+                value: None,
+            } => Self::Saevt(IndexComponents::Two(*source, *attribute)),
+            IndexPrefix::Saevt {
+                source,
+                attribute: Some(attribute),
+                entity: Some(entity),
+                value: None,
+            } => Self::Saevt(IndexComponents::Three(*source, *attribute, *entity)),
+            IndexPrefix::Saevt {
+                source,
+                attribute: Some(attribute),
+                entity: Some(entity),
+                value: Some(value),
+            } => Self::Saevt(IndexComponents::Four(
+                *source,
+                *attribute,
+                *entity,
+                value.clone(),
+            )),
+            IndexPrefix::Savet {
+                source,
+                attribute: None,
+                value: None,
+                entity: None,
+            } => Self::Savet(IndexComponents::One(*source)),
+            IndexPrefix::Savet {
+                source,
+                attribute: Some(attribute),
+                value: None,
+                entity: None,
+            } => Self::Savet(IndexComponents::Two(*source, *attribute)),
+            IndexPrefix::Savet {
+                source,
+                attribute: Some(attribute),
+                value: Some(value),
+                entity: None,
+            } => Self::Savet(IndexComponents::Three(*source, *attribute, value.clone())),
+            IndexPrefix::Savet {
+                source,
+                attribute: Some(attribute),
+                value: Some(value),
+                entity: Some(entity),
+            } => Self::Savet(IndexComponents::Four(
+                *source,
+                *attribute,
+                value.clone(),
+                *entity,
+            )),
+            _ => unreachable!("validated prefix has no gap"),
         })
     }
 }
-
-pub(crate) fn compare_prefix(datom: &Datom, prefix: &IndexPrefix) -> Ordering {
-    match prefix {
+fn optional_value(a: &Option<Value>, b: &Option<Value>) -> Ordering {
+    match (a, b) {
+        (None, None) => Ordering::Equal,
+        (None, Some(_)) => Ordering::Less,
+        (Some(_), None) => Ordering::Greater,
+        (Some(a), Some(b)) => a.index_cmp(b),
+    }
+}
+impl Ord for IndexPrefix {
+    fn cmp(&self, other: &Self) -> Ordering {
+        (self.order() as u8)
+            .cmp(&(other.order() as u8))
+            .then_with(|| match (self, other) {
+                (
+                    Self::Eavt {
+                        entity: l_entity,
+                        attribute: l_attribute,
+                        value: l_value,
+                    },
+                    Self::Eavt {
+                        entity: r_entity,
+                        attribute: r_attribute,
+                        value: r_value,
+                    },
+                ) => l_entity
+                    .cmp(r_entity)
+                    .then_with(|| l_attribute.cmp(r_attribute))
+                    .then_with(|| optional_value(l_value, r_value)),
+                (
+                    Self::Aevt {
+                        attribute: l_attribute,
+                        entity: l_entity,
+                        value: l_value,
+                    },
+                    Self::Aevt {
+                        attribute: r_attribute,
+                        entity: r_entity,
+                        value: r_value,
+                    },
+                ) => l_attribute
+                    .cmp(r_attribute)
+                    .then_with(|| l_entity.cmp(r_entity))
+                    .then_with(|| optional_value(l_value, r_value)),
+                (
+                    Self::Avet {
+                        attribute: l_attribute,
+                        value: l_value,
+                        entity: l_entity,
+                    },
+                    Self::Avet {
+                        attribute: r_attribute,
+                        value: r_value,
+                        entity: r_entity,
+                    },
+                ) => l_attribute
+                    .cmp(r_attribute)
+                    .then_with(|| optional_value(l_value, r_value))
+                    .then_with(|| l_entity.cmp(r_entity)),
+                (
+                    Self::Vaet {
+                        value: l_value,
+                        attribute: l_attribute,
+                        entity: l_entity,
+                    },
+                    Self::Vaet {
+                        value: r_value,
+                        attribute: r_attribute,
+                        entity: r_entity,
+                    },
+                ) => l_value
+                    .index_cmp(r_value)
+                    .then_with(|| l_attribute.cmp(r_attribute))
+                    .then_with(|| l_entity.cmp(r_entity)),
+                (
+                    Self::Saevt {
+                        source: l_source,
+                        attribute: l_attribute,
+                        entity: l_entity,
+                        value: l_value,
+                    },
+                    Self::Saevt {
+                        source: r_source,
+                        attribute: r_attribute,
+                        entity: r_entity,
+                        value: r_value,
+                    },
+                ) => l_source
+                    .cmp(r_source)
+                    .then_with(|| l_attribute.cmp(r_attribute))
+                    .then_with(|| l_entity.cmp(r_entity))
+                    .then_with(|| optional_value(l_value, r_value)),
+                (
+                    Self::Savet {
+                        source: l_source,
+                        attribute: l_attribute,
+                        value: l_value,
+                        entity: l_entity,
+                    },
+                    Self::Savet {
+                        source: r_source,
+                        attribute: r_attribute,
+                        value: r_value,
+                        entity: r_entity,
+                    },
+                ) => l_source
+                    .cmp(r_source)
+                    .then_with(|| l_attribute.cmp(r_attribute))
+                    .then_with(|| optional_value(l_value, r_value))
+                    .then_with(|| l_entity.cmp(r_entity)),
+                _ => Ordering::Equal,
+            })
+    }
+}
+impl PartialOrd for IndexPrefix {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+pub(crate) fn compare_prefix(d: &Datom, p: &IndexPrefix) -> Ordering {
+    match p {
         IndexPrefix::Eavt {
             entity,
             attribute,
             value,
-        } => datom
+        } => d
             .entity
             .cmp(entity)
-            .then_with(|| attribute.map_or(Ordering::Equal, |a| datom.attribute.cmp(&a)))
+            .then_with(|| attribute.map_or(Ordering::Equal, |v| d.attribute.cmp(&v)))
             .then_with(|| {
                 value
                     .as_ref()
-                    .map_or(Ordering::Equal, |v| datom.value.index_cmp(v))
+                    .map_or(Ordering::Equal, |v| d.value.index_cmp(v))
             }),
         IndexPrefix::Aevt {
             attribute,
             entity,
             value,
-        } => datom
+        } => d
             .attribute
             .cmp(attribute)
-            .then_with(|| entity.map_or(Ordering::Equal, |e| datom.entity.cmp(&e)))
+            .then_with(|| entity.map_or(Ordering::Equal, |v| d.entity.cmp(&v)))
             .then_with(|| {
                 value
                     .as_ref()
-                    .map_or(Ordering::Equal, |v| datom.value.index_cmp(v))
+                    .map_or(Ordering::Equal, |v| d.value.index_cmp(v))
             }),
         IndexPrefix::Avet {
             attribute,
             value,
             entity,
-        } => datom
+        } => d
             .attribute
             .cmp(attribute)
             .then_with(|| {
                 value
                     .as_ref()
-                    .map_or(Ordering::Equal, |v| datom.value.index_cmp(v))
+                    .map_or(Ordering::Equal, |v| d.value.index_cmp(v))
             })
-            .then_with(|| entity.map_or(Ordering::Equal, |e| datom.entity.cmp(&e))),
+            .then_with(|| entity.map_or(Ordering::Equal, |v| d.entity.cmp(&v))),
         IndexPrefix::Vaet {
             value,
             attribute,
             entity,
-        } => datom
+        } => d
             .value
             .index_cmp(value)
-            .then_with(|| attribute.map_or(Ordering::Equal, |a| datom.attribute.cmp(&a)))
-            .then_with(|| entity.map_or(Ordering::Equal, |e| datom.entity.cmp(&e))),
+            .then_with(|| attribute.map_or(Ordering::Equal, |v| d.attribute.cmp(&v)))
+            .then_with(|| entity.map_or(Ordering::Equal, |v| d.entity.cmp(&v))),
+        IndexPrefix::Saevt {
+            source,
+            attribute,
+            entity,
+            value,
+        } => d
+            .source
+            .cmp(source)
+            .then_with(|| attribute.map_or(Ordering::Equal, |v| d.attribute.cmp(&v)))
+            .then_with(|| entity.map_or(Ordering::Equal, |v| d.entity.cmp(&v)))
+            .then_with(|| {
+                value
+                    .as_ref()
+                    .map_or(Ordering::Equal, |v| d.value.index_cmp(v))
+            }),
+        IndexPrefix::Savet {
+            source,
+            attribute,
+            value,
+            entity,
+        } => d
+            .source
+            .cmp(source)
+            .then_with(|| attribute.map_or(Ordering::Equal, |v| d.attribute.cmp(&v)))
+            .then_with(|| {
+                value
+                    .as_ref()
+                    .map_or(Ordering::Equal, |v| d.value.index_cmp(v))
+            })
+            .then_with(|| entity.map_or(Ordering::Equal, |v| d.entity.cmp(&v))),
     }
 }

@@ -1,0 +1,122 @@
+Diff in /tmp/edb-cutover-impl-20261007/src/bin/edb/data.rs:4:
+ use edb_core::edn_query::{EdnQueryArgument, EdnQueryInput, parse_query_edn};
+ use edb_core::edn_value::{edn_keyword, query_value_to_edn, transaction_report_to_edn};
+ use edb_core::{
+-    BackupConnection, Connection, DatabaseValue, Datom, EntityRef, ErrorCategory, PullControl, QueryControl,
+-    QuerySourceValue, SemanticError, TransactionRequest, postgres_config_from_env,
++    BackupConnection, Connection, DatabaseValue, Datom, EntityRef, ErrorCategory, PullControl,
++    QueryControl, QuerySourceValue, SemanticError, TransactionRequest, postgres_config_from_env,
+     remote_client_config_from_env,
+ };
+ use std::collections::{BTreeMap, BTreeSet};
+Diff in /tmp/edb-cutover-impl-20261007/src/application/transport/remote/hints.rs:51:
+                 optional_u32(&mut bytes, *attribute);
+                 optional_u64(&mut bytes, *entity);
+             }
+-            IndexPrefix::Saevt { source, attribute, entity, value } => {
++            IndexPrefix::Saevt {
++                source,
++                attribute,
++                entity,
++                value,
++            } => {
+                 bytes.push(4);
+                 bytes.extend_from_slice(&source.to_be_bytes());
+                 optional_u32(&mut bytes, *attribute);
+Diff in /tmp/edb-cutover-impl-20261007/src/application/transport/remote/hints.rs:58:
+                 optional_u64(&mut bytes, *entity);
+                 optional_value(&mut bytes, value.as_ref())?;
+             }
+-            IndexPrefix::Savet { source, attribute, value, entity } => {
++            IndexPrefix::Savet {
++                source,
++                attribute,
++                value,
++                entity,
++            } => {
+                 bytes.push(5);
+                 bytes.extend_from_slice(&source.to_be_bytes());
+                 optional_u32(&mut bytes, *attribute);
+Diff in /tmp/edb-cutover-impl-20261007/src/edn_transaction.rs:164:
+         text: &str,
+         source: EntityRef,
+     ) -> Result<Self, SemanticError> {
+-        Ok(Self::from_forms(request_key, read_edn_transaction(text)?, source))
++        Ok(Self::from_forms(
++            request_key,
++            read_edn_transaction(text)?,
++            source,
++        ))
+     }
+ }
+ 
+Diff in /tmp/edb-cutover-impl-20261007/src/encoding/mod.rs:1865:
+             let text = cursor.string()?;
+             let canonical = crate::edn_transaction::canonical_entity_ref(&text)?;
+             if canonical != text {
+-                return Err(fault("transport/noncanonical-edn", "EDN entity reference is not canonical"));
++                return Err(fault(
++                    "transport/noncanonical-edn",
++                    "EDN entity reference is not canonical",
++                ));
+             }
+             EntityRef::Edn(canonical)
+         }
+Diff in /tmp/edb-cutover-impl-20261007/src/lib.rs:116:
+     DB_CARDINALITY_ONE, DB_DOC, DB_ENSURE, DB_ENTITY_ATTRS, DB_ENTITY_PREDS, DB_EXCISE,
+     DB_EXCISE_ATTRS, DB_EXCISE_BEFORE, DB_EXCISE_BEFORE_T, DB_FN, DB_FN_CAS, DB_FN_RETRACT_ENTITY,
+     DB_FULLTEXT, DB_IDENT, DB_INDEX, DB_INSTALL_ATTRIBUTE, DB_INSTALL_PARTITION, DB_IS_COMPONENT,
+-    DB_NO_HISTORY, DB_PART_DB, DB_PART_TX, DB_PART_USER, DB_RETRACT, DB_TUPLE_ATTRS,
+-    DB_TUPLE_DISCONTINUED, DB_TUPLE_TYPE, DB_TUPLE_TYPES, DB_TX_INSTANT, DB_SOURCE_SYSTEM, DB_TYPE_BIGDEC,
+-    DB_TYPE_BIGINT, DB_TYPE_BOOLEAN, DB_TYPE_BYTES, DB_TYPE_DOUBLE, DB_TYPE_FLOAT, DB_TYPE_FN,
+-    DB_TYPE_INSTANT, DB_TYPE_KEYWORD, DB_TYPE_LONG, DB_TYPE_REF, DB_TYPE_STRING, DB_TYPE_SYMBOL,
+-    DB_TYPE_TUPLE, DB_TYPE_URI, DB_TYPE_UUID, DB_UNIQUE, DB_UNIQUE_IDENTITY, DB_UNIQUE_VALUE,
+-    DB_VALUE_TYPE, MAX_SCHEMA_ATTRIBUTE_ID, canonical_genesis_datoms, schema_eid_to_attr_id,
++    DB_NO_HISTORY, DB_PART_DB, DB_PART_TX, DB_PART_USER, DB_RETRACT, DB_SOURCE_SYSTEM,
++    DB_TUPLE_ATTRS, DB_TUPLE_DISCONTINUED, DB_TUPLE_TYPE, DB_TUPLE_TYPES, DB_TX_INSTANT,
++    DB_TYPE_BIGDEC, DB_TYPE_BIGINT, DB_TYPE_BOOLEAN, DB_TYPE_BYTES, DB_TYPE_DOUBLE, DB_TYPE_FLOAT,
++    DB_TYPE_FN, DB_TYPE_INSTANT, DB_TYPE_KEYWORD, DB_TYPE_LONG, DB_TYPE_REF, DB_TYPE_STRING,
++    DB_TYPE_SYMBOL, DB_TYPE_TUPLE, DB_TYPE_URI, DB_TYPE_UUID, DB_UNIQUE, DB_UNIQUE_IDENTITY,
++    DB_UNIQUE_VALUE, DB_VALUE_TYPE, MAX_SCHEMA_ATTRIBUTE_ID, canonical_genesis_datoms,
++    schema_eid_to_attr_id,
+ };
+ pub use observation::consumer::{
+     ChangeCheckpoint, ChangeConsumer, ChangeConsumerConfig, ChangeConsumerStats, ChangeEvent,
+Diff in /tmp/edb-cutover-impl-20261007/src/transaction/forms.rs:26:
+     /// Read an entity reference without consulting a database. Named lookup
+     /// attributes and their values are resolved against transaction db-before.
+     pub fn from_edn(text: &str) -> Result<Self, crate::SemanticError> {
+-        Ok(Self::Edn(crate::edn_transaction::canonical_entity_ref(text)?))
++        Ok(Self::Edn(crate::edn_transaction::canonical_entity_ref(
++            text,
++        )?))
+     }
+ }
+ 
+Diff in /tmp/edb-cutover-impl-20261007/tests/edb_interfaces.rs:154:
+     for command in ["transact", "with"] {
+         for source in [None, Some("true"), Some("[]")] {
+             let mut request = Command::new(env!("CARGO_BIN_EXE_edb"));
+-            request.args([command, "--database", "unopened-source-admission-test", "--file"]);
++            request.args([
++                command,
++                "--database",
++                "unopened-source-admission-test",
++                "--file",
++            ]);
+             request.arg(&transaction);
+             if command == "transact" {
+                 request.args(["--request-key", "test", "--endpoint"]);
+Diff in /tmp/edb-cutover-impl-20261007/tests/edb_interfaces.rs:166:
+             let output = request.env_remove("EDB_POSTGRES_URL").output().unwrap();
+             assert!(!output.status.success());
+             let error = String::from_utf8(output.stderr).unwrap();
+-            let expected = if source.is_none() { "cli/edn-usage" } else { "edn/entity" };
++            let expected = if source.is_none() {
++                "cli/edn-usage"
++            } else {
++                "edn/entity"
++            };
+             assert!(error.contains(expected), "{command} {source:?}: {error}");
+             assert!(!error.contains("config/environment"), "{error}");
+         }

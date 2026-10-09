@@ -1,0 +1,12 @@
+[
+  {
+    "label": "build requirements",
+    "target": "/tmp/edb-cutover-impl-20261007/docs-2/00_start_here/01_setup.md",
+    "anchor": "rust-and-native-build-requirements"
+  },
+  {
+    "label": "accessing the peer library",
+    "target": "/tmp/edb-cutover-impl-20261007/docs-2/00_start_here/02_peer_library.md",
+    "anchor": ""
+  }
+]

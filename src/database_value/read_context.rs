@@ -78,7 +78,9 @@ impl PrefixMemoKey {
         let value_heap = match &self.prefix {
             IndexPrefix::Eavt { value, .. }
             | IndexPrefix::Aevt { value, .. }
-            | IndexPrefix::Avet { value, .. } => {
+            | IndexPrefix::Avet { value, .. }
+            | IndexPrefix::Saevt { value, .. }
+            | IndexPrefix::Savet { value, .. } => {
                 value.as_ref().map_or(0, Value::retained_heap_bytes)
             }
             IndexPrefix::Vaet { value, .. } => value.retained_heap_bytes(),

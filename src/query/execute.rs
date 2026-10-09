@@ -698,6 +698,7 @@ pub(super) fn clause_score(clause: &Clause, row: &Row) -> usize {
         Clause::Pattern(pattern) => {
             [&pattern.entity, &pattern.attribute, &pattern.value]
                 .into_iter()
+                .chain(pattern.fact_source.iter())
                 .filter(|term| term_is_bound(term, row))
                 .count()
                 * 10

@@ -6,6 +6,8 @@
 //! PostgreSQL persistence/publication is a separate boundary.
 pub(crate) mod cache;
 pub(crate) mod navigation;
+#[cfg(test)]
+mod tests;
 
 use crate::encoding::{
     Digest, decode_canonical_value, encode_canonical_value, sha256,
@@ -25,7 +27,7 @@ const TREE_MAGIC: &[u8; 4] = b"EDBI";
 /// databases produced by its unreleased reconstruction stages.
 // Ordered URI keys use component semantics, not raw spelling. Old trees must
 // not be traversed under a different comparator; this cutover uses fresh data.
-pub const TREE_FORMAT_VERSION: u16 = 5;
+pub const TREE_FORMAT_VERSION: u16 = 6;
 const HEADER_LEN: usize = 16;
 const CHECKSUM_LEN: usize = 32;
 const EMPTY_NODE_LEN: usize = HEADER_LEN + CHECKSUM_LEN;
@@ -40,8 +42,12 @@ const ROUTING_ENTITY_PRESENT: u8 = 1 << 0;
 const ROUTING_ATTRIBUTE_PRESENT: u8 = 1 << 1;
 const ROUTING_VALUE_PRESENT: u8 = 1 << 2;
 const ROUTING_TX_PRESENT: u8 = 1 << 3;
-const ROUTING_EXACT_COMPONENTS: u8 =
-    ROUTING_ENTITY_PRESENT | ROUTING_ATTRIBUTE_PRESENT | ROUTING_VALUE_PRESENT | ROUTING_TX_PRESENT;
+const ROUTING_SOURCE_PRESENT: u8 = 1 << 4;
+const ROUTING_EXACT_COMPONENTS: u8 = ROUTING_ENTITY_PRESENT
+    | ROUTING_ATTRIBUTE_PRESENT
+    | ROUTING_VALUE_PRESENT
+    | ROUTING_TX_PRESENT
+    | ROUTING_SOURCE_PRESENT;
 const ROUTING_KNOWN_COMPONENTS: u8 = ROUTING_EXACT_COMPONENTS;
 
 /// Physical construction limits for the fixed shallow tree.
@@ -143,7 +149,7 @@ pub struct TreeDescriptor {
     pub count: u64,
     /// Fixed-size commitments to the first and last leaf datoms. Actual
     /// endpoint values remain only in immutable leaves, so one legal large
-    /// scalar cannot be multiplied through the eight-root manifest.
+    /// scalar cannot be multiplied through the twelve-root manifest.
     pub first_hash: Option<Digest>,
     pub last_hash: Option<Digest>,
 }
@@ -492,6 +498,7 @@ pub struct RoutingKey {
     pub attribute: u32,
     pub value: Option<RoutingValue>,
     pub tx: u64,
+    pub source: u64,
     pub added: bool,
     /// Presence is independent of the numeric payload. Entity zero is a real
     /// native entid (`:db.part/db`), while recovered sparse datums also use
@@ -509,6 +516,7 @@ impl PartialEq for RoutingKey {
                 (Some(left), Some(right)) => left == right,
                 _ => false,
             }
+            && self.source == other.source
             && self.tx == other.tx
             && self.added == other.added
             && self.components == other.components
@@ -524,6 +532,7 @@ impl RoutingKey {
             attribute: datom.attribute,
             value: Some(RoutingValue::exact(&datom.value)),
             tx: datom.tx,
+            source: datom.source,
             added: datom.added,
             components: ROUTING_EXACT_COMPONENTS,
         }
@@ -550,6 +559,7 @@ impl RoutingKey {
             attribute: attribute.unwrap_or(0),
             value,
             tx: 0,
+            source: 0,
             added,
             components,
         }
@@ -645,6 +655,60 @@ impl RoutingKey {
                     &other.entity,
                 )
             }),
+            IndexOrder::Saevt => compare_present_to_value(
+                self.has(ROUTING_SOURCE_PRESENT),
+                &self.source,
+                &other.source,
+            )
+            .then_with(|| {
+                compare_present_to_value(
+                    self.has(ROUTING_ATTRIBUTE_PRESENT),
+                    &self.attribute,
+                    &other.attribute,
+                )
+                .then_with(|| {
+                    compare_present_to_value(
+                        self.has(ROUTING_ENTITY_PRESENT),
+                        &self.entity,
+                        &other.entity,
+                    )
+                })
+                .then_with(|| {
+                    compare_present_routing_to_value(
+                        self.has(ROUTING_VALUE_PRESENT),
+                        self.value.as_ref(),
+                        &other.value,
+                        false,
+                    )
+                })
+            }),
+            IndexOrder::Savet => compare_present_to_value(
+                self.has(ROUTING_SOURCE_PRESENT),
+                &self.source,
+                &other.source,
+            )
+            .then_with(|| {
+                compare_present_to_value(
+                    self.has(ROUTING_ATTRIBUTE_PRESENT),
+                    &self.attribute,
+                    &other.attribute,
+                )
+                .then_with(|| {
+                    compare_present_routing_to_value(
+                        self.has(ROUTING_VALUE_PRESENT),
+                        self.value.as_ref(),
+                        &other.value,
+                        false,
+                    )
+                })
+                .then_with(|| {
+                    compare_present_to_value(
+                        self.has(ROUTING_ENTITY_PRESENT),
+                        &self.entity,
+                        &other.entity,
+                    )
+                })
+            }),
         };
         ordering
             .then_with(|| {
@@ -652,6 +716,13 @@ impl RoutingKey {
                     other
                         .tx
                         .cmp(&self.tx)
+                        .then_with(|| {
+                            if matches!(order, IndexOrder::Saevt | IndexOrder::Savet) {
+                                Ordering::Equal
+                            } else {
+                                self.source.cmp(&other.source)
+                            }
+                        })
                         .then_with(|| other.added.cmp(&self.added))
                 } else {
                     // Sparse routing keys are lower-bound prefixes. Treat an
@@ -684,12 +755,14 @@ impl RoutingKey {
             self.attribute,
             self.value.as_ref(),
             self.tx,
+            self.source,
             self.added,
             self.components,
             other.entity,
             other.attribute,
             other.value.as_ref(),
             other.tx,
+            other.source,
             other.added,
             other.components,
             order,
@@ -806,6 +879,602 @@ impl RoutingKey {
                     )
                 })
             }),
+            IndexPrefix::Saevt {
+                source,
+                attribute,
+                entity,
+                value,
+            } => compare_present_to_value(self.has(ROUTING_SOURCE_PRESENT), &self.source, source)
+                .then_with(|| {
+                    attribute.map_or(Ordering::Equal, |v| {
+                        compare_present_to_value(
+                            self.has(ROUTING_ATTRIBUTE_PRESENT),
+                            &self.attribute,
+                            &v,
+                        )
+                    })
+                })
+                .then_with(|| {
+                    entity.map_or(Ordering::Equal, |v| {
+                        compare_present_to_value(self.has(ROUTING_ENTITY_PRESENT), &self.entity, &v)
+                    })
+                })
+                .then_with(|| {
+                    value.as_ref().map_or(Ordering::Equal, |v| {
+                        compare_present_routing_to_value(
+                            self.has(ROUTING_VALUE_PRESENT),
+                            self.value.as_ref(),
+                            v,
+                            false,
+                        )
+                    })
+                }),
+            IndexPrefix::Savet {
+                source,
+                attribute,
+                value,
+                entity,
+            } => compare_present_to_value(self.has(ROUTING_SOURCE_PRESENT), &self.source, source)
+                .then_with(|| {
+                    attribute.map_or(Ordering::Equal, |v| {
+                        compare_present_to_value(
+                            self.has(ROUTING_ATTRIBUTE_PRESENT),
+                            &self.attribute,
+                            &v,
+                        )
+                    })
+                })
+                .then_with(|| {
+                    value.as_ref().map_or(Ordering::Equal, |v| {
+                        compare_present_routing_to_value(
+                            self.has(ROUTING_VALUE_PRESENT),
+                            self.value.as_ref(),
+                            v,
+                            false,
+                        )
+                    })
+                })
+                .then_with(|| {
+                    entity.map_or(Ordering::Equal, |v| {
+                        compare_present_to_value(self.has(ROUTING_ENTITY_PRESENT), &self.entity, &v)
+                    })
+                }),
+        }
+    }
+
+    pub(crate) fn cmp_boundary(
+        &self,
+        boundary: &crate::index::NormalizedIndexBoundary,
+    ) -> Ordering {
+        use crate::index::{IndexComponents as C, NormalizedIndexBoundary as B};
+        match boundary {
+            B::After(inner) => self.cmp_boundary(inner).then(Ordering::Less),
+            B::Eavt(c) => match c {
+                C::Empty => Ordering::Equal,
+                C::One(entity) => {
+                    compare_present_to_value(self.has(ROUTING_ENTITY_PRESENT), &self.entity, entity)
+                }
+                C::Two(entity, attribute) => {
+                    compare_present_to_value(self.has(ROUTING_ENTITY_PRESENT), &self.entity, entity)
+                        .then_with(|| {
+                            compare_present_to_value(
+                                self.has(ROUTING_ATTRIBUTE_PRESENT),
+                                &self.attribute,
+                                attribute,
+                            )
+                        })
+                }
+                C::Three(entity, attribute, value) => {
+                    compare_present_to_value(self.has(ROUTING_ENTITY_PRESENT), &self.entity, entity)
+                        .then_with(|| {
+                            compare_present_to_value(
+                                self.has(ROUTING_ATTRIBUTE_PRESENT),
+                                &self.attribute,
+                                attribute,
+                            )
+                        })
+                        .then_with(|| {
+                            compare_present_routing_to_value(
+                                self.has(ROUTING_VALUE_PRESENT),
+                                self.value.as_ref(),
+                                value,
+                                false,
+                            )
+                        })
+                }
+                C::Four(entity, attribute, value, tx) => {
+                    compare_present_to_value(self.has(ROUTING_ENTITY_PRESENT), &self.entity, entity)
+                        .then_with(|| {
+                            compare_present_to_value(
+                                self.has(ROUTING_ATTRIBUTE_PRESENT),
+                                &self.attribute,
+                                attribute,
+                            )
+                        })
+                        .then_with(|| {
+                            compare_present_routing_to_value(
+                                self.has(ROUTING_VALUE_PRESENT),
+                                self.value.as_ref(),
+                                value,
+                                false,
+                            )
+                        })
+                        .then_with(|| {
+                            if self.has(ROUTING_TX_PRESENT) {
+                                tx.cmp(&self.tx)
+                            } else {
+                                Ordering::Less
+                            }
+                        })
+                }
+                C::Five(entity, attribute, value, tx, source) => {
+                    compare_present_to_value(self.has(ROUTING_ENTITY_PRESENT), &self.entity, entity)
+                        .then_with(|| {
+                            compare_present_to_value(
+                                self.has(ROUTING_ATTRIBUTE_PRESENT),
+                                &self.attribute,
+                                attribute,
+                            )
+                        })
+                        .then_with(|| {
+                            compare_present_routing_to_value(
+                                self.has(ROUTING_VALUE_PRESENT),
+                                self.value.as_ref(),
+                                value,
+                                false,
+                            )
+                        })
+                        .then_with(|| {
+                            if self.has(ROUTING_TX_PRESENT) {
+                                tx.cmp(&self.tx)
+                            } else {
+                                Ordering::Less
+                            }
+                        })
+                        .then_with(|| {
+                            compare_present_to_value(
+                                self.has(ROUTING_SOURCE_PRESENT),
+                                &self.source,
+                                source,
+                            )
+                        })
+                }
+            },
+            B::Aevt(c) => match c {
+                C::Empty => Ordering::Equal,
+                C::One(attribute) => compare_present_to_value(
+                    self.has(ROUTING_ATTRIBUTE_PRESENT),
+                    &self.attribute,
+                    attribute,
+                ),
+                C::Two(attribute, entity) => compare_present_to_value(
+                    self.has(ROUTING_ATTRIBUTE_PRESENT),
+                    &self.attribute,
+                    attribute,
+                )
+                .then_with(|| {
+                    compare_present_to_value(self.has(ROUTING_ENTITY_PRESENT), &self.entity, entity)
+                }),
+                C::Three(attribute, entity, value) => compare_present_to_value(
+                    self.has(ROUTING_ATTRIBUTE_PRESENT),
+                    &self.attribute,
+                    attribute,
+                )
+                .then_with(|| {
+                    compare_present_to_value(self.has(ROUTING_ENTITY_PRESENT), &self.entity, entity)
+                })
+                .then_with(|| {
+                    compare_present_routing_to_value(
+                        self.has(ROUTING_VALUE_PRESENT),
+                        self.value.as_ref(),
+                        value,
+                        false,
+                    )
+                }),
+                C::Four(attribute, entity, value, tx) => compare_present_to_value(
+                    self.has(ROUTING_ATTRIBUTE_PRESENT),
+                    &self.attribute,
+                    attribute,
+                )
+                .then_with(|| {
+                    compare_present_to_value(self.has(ROUTING_ENTITY_PRESENT), &self.entity, entity)
+                })
+                .then_with(|| {
+                    compare_present_routing_to_value(
+                        self.has(ROUTING_VALUE_PRESENT),
+                        self.value.as_ref(),
+                        value,
+                        false,
+                    )
+                })
+                .then_with(|| {
+                    if self.has(ROUTING_TX_PRESENT) {
+                        tx.cmp(&self.tx)
+                    } else {
+                        Ordering::Less
+                    }
+                }),
+                C::Five(attribute, entity, value, tx, source) => compare_present_to_value(
+                    self.has(ROUTING_ATTRIBUTE_PRESENT),
+                    &self.attribute,
+                    attribute,
+                )
+                .then_with(|| {
+                    compare_present_to_value(self.has(ROUTING_ENTITY_PRESENT), &self.entity, entity)
+                })
+                .then_with(|| {
+                    compare_present_routing_to_value(
+                        self.has(ROUTING_VALUE_PRESENT),
+                        self.value.as_ref(),
+                        value,
+                        false,
+                    )
+                })
+                .then_with(|| {
+                    if self.has(ROUTING_TX_PRESENT) {
+                        tx.cmp(&self.tx)
+                    } else {
+                        Ordering::Less
+                    }
+                })
+                .then_with(|| {
+                    compare_present_to_value(self.has(ROUTING_SOURCE_PRESENT), &self.source, source)
+                }),
+            },
+            B::Avet(c) => match c {
+                C::Empty => Ordering::Equal,
+                C::One(attribute) => compare_present_to_value(
+                    self.has(ROUTING_ATTRIBUTE_PRESENT),
+                    &self.attribute,
+                    attribute,
+                ),
+                C::Two(attribute, value) => compare_present_to_value(
+                    self.has(ROUTING_ATTRIBUTE_PRESENT),
+                    &self.attribute,
+                    attribute,
+                )
+                .then_with(|| {
+                    compare_present_routing_to_value(
+                        self.has(ROUTING_VALUE_PRESENT),
+                        self.value.as_ref(),
+                        value,
+                        false,
+                    )
+                }),
+                C::Three(attribute, value, entity) => compare_present_to_value(
+                    self.has(ROUTING_ATTRIBUTE_PRESENT),
+                    &self.attribute,
+                    attribute,
+                )
+                .then_with(|| {
+                    compare_present_routing_to_value(
+                        self.has(ROUTING_VALUE_PRESENT),
+                        self.value.as_ref(),
+                        value,
+                        false,
+                    )
+                })
+                .then_with(|| {
+                    compare_present_to_value(self.has(ROUTING_ENTITY_PRESENT), &self.entity, entity)
+                }),
+                C::Four(attribute, value, entity, tx) => compare_present_to_value(
+                    self.has(ROUTING_ATTRIBUTE_PRESENT),
+                    &self.attribute,
+                    attribute,
+                )
+                .then_with(|| {
+                    compare_present_routing_to_value(
+                        self.has(ROUTING_VALUE_PRESENT),
+                        self.value.as_ref(),
+                        value,
+                        false,
+                    )
+                })
+                .then_with(|| {
+                    compare_present_to_value(self.has(ROUTING_ENTITY_PRESENT), &self.entity, entity)
+                })
+                .then_with(|| {
+                    if self.has(ROUTING_TX_PRESENT) {
+                        tx.cmp(&self.tx)
+                    } else {
+                        Ordering::Less
+                    }
+                }),
+                C::Five(attribute, value, entity, tx, source) => compare_present_to_value(
+                    self.has(ROUTING_ATTRIBUTE_PRESENT),
+                    &self.attribute,
+                    attribute,
+                )
+                .then_with(|| {
+                    compare_present_routing_to_value(
+                        self.has(ROUTING_VALUE_PRESENT),
+                        self.value.as_ref(),
+                        value,
+                        false,
+                    )
+                })
+                .then_with(|| {
+                    compare_present_to_value(self.has(ROUTING_ENTITY_PRESENT), &self.entity, entity)
+                })
+                .then_with(|| {
+                    if self.has(ROUTING_TX_PRESENT) {
+                        tx.cmp(&self.tx)
+                    } else {
+                        Ordering::Less
+                    }
+                })
+                .then_with(|| {
+                    compare_present_to_value(self.has(ROUTING_SOURCE_PRESENT), &self.source, source)
+                }),
+            },
+            B::Vaet(c) => match c {
+                C::Empty => Ordering::Equal,
+                C::One(value) => compare_present_routing_to_value(
+                    self.has(ROUTING_VALUE_PRESENT),
+                    self.value.as_ref(),
+                    value,
+                    false,
+                ),
+                C::Two(value, attribute) => compare_present_routing_to_value(
+                    self.has(ROUTING_VALUE_PRESENT),
+                    self.value.as_ref(),
+                    value,
+                    false,
+                )
+                .then_with(|| {
+                    compare_present_to_value(
+                        self.has(ROUTING_ATTRIBUTE_PRESENT),
+                        &self.attribute,
+                        attribute,
+                    )
+                }),
+                C::Three(value, attribute, entity) => compare_present_routing_to_value(
+                    self.has(ROUTING_VALUE_PRESENT),
+                    self.value.as_ref(),
+                    value,
+                    false,
+                )
+                .then_with(|| {
+                    compare_present_to_value(
+                        self.has(ROUTING_ATTRIBUTE_PRESENT),
+                        &self.attribute,
+                        attribute,
+                    )
+                })
+                .then_with(|| {
+                    compare_present_to_value(self.has(ROUTING_ENTITY_PRESENT), &self.entity, entity)
+                }),
+                C::Four(value, attribute, entity, tx) => compare_present_routing_to_value(
+                    self.has(ROUTING_VALUE_PRESENT),
+                    self.value.as_ref(),
+                    value,
+                    false,
+                )
+                .then_with(|| {
+                    compare_present_to_value(
+                        self.has(ROUTING_ATTRIBUTE_PRESENT),
+                        &self.attribute,
+                        attribute,
+                    )
+                })
+                .then_with(|| {
+                    compare_present_to_value(self.has(ROUTING_ENTITY_PRESENT), &self.entity, entity)
+                })
+                .then_with(|| {
+                    if self.has(ROUTING_TX_PRESENT) {
+                        tx.cmp(&self.tx)
+                    } else {
+                        Ordering::Less
+                    }
+                }),
+                C::Five(value, attribute, entity, tx, source) => compare_present_routing_to_value(
+                    self.has(ROUTING_VALUE_PRESENT),
+                    self.value.as_ref(),
+                    value,
+                    false,
+                )
+                .then_with(|| {
+                    compare_present_to_value(
+                        self.has(ROUTING_ATTRIBUTE_PRESENT),
+                        &self.attribute,
+                        attribute,
+                    )
+                })
+                .then_with(|| {
+                    compare_present_to_value(self.has(ROUTING_ENTITY_PRESENT), &self.entity, entity)
+                })
+                .then_with(|| {
+                    if self.has(ROUTING_TX_PRESENT) {
+                        tx.cmp(&self.tx)
+                    } else {
+                        Ordering::Less
+                    }
+                })
+                .then_with(|| {
+                    compare_present_to_value(self.has(ROUTING_SOURCE_PRESENT), &self.source, source)
+                }),
+            },
+            B::Saevt(c) => match c {
+                C::Empty => Ordering::Equal,
+                C::One(source) => {
+                    compare_present_to_value(self.has(ROUTING_SOURCE_PRESENT), &self.source, source)
+                }
+                C::Two(source, attribute) => {
+                    compare_present_to_value(self.has(ROUTING_SOURCE_PRESENT), &self.source, source)
+                        .then_with(|| {
+                            compare_present_to_value(
+                                self.has(ROUTING_ATTRIBUTE_PRESENT),
+                                &self.attribute,
+                                attribute,
+                            )
+                        })
+                }
+                C::Three(source, attribute, entity) => {
+                    compare_present_to_value(self.has(ROUTING_SOURCE_PRESENT), &self.source, source)
+                        .then_with(|| {
+                            compare_present_to_value(
+                                self.has(ROUTING_ATTRIBUTE_PRESENT),
+                                &self.attribute,
+                                attribute,
+                            )
+                        })
+                        .then_with(|| {
+                            compare_present_to_value(
+                                self.has(ROUTING_ENTITY_PRESENT),
+                                &self.entity,
+                                entity,
+                            )
+                        })
+                }
+                C::Four(source, attribute, entity, value) => {
+                    compare_present_to_value(self.has(ROUTING_SOURCE_PRESENT), &self.source, source)
+                        .then_with(|| {
+                            compare_present_to_value(
+                                self.has(ROUTING_ATTRIBUTE_PRESENT),
+                                &self.attribute,
+                                attribute,
+                            )
+                        })
+                        .then_with(|| {
+                            compare_present_to_value(
+                                self.has(ROUTING_ENTITY_PRESENT),
+                                &self.entity,
+                                entity,
+                            )
+                        })
+                        .then_with(|| {
+                            compare_present_routing_to_value(
+                                self.has(ROUTING_VALUE_PRESENT),
+                                self.value.as_ref(),
+                                value,
+                                false,
+                            )
+                        })
+                }
+                C::Five(source, attribute, entity, value, tx) => {
+                    compare_present_to_value(self.has(ROUTING_SOURCE_PRESENT), &self.source, source)
+                        .then_with(|| {
+                            compare_present_to_value(
+                                self.has(ROUTING_ATTRIBUTE_PRESENT),
+                                &self.attribute,
+                                attribute,
+                            )
+                        })
+                        .then_with(|| {
+                            compare_present_to_value(
+                                self.has(ROUTING_ENTITY_PRESENT),
+                                &self.entity,
+                                entity,
+                            )
+                        })
+                        .then_with(|| {
+                            compare_present_routing_to_value(
+                                self.has(ROUTING_VALUE_PRESENT),
+                                self.value.as_ref(),
+                                value,
+                                false,
+                            )
+                        })
+                        .then_with(|| {
+                            if self.has(ROUTING_TX_PRESENT) {
+                                tx.cmp(&self.tx)
+                            } else {
+                                Ordering::Less
+                            }
+                        })
+                }
+            },
+            B::Savet(c) => match c {
+                C::Empty => Ordering::Equal,
+                C::One(source) => {
+                    compare_present_to_value(self.has(ROUTING_SOURCE_PRESENT), &self.source, source)
+                }
+                C::Two(source, attribute) => {
+                    compare_present_to_value(self.has(ROUTING_SOURCE_PRESENT), &self.source, source)
+                        .then_with(|| {
+                            compare_present_to_value(
+                                self.has(ROUTING_ATTRIBUTE_PRESENT),
+                                &self.attribute,
+                                attribute,
+                            )
+                        })
+                }
+                C::Three(source, attribute, value) => {
+                    compare_present_to_value(self.has(ROUTING_SOURCE_PRESENT), &self.source, source)
+                        .then_with(|| {
+                            compare_present_to_value(
+                                self.has(ROUTING_ATTRIBUTE_PRESENT),
+                                &self.attribute,
+                                attribute,
+                            )
+                        })
+                        .then_with(|| {
+                            compare_present_routing_to_value(
+                                self.has(ROUTING_VALUE_PRESENT),
+                                self.value.as_ref(),
+                                value,
+                                false,
+                            )
+                        })
+                }
+                C::Four(source, attribute, value, entity) => {
+                    compare_present_to_value(self.has(ROUTING_SOURCE_PRESENT), &self.source, source)
+                        .then_with(|| {
+                            compare_present_to_value(
+                                self.has(ROUTING_ATTRIBUTE_PRESENT),
+                                &self.attribute,
+                                attribute,
+                            )
+                        })
+                        .then_with(|| {
+                            compare_present_routing_to_value(
+                                self.has(ROUTING_VALUE_PRESENT),
+                                self.value.as_ref(),
+                                value,
+                                false,
+                            )
+                        })
+                        .then_with(|| {
+                            compare_present_to_value(
+                                self.has(ROUTING_ENTITY_PRESENT),
+                                &self.entity,
+                                entity,
+                            )
+                        })
+                }
+                C::Five(source, attribute, value, entity, tx) => {
+                    compare_present_to_value(self.has(ROUTING_SOURCE_PRESENT), &self.source, source)
+                        .then_with(|| {
+                            compare_present_to_value(
+                                self.has(ROUTING_ATTRIBUTE_PRESENT),
+                                &self.attribute,
+                                attribute,
+                            )
+                        })
+                        .then_with(|| {
+                            compare_present_routing_to_value(
+                                self.has(ROUTING_VALUE_PRESENT),
+                                self.value.as_ref(),
+                                value,
+                                false,
+                            )
+                        })
+                        .then_with(|| {
+                            compare_present_to_value(
+                                self.has(ROUTING_ENTITY_PRESENT),
+                                &self.entity,
+                                entity,
+                            )
+                        })
+                        .then_with(|| {
+                            if self.has(ROUTING_TX_PRESENT) {
+                                tx.cmp(&self.tx)
+                            } else {
+                                Ordering::Less
+                            }
+                        })
+                }
+            },
         }
     }
 
@@ -818,6 +1487,7 @@ impl RoutingKey {
             attribute: self.attribute,
             value: self.value.as_ref()?.to_value()?,
             tx: self.tx,
+            source: self.source,
             added: self.added,
         })
     }
@@ -842,12 +1512,14 @@ fn compare_routing_parts(
     left_attribute: u32,
     left_value: Option<&RoutingValue>,
     left_tx: u64,
+    left_source: u64,
     left_added: bool,
     left_components: u8,
     right_entity: u64,
     right_attribute: u32,
     right_value: Option<&RoutingValue>,
     right_tx: u64,
+    right_source: u64,
     right_added: bool,
     right_components: u8,
     order: IndexOrder,
@@ -945,6 +1617,68 @@ fn compare_routing_parts(
                 &right_entity,
             )
         }),
+        IndexOrder::Saevt => compare_present_values(
+            left_components & ROUTING_SOURCE_PRESENT != 0,
+            &left_source,
+            right_components & ROUTING_SOURCE_PRESENT != 0,
+            &right_source,
+        )
+        .then_with(|| {
+            compare_present_values(
+                left_components & ROUTING_ATTRIBUTE_PRESENT != 0,
+                &left_attribute,
+                right_components & ROUTING_ATTRIBUTE_PRESENT != 0,
+                &right_attribute,
+            )
+            .then_with(|| {
+                compare_present_values(
+                    left_components & ROUTING_ENTITY_PRESENT != 0,
+                    &left_entity,
+                    right_components & ROUTING_ENTITY_PRESENT != 0,
+                    &right_entity,
+                )
+            })
+            .then_with(|| {
+                compare_present_routing_values(
+                    left_components & ROUTING_VALUE_PRESENT != 0,
+                    left_value,
+                    right_components & ROUTING_VALUE_PRESENT != 0,
+                    right_value,
+                    false,
+                )
+            })
+        }),
+        IndexOrder::Savet => compare_present_values(
+            left_components & ROUTING_SOURCE_PRESENT != 0,
+            &left_source,
+            right_components & ROUTING_SOURCE_PRESENT != 0,
+            &right_source,
+        )
+        .then_with(|| {
+            compare_present_values(
+                left_components & ROUTING_ATTRIBUTE_PRESENT != 0,
+                &left_attribute,
+                right_components & ROUTING_ATTRIBUTE_PRESENT != 0,
+                &right_attribute,
+            )
+            .then_with(|| {
+                compare_present_routing_values(
+                    left_components & ROUTING_VALUE_PRESENT != 0,
+                    left_value,
+                    right_components & ROUTING_VALUE_PRESENT != 0,
+                    right_value,
+                    false,
+                )
+            })
+            .then_with(|| {
+                compare_present_values(
+                    left_components & ROUTING_ENTITY_PRESENT != 0,
+                    &left_entity,
+                    right_components & ROUTING_ENTITY_PRESENT != 0,
+                    &right_entity,
+                )
+            })
+        }),
     };
     ordering
         .then_with(|| {
@@ -957,6 +1691,13 @@ fn compare_routing_parts(
                 (true, false) => Ordering::Greater,
                 (true, true) => right_tx
                     .cmp(&left_tx)
+                    .then_with(|| {
+                        if matches!(order, IndexOrder::Saevt | IndexOrder::Savet) {
+                            Ordering::Equal
+                        } else {
+                            left_source.cmp(&right_source)
+                        }
+                    })
                     .then_with(|| right_added.cmp(&left_added)),
             }
         })
@@ -1389,6 +2130,7 @@ fn minimum_tuple_difference(
 fn sparse_routing_key(order: IndexOrder, prior: &Datom, current: &Datom) -> RoutingKey {
     let added = current.added;
     match order {
+        IndexOrder::Saevt | IndexOrder::Savet => RoutingKey::exact(current),
         IndexOrder::Avet if current.attribute != prior.attribute => {
             RoutingKey::sparse(None, Some(current.attribute), None, added)
         }
@@ -1435,6 +2177,7 @@ fn sparse_value_routing_key(order: IndexOrder, prior: &Datom, current: &Datom) -
     let entity = match order {
         IndexOrder::Eavt | IndexOrder::Aevt => Some(current.entity),
         IndexOrder::Avet | IndexOrder::Vaet => None,
+        IndexOrder::Saevt | IndexOrder::Savet => Some(current.entity),
     };
     RoutingKey::sparse(entity, Some(current.attribute), Some(value), current.added)
 }
@@ -1458,6 +2201,7 @@ pub struct LeafSegment {
     pub attributes: Vec<u32>,
     pub values: Vec<Value>,
     pub transactions: Vec<u64>,
+    pub sources: Vec<u64>,
     pub assertions: Vec<bool>,
 }
 
@@ -1476,6 +2220,7 @@ impl LeafSegment {
             attribute: *self.attributes.get(index)?,
             value: self.values.get(index)?.clone(),
             tx: *self.transactions.get(index)?,
+            source: *self.sources.get(index)?,
             added: *self.assertions.get(index)?,
         })
     }
@@ -1578,6 +2323,9 @@ impl TreeNode {
                     (leaf.transactions.capacity() as u64).saturating_mul(size_of::<u64>() as u64),
                 )
                 .saturating_add(
+                    (leaf.sources.capacity() as u64).saturating_mul(size_of::<u64>() as u64),
+                )
+                .saturating_add(
                     (leaf.assertions.capacity() as u64).saturating_mul(size_of::<bool>() as u64),
                 ),
         };
@@ -1622,7 +2370,7 @@ pub struct TreeRangeResult {
 
 /// Build one current or history tree from an already sorted stream.
 ///
-/// Callers choose membership (all EAVT/AEVT, indexed AVET, refs VAET); this
+/// Callers choose membership (all EAVT/AEVT/SAEVT, indexed AVET/SAVET, refs VAET); this
 /// constructor owns only physical order and tree integrity.  Rejecting an
 /// unsorted or duplicate stream keeps one canonical tree for one information
 /// set.
@@ -1876,8 +2624,11 @@ pub(crate) fn merge_tree_with_boundary_loader(
         no_history_pairs.extend(discover_segment_no_history_pairs(
             descriptor, &old_root, old_nodes, edits, &removals, &points,
         )?);
-        no_history_pairs
-            .sort_by(|left, right| left.retraction.cmp_in(&right.retraction, descriptor.order));
+        no_history_pairs.sort_by(|left, right| {
+            left.retraction
+                .cmp_in(&right.retraction, descriptor.order)
+                .then_with(|| left.assertion.cmp_in(&right.assertion, descriptor.order))
+        });
         no_history_pairs.dedup_by(|right, left| {
             same_datom(&left.retraction, &right.retraction)
                 && same_datom(&left.assertion, &right.assertion)
@@ -2055,7 +2806,7 @@ pub(crate) fn merge_tree_with_boundary_loader(
         }
     }
 
-    let expected_filtered = no_history_pairs.len().saturating_mul(2) as u64;
+    let expected_filtered = pair_removals.len() as u64;
     if applied.removals != removals.len() as u64
         || applied.insertions != edits.insertions.len() as u64
         || applied.filtered != expected_filtered
@@ -2837,43 +3588,36 @@ fn validate_no_history_pairs(
     order: IndexOrder,
     pairs: &[NoHistoryPair],
 ) -> Result<(), SemanticError> {
-    let mut pair_datoms = Vec::with_capacity(pairs.len().saturating_mul(2));
-    let mut previous_retraction = None::<&Datom>;
+    let mut previous = None::<&NoHistoryPair>;
     for pair in pairs {
         if pair.retraction.added
             || !pair.assertion.added
-            || !same_logical_eav(&pair.retraction, &pair.assertion)
-            || !pair.retraction.cmp_in(&pair.assertion, order).is_lt()
+            || pair.retraction.entity != pair.assertion.entity
+            || pair.retraction.attribute != pair.assertion.attribute
+            || !pair.retraction.value.stored_eq(&pair.assertion.value)
+            || pair.retraction.tx <= pair.assertion.tx
         {
             return Err(SemanticError::incorrect(
                 "tree/invalid-no-history-pair",
-                "noHistory filter requires an ordered logically equal retraction/assertion E/A/V pair",
+                "noHistory requires an older assertion withdrawn by its EAV retraction",
             ));
         }
-        if previous_retraction
-            .is_some_and(|previous| !previous.cmp_in(&pair.retraction, order).is_lt())
-        {
+        if previous.is_some_and(|prior| {
+            !prior
+                .retraction
+                .cmp_in(&pair.retraction, order)
+                .then_with(|| prior.assertion.cmp_in(&pair.assertion, order))
+                .is_lt()
+        }) {
             return Err(SemanticError::incorrect(
                 "tree/noncanonical-no-history-pairs",
-                "noHistory pairs must be strictly ordered by retraction",
+                "noHistory witnesses must be strictly ordered by retraction and assertion",
             ));
         }
-        previous_retraction = Some(&pair.retraction);
-        pair_datoms.push(pair.retraction.clone());
-        pair_datoms.push(pair.assertion.clone());
+        previous = Some(pair);
     }
-    pair_datoms.sort_by(|left, right| left.cmp_in(right, order));
-    if pair_datoms
-        .windows(2)
-        .any(|pair| !pair[0].cmp_in(&pair[1], order).is_lt())
-    {
-        return Err(SemanticError::incorrect(
-            "tree/duplicate-no-history-datom",
-            "one exact history datom cannot participate in multiple pair removals",
-        ));
-    }
-    validate_persistent_index_datoms(order, &pair_datoms)?;
-    Ok(())
+    let datoms = pair_removals(pairs, order)?;
+    validate_persistent_index_datoms(order, &datoms)
 }
 
 fn validate_sorted_edit_stream(
@@ -2938,25 +3682,16 @@ fn pair_removals(pairs: &[NoHistoryPair], order: IndexOrder) -> Result<Vec<Datom
         .iter()
         .flat_map(|pair| [pair.retraction.clone(), pair.assertion.clone()])
         .collect::<Vec<_>>();
-    removals.sort_by(|left, right| left.cmp_in(right, order));
-    if removals
-        .windows(2)
-        .any(|pair| !pair[0].cmp_in(&pair[1], order).is_lt())
-    {
-        return Err(SemanticError::incorrect(
-            "tree/duplicate-no-history-datom",
-            "one exact history datom cannot participate in multiple pair removals",
-        ));
-    }
+    removals.sort_by(|a, b| a.cmp_in(b, order));
+    removals.dedup_by(|a, b| same_datom(a, b));
     Ok(removals)
 }
 
-/// Recover `filter-nohist-pairs` from the complete streams of only those old
-/// leaves this copy-on-write operation already selected. A single pending
-/// datom carries adjacency across selected leaf and directory boundaries; an
-/// untouched leaf ends the segment. Memory is therefore one decoded leaf,
-/// one pending datom, and the exact removal witnesses that the merge must
-/// authenticate—never the complete tree.
+/// Discover omissions only from complete logical EAV groups in selected leaf
+/// streams. Gaps discard an ambiguous boundary group rather than removing its
+/// global barrier without all withdrawn source contributions. Group memory is
+/// independent of total tree size; the EAVT preparation pass shares its exact
+/// witnesses with every other history order.
 fn discover_segment_no_history_pairs(
     descriptor: &TreeDescriptor,
     root: &RootNode,
@@ -2965,8 +3700,11 @@ fn discover_segment_no_history_pairs(
     removals: &[Datom],
     points: &[Datom],
 ) -> Result<Vec<NoHistoryPair>, SemanticError> {
+    if matches!(descriptor.order, IndexOrder::Saevt | IndexOrder::Savet) {
+        return Ok(Vec::new()); // Global EAVT witnesses are supplied by preparation.
+    }
     let mut pairs = Vec::new();
-    let mut pending = None;
+    let mut pending = NoHistoryGroups::new(true);
     if root.directories.is_empty() {
         let mut ignored = AppliedEdits::default();
         let merged = apply_leaf_edits(
@@ -2983,6 +3721,7 @@ fn discover_segment_no_history_pairs(
             &mut pending,
             &mut pairs,
         );
+        pending.finish(&edits.no_history_attributes, &mut pairs);
         return Ok(pairs);
     }
 
@@ -3004,7 +3743,7 @@ fn discover_segment_no_history_pairs(
             &edits.affected_ranges,
             descriptor.order,
         ) {
-            pending = None;
+            pending.discard();
             continue;
         }
         let directory = load_directory(
@@ -3032,7 +3771,7 @@ fn discover_segment_no_history_pairs(
                 &edits.affected_ranges,
                 descriptor.order,
             ) {
-                pending = None;
+                pending.discard();
                 continue;
             }
             let leaf = load_leaf(
@@ -3063,6 +3802,12 @@ fn discover_segment_no_history_pairs(
             );
         }
     }
+    pending.finish(&edits.no_history_attributes, &mut pairs);
+    pairs.sort_by(|a, b| {
+        a.retraction
+            .cmp_in(&b.retraction, descriptor.order)
+            .then_with(|| a.assertion.cmp_in(&b.assertion, descriptor.order))
+    });
     Ok(pairs)
 }
 
@@ -3087,26 +3832,52 @@ pub(crate) fn discover_merge_no_history_pairs(
     discover_segment_no_history_pairs(descriptor, &root, old_nodes, edits, &removals, &points)
 }
 
+struct NoHistoryGroups {
+    events: Vec<Datom>,
+    complete_start: bool,
+}
+impl NoHistoryGroups {
+    fn new(complete_start: bool) -> Self {
+        Self {
+            events: Vec::new(),
+            complete_start,
+        }
+    }
+    fn discard(&mut self) {
+        self.events.clear();
+        self.complete_start = false;
+    }
+    fn finish(&mut self, attributes: &BTreeSet<u32>, pairs: &mut Vec<NoHistoryPair>) {
+        if self.complete_start
+            && self
+                .events
+                .first()
+                .is_some_and(|d| attributes.contains(&d.attribute))
+        {
+            pairs.extend(crate::index::visibility::no_history_eav_group(
+                std::mem::take(&mut self.events),
+            ));
+        } else {
+            self.events.clear();
+        }
+    }
+}
 fn discover_no_history_in_stream(
     datoms: impl IntoIterator<Item = Datom>,
-    no_history_attributes: &BTreeSet<u32>,
-    pending: &mut Option<Datom>,
+    attributes: &BTreeSet<u32>,
+    pending: &mut NoHistoryGroups,
     pairs: &mut Vec<NoHistoryPair>,
 ) {
     for datom in datoms {
-        if let Some(previous) = pending.take()
-            && !previous.added
-            && datom.added
-            && no_history_attributes.contains(&previous.attribute)
-            && same_logical_eav(&previous, &datom)
+        if pending
+            .events
+            .first()
+            .is_some_and(|d| !same_logical_eav(d, &datom))
         {
-            pairs.push(NoHistoryPair {
-                retraction: previous,
-                assertion: datom,
-            });
-            continue;
+            pending.finish(attributes, pairs);
+            pending.complete_start = true;
         }
-        *pending = Some(datom);
+        pending.events.push(datom);
     }
 }
 
@@ -3820,6 +4591,7 @@ impl LeafBuilder {
                 attributes: Vec::new(),
                 values: Vec::new(),
                 transactions: Vec::new(),
+                sources: Vec::new(),
                 assertions: Vec::new(),
             },
             // envelope + one column count
@@ -3836,9 +4608,9 @@ impl LeafBuilder {
     }
 
     fn encoded_len_with(&self, value_len: usize) -> Result<usize, SemanticError> {
-        // entity + attribute + value length/value + tx + assertion
+        // entity + attribute + value length/value + tx + source + assertion
         self.encoded_len
-            .checked_add(8 + 4 + 4 + value_len + 8 + 1)
+            .checked_add(8 + 4 + 4 + value_len + 8 + 8 + 1)
             .ok_or_else(|| fault("tree/length-overflow", "leaf encoded length overflow"))
     }
 
@@ -3850,6 +4622,7 @@ impl LeafBuilder {
         self.leaf.attributes.push(datom.attribute);
         self.leaf.values.push(datom.value);
         self.leaf.transactions.push(datom.tx);
+        self.leaf.sources.push(datom.source);
         self.leaf.assertions.push(datom.added);
     }
 
@@ -4137,7 +4910,7 @@ fn child_reference_encoded_len(reference: &ChildRef) -> Result<usize, SemanticEr
         .map_or(0, |value| 4 + value.len());
     // Datum-shaped key fields + value-presence/value + tx/assertion + explicit
     // component-presence mask + hash + count.
-    Ok(8 + 4 + 1 + value_len + 8 + 1 + 1 + 32 + 8)
+    Ok(8 + 4 + 1 + value_len + 8 + 8 + 1 + 1 + 32 + 8)
 }
 
 fn encode_tree_node(node: &TreeNode) -> Result<Vec<u8>, SemanticError> {
@@ -4156,6 +4929,9 @@ fn encode_tree_node(node: &TreeNode) -> Result<Vec<u8>, SemanticError> {
                 put_bytes(&mut body, &encode_canonical_value(value)?)?;
             }
             for value in &leaf.transactions {
+                put_u64(&mut body, *value);
+            }
+            for value in &leaf.sources {
                 put_u64(&mut body, *value);
             }
             for value in &leaf.assertions {
@@ -4236,6 +5012,10 @@ fn decode_leaf(
     for _ in 0..count {
         transactions.push(cursor.u64()?);
     }
+    let mut sources = Vec::with_capacity(count);
+    for _ in 0..count {
+        sources.push(cursor.u64()?);
+    }
     let mut assertions = Vec::with_capacity(count);
     for _ in 0..count {
         assertions.push(cursor.boolean()?);
@@ -4247,6 +5027,7 @@ fn decode_leaf(
         attributes,
         values,
         transactions,
+        sources,
         assertions,
     })
 }
@@ -4305,6 +5086,7 @@ fn encode_routing_key(output: &mut Vec<u8>, key: &RoutingKey) -> Result<(), Sema
         }
     }
     put_u64(output, key.tx);
+    put_u64(output, key.source);
     output.push(u8::from(key.added));
     output.push(key.components);
     Ok(())
@@ -4324,6 +5106,7 @@ fn decode_routing_key(cursor: &mut TreeCursor<'_>) -> Result<RoutingKey, Semanti
         }
     };
     let tx = cursor.u64()?;
+    let source = cursor.u64()?;
     let added = cursor.boolean()?;
     let components = cursor.u8()?;
     Ok(RoutingKey {
@@ -4331,6 +5114,7 @@ fn decode_routing_key(cursor: &mut TreeCursor<'_>) -> Result<RoutingKey, Semanti
         attribute,
         value,
         tx,
+        source,
         added,
         components,
     })
@@ -4516,6 +5300,7 @@ fn validate_leaf(leaf: &LeafSegment) -> Result<(), SemanticError> {
         || leaf.attributes.len() != count
         || leaf.values.len() != count
         || leaf.transactions.len() != count
+        || leaf.sources.len() != count
         || leaf.assertions.len() != count
     {
         return Err(fault(
@@ -4605,17 +5390,21 @@ fn validate_routing_shape(key: &RoutingKey, order: IndexOrder) -> Result<(), Sem
         || (!key.has(ROUTING_ENTITY_PRESENT) && key.entity != 0)
         || (!key.has(ROUTING_ATTRIBUTE_PRESENT) && key.attribute != 0)
         || (!key.has(ROUTING_TX_PRESENT) && key.tx != 0)
+        || (!key.has(ROUTING_SOURCE_PRESENT) && key.source != 0)
     {
         return Err(fault(
             "tree/invalid-routing-key",
             "routing key payload and component-presence mask disagree",
         ));
     }
-    if key.has(ROUTING_TX_PRESENT) {
+    // Source follows transaction in the original orders; their sparse
+    // separators omit both. Source-first orders retain exact keys. Neither
+    // coordinate can therefore appear on a sparse routing prefix.
+    if key.has(ROUTING_TX_PRESENT) || key.has(ROUTING_SOURCE_PRESENT) {
         if !key.is_exact() {
             return Err(fault(
                 "tree/invalid-routing-key",
-                "a routing key with a transaction component must be exact",
+                "a routing key with a transaction or source component must be exact",
             ));
         }
         let datom = key.as_datom().ok_or_else(|| {
@@ -4637,6 +5426,7 @@ fn validate_routing_shape(key: &RoutingKey, order: IndexOrder) -> Result<(), Sem
         }
         IndexOrder::Avet => key.has(ROUTING_ATTRIBUTE_PRESENT) && !key.has(ROUTING_ENTITY_PRESENT),
         IndexOrder::Vaet => key.has(ROUTING_VALUE_PRESENT) && !key.has(ROUTING_ENTITY_PRESENT),
+        IndexOrder::Saevt | IndexOrder::Savet => false,
     };
     if !valid {
         return Err(fault(
@@ -4705,6 +5495,7 @@ fn same_datom(left: &Datom, right: &Datom) -> bool {
     left.entity == right.entity
         && left.attribute == right.attribute
         && left.value.stored_eq(&right.value)
+        && left.source == right.source
         && left.tx == right.tx
         && left.added == right.added
 }
@@ -4715,6 +5506,8 @@ fn encode_order(order: IndexOrder) -> u8 {
         IndexOrder::Aevt => 1,
         IndexOrder::Avet => 2,
         IndexOrder::Vaet => 3,
+        IndexOrder::Saevt => 4,
+        IndexOrder::Savet => 5,
     }
 }
 
@@ -4724,6 +5517,8 @@ fn decode_order(tag: u8) -> Result<IndexOrder, SemanticError> {
         1 => Ok(IndexOrder::Aevt),
         2 => Ok(IndexOrder::Avet),
         3 => Ok(IndexOrder::Vaet),
+        4 => Ok(IndexOrder::Saevt),
+        5 => Ok(IndexOrder::Savet),
         _ => Err(fault(
             "tree/invalid-order",
             "tree node index order is unknown",

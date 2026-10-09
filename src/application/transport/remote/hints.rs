@@ -3,7 +3,7 @@ use crate::{
     HintLimits, IndexPrefix, ReadHint, SemanticError, SnapshotReference, TransactionHints, Value,
 };
 pub(super) const MAX_WIRE_BYTES: usize = 4 * 1024 * 1024 + 256 * 1024 + 64 * 1024;
-const MAGIC: &[u8; 8] = b"EDBHNT\0\x01";
+const MAGIC: &[u8; 8] = b"EDBHNT\0\x02";
 pub(super) fn encode(hints: &TransactionHints) -> Result<Vec<u8>, SemanticError> {
     let mut bytes = MAGIC.to_vec();
     put(&mut bytes, &hints.origin().encode()?)?;
@@ -49,6 +49,30 @@ pub(super) fn encode(hints: &TransactionHints) -> Result<Vec<u8>, SemanticError>
                 bytes.push(3);
                 put(&mut bytes, &crate::encoding::encode_canonical_value(value)?)?;
                 optional_u32(&mut bytes, *attribute);
+                optional_u64(&mut bytes, *entity);
+            }
+            IndexPrefix::Saevt {
+                source,
+                attribute,
+                entity,
+                value,
+            } => {
+                bytes.push(4);
+                bytes.extend_from_slice(&source.to_be_bytes());
+                optional_u32(&mut bytes, *attribute);
+                optional_u64(&mut bytes, *entity);
+                optional_value(&mut bytes, value.as_ref())?;
+            }
+            IndexPrefix::Savet {
+                source,
+                attribute,
+                value,
+                entity,
+            } => {
+                bytes.push(5);
+                bytes.extend_from_slice(&source.to_be_bytes());
+                optional_u32(&mut bytes, *attribute);
+                optional_value(&mut bytes, value.as_ref())?;
                 optional_u64(&mut bytes, *entity);
             }
         }
@@ -102,6 +126,18 @@ pub(super) fn decode(bytes: &[u8]) -> Result<TransactionHints, SemanticError> {
             3 => IndexPrefix::Vaet {
                 value: input.value()?,
                 attribute: input.optional_u32()?,
+                entity: input.optional_u64()?,
+            },
+            4 => IndexPrefix::Saevt {
+                source: input.u64()?,
+                attribute: input.optional_u32()?,
+                entity: input.optional_u64()?,
+                value: input.optional_value()?,
+            },
+            5 => IndexPrefix::Savet {
+                source: input.u64()?,
+                attribute: input.optional_u32()?,
+                value: input.optional_value()?,
                 entity: input.optional_u64()?,
             },
             _ => return Err(invalid()),
@@ -210,5 +246,106 @@ impl<'a> Input<'a> {
         } else {
             Ok(None)
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn claimed_origin() -> SnapshotReference {
+        // A hint origin is untrusted data, never a read capability. A structurally
+        // valid genesis claim is sufficient for this codec-only test.
+        let root = crate::storage::root::DatabaseValueRoot {
+            identity: [1; 16],
+            basis: 0,
+            log: None,
+            indexes: None,
+            metadata: Some([2; 32]),
+        }
+        .encode()
+        .unwrap();
+        let mut bytes = b"EDBS\0\x03".to_vec();
+        for name in [b"hint-test".as_slice(), b"hint-lineage".as_slice()] {
+            bytes.extend_from_slice(&(name.len() as u32).to_be_bytes());
+            bytes.extend_from_slice(name);
+        }
+        for n in [0u64, 0, crate::INITIAL_EIDX_FRONTIER] {
+            bytes.extend_from_slice(&n.to_be_bytes());
+        }
+        bytes.extend_from_slice(&[0; 32]);
+        bytes.extend_from_slice(&[2; 32]);
+        bytes.extend_from_slice(&(root.len() as u16).to_be_bytes());
+        bytes.extend_from_slice(&root);
+        bytes.extend_from_slice(&[0; 19]); // No as-of/since bounds; current view.
+        bytes.extend_from_slice(&crate::sha256(&bytes));
+        SnapshotReference::decode(&bytes).unwrap()
+    }
+
+    #[test]
+    fn hints2_roundtrip_preserves_all_six_prefix_orders_and_rejects_hints1() {
+        let value = Value::String("Peaches".into());
+        let prefixes = [
+            IndexPrefix::Eavt {
+                entity: 42,
+                attribute: Some(1000),
+                value: Some(value.clone()),
+            },
+            IndexPrefix::Aevt {
+                attribute: 1000,
+                entity: Some(42),
+                value: Some(value.clone()),
+            },
+            IndexPrefix::Avet {
+                attribute: 1000,
+                value: Some(value.clone()),
+                entity: Some(42),
+            },
+            IndexPrefix::Vaet {
+                value: Value::Ref(42),
+                attribute: Some(1000),
+                entity: Some(41),
+            },
+            IndexPrefix::Saevt {
+                source: 99,
+                attribute: Some(1000),
+                entity: Some(42),
+                value: Some(value.clone()),
+            },
+            IndexPrefix::Savet {
+                source: 98,
+                attribute: Some(1000),
+                value: Some(value),
+                entity: Some(42),
+            },
+        ];
+        let hints = TransactionHints::from_reads(
+            claimed_origin(),
+            prefixes.into_iter().flat_map(|prefix| {
+                [
+                    ReadHint {
+                        history: false,
+                        prefix: prefix.clone(),
+                    },
+                    ReadHint {
+                        history: true,
+                        prefix,
+                    },
+                ]
+            }),
+            HintLimits::default(),
+        )
+        .unwrap();
+        let encoded = encode(&hints).unwrap();
+        let decoded = decode(&encoded).unwrap();
+        assert_eq!(decoded.origin(), hints.origin());
+        assert_eq!(decoded.reads(), hints.reads());
+        assert_eq!(decoded.reads().len(), 12);
+        assert_eq!(decoded.retained_bytes(), hints.retained_bytes());
+
+        let mut retired = encoded[..encoded.len() - 32].to_vec();
+        retired[7] = 1;
+        retired.extend_from_slice(&crate::sha256(&retired));
+        assert_eq!(decode(&retired).unwrap_err().code, "remote/hints");
     }
 }

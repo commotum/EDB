@@ -314,9 +314,13 @@ fn seed_maintenance_fixture(connection: &str, database: &str) -> Result<()> {
                     value: Value::String(format!("{n:016x}{}", "x".repeat(240))).into(),
                 });
             }
-            let request = TransactionRequest::new(format!("maintenance-{batch}"), operations)
-                .comparing_basis(basis)
-                .with_tx_instant((basis as i64 + 1) * 1000);
+            let request = TransactionRequest::new(
+                format!("maintenance-{batch}"),
+                operations,
+                edb_core::EntityRef::Id(edb_core::DB_SOURCE_SYSTEM),
+            )
+            .comparing_basis(basis)
+            .with_tx_instant((basis as i64 + 1) * 1000);
             let outcome = service
                 .client()
                 .transact(request, Duration::from_secs(120))?;
@@ -465,6 +469,7 @@ fn retry_scale_request(connection: &str, database: &str, fields: &mut Fields) ->
                 Value::Long(777_777).into(),
             ],
         })],
+        edb_core::EntityRef::Id(edb_core::DB_SOURCE_SYSTEM),
     );
     let report = writer.client().transact(request, Duration::from_secs(60))?;
     assert_eq!(report.basis_t.to_string(), expected("basis")?);

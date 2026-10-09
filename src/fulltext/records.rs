@@ -67,24 +67,27 @@ pub(super) fn document(
     attribute: u32,
     id: &DocId,
 ) -> Result<(Datom, u32), SemanticError> {
-    if record.key != doc_key(attribute, id) || record.value.len() < 4 {
+    if record.key != doc_key(attribute, id) || record.value.len() < 12 {
         return Err(corrupt("invalid document record"));
     }
     let length = u32::from_be_bytes(record.value[..4].try_into().unwrap());
+    let source = u64::from_be_bytes(record.value[4..12].try_into().unwrap());
     let text =
-        std::str::from_utf8(&record.value[4..]).map_err(|_| corrupt("invalid document UTF-8"))?;
+        std::str::from_utf8(&record.value[12..]).map_err(|_| corrupt("invalid document UTF-8"))?;
     if sha256(text.as_bytes()) != id[16..] {
         return Err(corrupt("document text identity mismatch"));
     }
     let entity = u64::from_be_bytes(id[..8].try_into().unwrap());
     let tx = u64::from_be_bytes(id[8..16].try_into().unwrap());
     crate::eid_to_eidx(entity)?;
+    crate::model::identity::validate_permanent_eid(source)?;
     crate::tx_to_t(tx)?;
     Ok((
         Datom {
             entity,
             attribute,
             tx,
+            source,
             value: Value::String(text.into()),
             added: true,
         },
@@ -177,6 +180,7 @@ impl Records<'_> {
                         .checked_add(u64::from(length))
                         .ok_or_else(|| corrupt("corpus token count overflow"))?;
                     let mut value = length.to_be_bytes().to_vec();
+                    value.extend_from_slice(&datom.source.to_be_bytes());
                     value.extend_from_slice(text.as_bytes());
                     let key = doc_key(*attribute, &id);
                     self.document = Some(PendingDocument {
@@ -449,6 +453,7 @@ impl<'a> DeltaRecords<'a> {
                 .tokenized_bytes
                 .saturating_add((text.len() as u64).saturating_mul(2));
             let mut value = length.to_be_bytes().to_vec();
+            value.extend_from_slice(&datom.source.to_be_bytes());
             value.extend_from_slice(text.as_bytes());
             let key = doc_key(datom.attribute, &id);
             self.document = Some((
@@ -481,5 +486,60 @@ impl Iterator for DeltaRecords<'_> {
                 Some(Err(error))
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn assertion_records_roundtrip_source_and_distinguish_transaction_contributions() {
+        let mut schema = Schema::new();
+        schema
+            .install(
+                crate::Attribute::new(
+                    100,
+                    crate::Keyword::new("article", "text"),
+                    crate::ValueType::String,
+                    crate::Cardinality::Many,
+                )
+                .fulltext(),
+            )
+            .unwrap();
+        let first = Datom {
+            entity: 42,
+            attribute: 100,
+            value: Value::String("Blue River".into()),
+            tx: crate::t_to_tx(1).unwrap(),
+            source: 99,
+            added: true,
+        };
+        let second = Datom {
+            tx: crate::t_to_tx(2).unwrap(),
+            source: 98,
+            ..first.clone()
+        };
+        let inputs = [first.clone(), second.clone()];
+        let records = records_from(&schema, |_| Ok(Box::new(inputs.iter().cloned().map(Ok))))
+            .collect::<Result<Vec<_>, _>>()
+            .unwrap();
+        assert_ne!(doc_id(&first).unwrap(), doc_id(&second).unwrap());
+        for datom in inputs {
+            let id = doc_id(&datom).unwrap();
+            let record = records
+                .iter()
+                .find(|r| r.key == doc_key(100, &id))
+                .unwrap()
+                .clone();
+            let (decoded, length) = document(record.clone(), 100, &id).unwrap();
+            assert_eq!(decoded, datom);
+            assert_eq!(length, 2);
+            let mut bad_source = record;
+            bad_source.value[4..12].fill(0xff);
+            assert!(document(bad_source, 100, &id).is_err());
+        }
+        let stats = records.iter().find(|r| r.key == stats_key(100)).unwrap();
+        assert_eq!(statistics(stats, 100).unwrap(), (2, 4));
     }
 }

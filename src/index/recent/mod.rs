@@ -19,7 +19,7 @@ use std::collections::VecDeque;
 use std::mem::size_of;
 use std::sync::Arc;
 
-const MAX_BTSET_REFERENCES_PER_DATOM: u64 = 5;
+const MAX_BTSET_REFERENCES_PER_DATOM: u64 = 7;
 const LOG_CHUNK_SIZE: usize = 32;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -67,7 +67,7 @@ impl RecentLimits {
     }
 }
 
-/// Endpoint schema used for AVET/VAET membership and, only during an explicit
+/// Endpoint schema used for AVET/SAVET/VAET membership and, only during an explicit
 /// consolidation, the current `:db/noHistory` flag.
 ///
 /// The recent/log tier never projects history away. EDB documents
@@ -122,7 +122,7 @@ pub struct RecentStats {
     pub base_hash: Digest,
     pub end_hash: Digest,
     pub needs_consolidation: bool,
-    /// Four raw event-tree entries are retained at most. AVET and VAET are
+    /// Six raw event-tree entries are retained at most. AVET and VAET are
     /// conditional; no endpoint or touched-key duplicate trees exist.
     pub raw_index_entries: u64,
     pub index_nodes: u64,
@@ -158,7 +158,7 @@ pub struct RecentWork {
     /// Immediate-child aggregate reads made while copying touched branches.
     /// Includes bookkeeping beyond the root-to-leaf insertion comparisons.
     pub aggregate_child_reads: u64,
-    /// Root summaries read to publish final statistics (four indexes and log).
+    /// Root summaries read to publish final statistics (six indexes and log).
     /// No descendant tree or predecessor-log traversal is needed for stats.
     pub statistics_root_reads: u64,
     pub bulk_rebuild_datoms: u64,
@@ -220,9 +220,9 @@ impl RecentWork {
     }
 }
 
-/// Exact history pair an indexing job may omit for a currently noHistory
-/// attribute. Keeping both datoms explicit prevents a caller from turning the
-/// storage hint into a broad attribute/time purge.
+/// Exact history omission witness for a currently noHistory attribute.
+/// A retraction can appear with several withdrawn assertions; the complete
+/// witness set is shared across index orders and exact removals deduplicate it.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct NoHistoryPair {
     pub retraction: Datom,
@@ -235,6 +235,8 @@ struct RecentIndexes {
     aevt: RecentBtSet,
     avet: RecentBtSet,
     vaet: RecentBtSet,
+    saevt: RecentBtSet,
+    savet: RecentBtSet,
 }
 
 impl RecentIndexes {
@@ -244,6 +246,8 @@ impl RecentIndexes {
             aevt: RecentBtSet::empty(IndexOrder::Aevt),
             avet: RecentBtSet::empty(IndexOrder::Avet),
             vaet: RecentBtSet::empty(IndexOrder::Vaet),
+            saevt: RecentBtSet::empty(IndexOrder::Saevt),
+            savet: RecentBtSet::empty(IndexOrder::Savet),
         }
     }
 
@@ -253,6 +257,8 @@ impl RecentIndexes {
             IndexOrder::Aevt => &self.aevt,
             IndexOrder::Avet => &self.avet,
             IndexOrder::Vaet => &self.vaet,
+            IndexOrder::Saevt => &self.saevt,
+            IndexOrder::Savet => &self.savet,
         }
     }
 
@@ -262,12 +268,21 @@ impl RecentIndexes {
             IndexOrder::Aevt => self.aevt = tree,
             IndexOrder::Avet => self.avet = tree,
             IndexOrder::Vaet => self.vaet = tree,
+            IndexOrder::Saevt => self.saevt = tree,
+            IndexOrder::Savet => self.savet = tree,
         }
     }
 
     fn summary(&self, work: &mut RecentWork) -> (u64, u64, u32) {
         let (mut entries, mut nodes, mut height) = (0_u64, 0_u64, 0_u32);
-        for tree in [&self.eavt, &self.aevt, &self.avet, &self.vaet] {
+        for tree in [
+            &self.eavt,
+            &self.aevt,
+            &self.avet,
+            &self.vaet,
+            &self.saevt,
+            &self.savet,
+        ] {
             work.statistics_root_reads = work.statistics_root_reads.saturating_add(1);
             let (tree_entries, tree_nodes, tree_height) = tree.summary();
             entries = entries.saturating_add(tree_entries);
@@ -383,7 +398,7 @@ pub struct RecentTier {
     base_hash: Digest,
     log: PersistentLog,
     projection: Arc<EndpointProjection>,
-    /// The four raw event sets from recovered `IndexSet`. Current values are
+    /// The six raw event sets from recovered `IndexSet`. Current values are
     /// streamed by collapsing the newest operation in each stored E/A/V group.
     indexes: RecentIndexes,
     limits: RecentLimits,
@@ -534,7 +549,7 @@ impl RecentTier {
         self.extend(std::iter::once(transaction), endpoint_projection)
     }
 
-    /// Authenticate and add a contiguous batch by path-copying only the four
+    /// Authenticate and add a contiguous batch by path-copying only the six
     /// affected search paths per datom. The prior value's roots and completed
     /// log chunks remain shared.
     pub fn extend(
@@ -687,7 +702,9 @@ impl RecentTier {
             if !same_logical_eav(candidate.datom(), datom) {
                 break;
             }
-            if same_eav(candidate.datom(), datom) {
+            if same_eav(candidate.datom(), datom)
+                && (!candidate.datom().added || candidate.datom().source == datom.source)
+            {
                 return true;
             }
         }
@@ -715,6 +732,7 @@ impl RecentTier {
         range.validate(order)?;
         Ok(RecentCursor::new(
             self.indexes.get(order),
+            &self.indexes.eavt,
             Arc::clone(&self.projection),
             history,
             order,
@@ -735,6 +753,7 @@ impl RecentTier {
         prefix.validate()?;
         Ok(RecentCursor::new_prefix(
             self.indexes.get(prefix.order()),
+            &self.indexes.eavt,
             Arc::clone(&self.projection),
             history,
             prefix.clone(),
@@ -751,6 +770,7 @@ impl RecentTier {
     ) -> RecentCursor {
         RecentCursor::new_boundary(
             self.indexes.get(boundary.order()),
+            &self.indexes.eavt,
             Arc::clone(&self.projection),
             history,
             boundary.clone(),
@@ -767,6 +787,7 @@ impl RecentTier {
     ) -> RecentCursor {
         RecentCursor::new_reverse(
             self.indexes.get(boundary.order()),
+            &self.indexes.eavt,
             Arc::clone(&self.projection),
             history,
             boundary.clone(),
@@ -873,23 +894,19 @@ impl RecentTier {
     ) -> Result<Vec<Datom>, SemanticError> {
         range.validate(order)?;
         let merged = self.merge_history_range(order, durable_history, &RecentRange::unbounded())?;
-        let mut retained = Vec::with_capacity(merged.len());
-        let mut index = 0;
-        while index < merged.len() {
-            let datom = &merged[index];
-            let matching_assertion = merged
-                .get(index + 1)
-                .is_some_and(|next| self.eligible_no_history_pair(datom, next));
-            if matching_assertion {
-                index += 2;
-            } else {
-                retained.push(datom.clone());
-                index += 1;
-            }
-        }
-        Ok(retained
+        let pairs = self.no_history_pairs(order, durable_history)?;
+        let mut removed = pairs
             .into_iter()
-            .filter(|datom| range.contains(datom, order))
+            .flat_map(|pair| [pair.retraction, pair.assertion])
+            .collect::<Vec<_>>();
+        removed.sort_by(|a, b| a.cmp_in(b, order));
+        removed.dedup_by(|a, b| same_stored_datom(a, b));
+        Ok(merged
+            .into_iter()
+            .filter(|d| {
+                range.contains(d, order)
+                    && removed.binary_search_by(|r| r.cmp_in(d, order)).is_err()
+            })
             .collect())
     }
 
@@ -899,26 +916,34 @@ impl RecentTier {
         order: IndexOrder,
         durable_history: &[Datom],
     ) -> Result<Vec<NoHistoryPair>, SemanticError> {
-        let merged = self.merge_history_range(order, durable_history, &RecentRange::unbounded())?;
-        Ok(merged
-            .windows(2)
-            .filter(|pair| self.eligible_no_history_pair(&pair[0], &pair[1]))
-            .map(|pair| NoHistoryPair {
-                retraction: pair[0].clone(),
-                assertion: pair[1].clone(),
-            })
-            .collect())
-    }
-
-    fn eligible_no_history_pair(&self, retraction: &Datom, assertion: &Datom) -> bool {
-        !retraction.added
-            && assertion.added
-            && same_logical_eav(retraction, assertion)
-            && self
+        let mut merged =
+            self.merge_history_range(order, durable_history, &RecentRange::unbounded())?;
+        merged.sort_by(|a, b| a.cmp_in(b, IndexOrder::Eavt));
+        let mut pairs = Vec::new();
+        let mut start = 0;
+        while start < merged.len() {
+            let mut end = start + 1;
+            while end < merged.len() && same_logical_eav(&merged[start], &merged[end]) {
+                end += 1;
+            }
+            if self
                 .projection
                 .schema
-                .attribute(retraction.attribute)
-                .is_ok_and(|attribute| attribute.no_history)
+                .attribute(merged[start].attribute)
+                .is_ok_and(|a| a.no_history)
+            {
+                pairs.extend(crate::index::visibility::no_history_eav_group(
+                    merged[start..end].iter().cloned(),
+                ));
+            }
+            start = end;
+        }
+        pairs.sort_by(|a, b| {
+            a.retraction
+                .cmp_in(&b.retraction, order)
+                .then_with(|| a.assertion.cmp_in(&b.assertion, order))
+        });
+        Ok(pairs)
     }
 }
 
@@ -973,7 +998,7 @@ pub struct RecentCursorStats {
 
 /// Lazy ordered view over one raw memory-index tree. Current cursors collapse
 /// one contiguous logical E/A/V group while tracking its distinct stored
-/// representations, then expose each representation's newest assertion.
+/// representations, then expose each representation's newest assertion per source.
 #[derive(Clone, Debug)]
 pub struct RecentCursor {
     inner: BtCursor,
@@ -985,7 +1010,8 @@ pub struct RecentCursor {
     forward_boundary: Option<NormalizedIndexBoundary>,
     reverse_boundary: Option<NormalizedIndexBoundary>,
     pending: Option<RecentDatomRef>,
-    current_output: VecDeque<RecentDatomRef>,
+    current_output: VecDeque<Datom>,
+    global_eavt: RecentBtSet,
     exhausted: bool,
     examined: u64,
     yielded: u64,
@@ -995,6 +1021,7 @@ pub struct RecentCursor {
 impl RecentCursor {
     fn new(
         tree: &RecentBtSet,
+        global_eavt: &RecentBtSet,
         projection: Arc<EndpointProjection>,
         history: bool,
         order: IndexOrder,
@@ -1018,6 +1045,7 @@ impl RecentCursor {
             reverse_boundary: None,
             pending: None,
             current_output: VecDeque::new(),
+            global_eavt: global_eavt.clone(),
             exhausted: false,
             examined: 0,
             yielded: 0,
@@ -1027,6 +1055,7 @@ impl RecentCursor {
 
     fn new_prefix(
         tree: &RecentBtSet,
+        global_eavt: &RecentBtSet,
         projection: Arc<EndpointProjection>,
         history: bool,
         prefix: IndexPrefix,
@@ -1046,6 +1075,7 @@ impl RecentCursor {
             reverse_boundary: None,
             pending: None,
             current_output: VecDeque::new(),
+            global_eavt: global_eavt.clone(),
             exhausted: false,
             examined: 0,
             yielded: 0,
@@ -1055,6 +1085,7 @@ impl RecentCursor {
 
     fn new_boundary(
         tree: &RecentBtSet,
+        global_eavt: &RecentBtSet,
         projection: Arc<EndpointProjection>,
         history: bool,
         boundary: NormalizedIndexBoundary,
@@ -1077,6 +1108,7 @@ impl RecentCursor {
             reverse_boundary: None,
             pending: None,
             current_output: VecDeque::new(),
+            global_eavt: global_eavt.clone(),
             exhausted: false,
             examined: 0,
             yielded: 0,
@@ -1086,6 +1118,7 @@ impl RecentCursor {
 
     fn new_reverse(
         tree: &RecentBtSet,
+        global_eavt: &RecentBtSet,
         projection: Arc<EndpointProjection>,
         history: bool,
         boundary: NormalizedIndexBoundary,
@@ -1095,7 +1128,9 @@ impl RecentCursor {
             NormalizedIndexBoundary::Eavt(IndexComponents::Empty)
             | NormalizedIndexBoundary::Aevt(IndexComponents::Empty)
             | NormalizedIndexBoundary::Avet(IndexComponents::Empty)
-            | NormalizedIndexBoundary::Vaet(IndexComponents::Empty) => tree.reverse_cursor(),
+            | NormalizedIndexBoundary::Vaet(IndexComponents::Empty)
+            | NormalizedIndexBoundary::Saevt(IndexComponents::Empty)
+            | NormalizedIndexBoundary::Savet(IndexComponents::Empty) => tree.reverse_cursor(),
             _ => tree.reverse_seek_by(|candidate| boundary.compare_datom(candidate)),
         };
         Self {
@@ -1109,6 +1144,7 @@ impl RecentCursor {
             reverse_boundary: Some(boundary),
             pending: None,
             current_output: VecDeque::new(),
+            global_eavt: global_eavt.clone(),
             exhausted: false,
             examined: 0,
             yielded: 0,
@@ -1190,6 +1226,52 @@ impl RecentCursor {
         }
     }
 
+    fn resolve_current_group(
+        &mut self,
+        group: Vec<RecentDatomRef>,
+        reverse: bool,
+        poll: &mut dyn FnMut() -> Result<bool, SemanticError>,
+    ) -> Result<(), SemanticError> {
+        let source_first = matches!(self.order, IndexOrder::Saevt | IndexOrder::Savet);
+        let exemplar = group[0].datom();
+        let selected_source = exemplar.source;
+        let mut events = Vec::new();
+        if source_first {
+            let mut global = self.global_eavt.seek_by(|d| logical_eav_cmp(d, exemplar));
+            while let Some(candidate) = global.next() {
+                if !self.poll(poll)? {
+                    return Ok(());
+                }
+                if !same_logical_eav(candidate.datom(), exemplar) {
+                    break;
+                }
+                self.examined = self.examined.saturating_add(1);
+                events.push(candidate.datom().clone());
+            }
+        } else {
+            for candidate in group {
+                if !self.poll(poll)? {
+                    return Ok(());
+                }
+                events.push(candidate.datom().clone());
+            }
+        }
+        self.max_group_datoms = self.max_group_datoms.max(events.len() as u64);
+        let mut visible = crate::index::current_eav_group(events);
+        if source_first {
+            visible.retain(|d| d.source == selected_source);
+        }
+        visible.sort_by(|a, b| {
+            if reverse {
+                b.cmp_in(a, self.order)
+            } else {
+                a.cmp_in(b, self.order)
+            }
+        });
+        self.current_output.extend(visible);
+        Ok(())
+    }
+
     fn next_reverse(
         &mut self,
         poll: &mut dyn FnMut() -> Result<bool, SemanticError>,
@@ -1220,7 +1302,10 @@ impl RecentCursor {
                 let mut group = vec![first];
                 self.max_group_datoms = self.max_group_datoms.max(1);
                 while let Some(candidate) = self.next_member(poll)? {
-                    if same_logical_eav(group[0].datom(), candidate.datom()) {
+                    if same_logical_eav(group[0].datom(), candidate.datom())
+                        && (!matches!(self.order, IndexOrder::Saevt | IndexOrder::Savet)
+                            || group[0].datom().source == candidate.datom().source)
+                    {
                         group.push(candidate);
                         self.max_group_datoms = self.max_group_datoms.max(group.len() as u64);
                     } else {
@@ -1233,27 +1318,7 @@ impl RecentCursor {
                 }
                 self.max_group_datoms = self.max_group_datoms.max(group.len() as u64);
 
-                // Reversed history visits one logical group oldest-first.
-                // Recovered `distinct-last-by [e a v]` therefore retains its
-                // newest event. EDB deliberately retains one newest event
-                // per strict stored V representation: documented rseek is the
-                // reverse complement of forward access, and the native kernel
-                // treats scale-distinct BigDecimals as distinct stored facts.
-                // This buffers only the current logical group, never an index.
-                let mut winners = Vec::<RecentDatomRef>::new();
-                for candidate in group {
-                    if !self.poll(poll)? {
-                        return Ok(None);
-                    }
-                    let value = &candidate.datom().value;
-                    match winners.binary_search_by(|prior| prior.datom().value.stored_cmp(value)) {
-                        Ok(position) => winners[position] = candidate,
-                        Err(position) => winners.insert(position, candidate),
-                    }
-                }
-                winners.retain(|candidate| candidate.datom().added);
-                winners.sort_by(|left, right| right.datom().cmp_in(left.datom(), self.order));
-                self.current_output.extend(winners);
+                self.resolve_current_group(group, true, poll)?;
                 if self.current_output.is_empty() {
                     continue;
                 }
@@ -1262,8 +1327,15 @@ impl RecentCursor {
                 .current_output
                 .pop_front()
                 .expect("a non-empty reverse current group retained an assertion");
+            if self
+                .reverse_boundary
+                .as_ref()
+                .is_some_and(|b| b.compare_datom(&winner).is_gt())
+            {
+                continue;
+            }
             self.yielded = self.yielded.saturating_add(1);
-            return Ok(Some(winner.datom().clone()));
+            return Ok(Some(winner));
         }
     }
 
@@ -1336,7 +1408,10 @@ impl RecentCursor {
                 let mut group = vec![first];
                 self.max_group_datoms = self.max_group_datoms.max(1);
                 while let Some(candidate) = self.next_member(poll)? {
-                    if same_logical_eav(group[0].datom(), candidate.datom()) {
+                    if same_logical_eav(group[0].datom(), candidate.datom())
+                        && (!matches!(self.order, IndexOrder::Saevt | IndexOrder::Savet)
+                            || group[0].datom().source == candidate.datom().source)
+                    {
                         group.push(candidate);
                         self.max_group_datoms = self.max_group_datoms.max(group.len() as u64);
                     } else {
@@ -1348,26 +1423,7 @@ impl RecentCursor {
                     return Ok(None);
                 }
                 self.max_group_datoms = self.max_group_datoms.max(group.len() as u64);
-                // The recovered comparator makes this group newest-first.
-                // Select only the first operation for each exact stored value;
-                // a newer retraction shadows that representation without
-                // hiding a scale-distinct assertion in the same logical group.
-                let mut seen = Vec::<RecentDatomRef>::new();
-                for candidate in group {
-                    if !self.poll(poll)? {
-                        return Ok(None);
-                    }
-                    let value = &candidate.datom().value;
-                    match seen.binary_search_by(|prior| prior.datom().value.stored_cmp(value)) {
-                        Ok(_) => {}
-                        Err(position) => {
-                            seen.insert(position, candidate.clone());
-                            if candidate.datom().added {
-                                self.current_output.push_back(candidate);
-                            }
-                        }
-                    }
-                }
+                self.resolve_current_group(group, false, poll)?;
                 if self.current_output.is_empty() {
                     continue;
                 }
@@ -1376,7 +1432,7 @@ impl RecentCursor {
                 .current_output
                 .pop_front()
                 .expect("a non-empty current group retained an assertion");
-            let datom = winner.datom();
+            let datom = &winner;
             if !self.prefix_member(datom) {
                 if self.exhausted {
                     return Ok(None);
@@ -1542,6 +1598,8 @@ fn insert_entry(
             IndexOrder::Aevt,
             IndexOrder::Avet,
             IndexOrder::Vaet,
+            IndexOrder::Saevt,
+            IndexOrder::Savet,
         ] {
             validate_persistent_index_datoms(order, std::slice::from_ref(datom))?;
             if index_member(schema, datom, order)? {
@@ -1575,9 +1633,9 @@ fn backfill_schema_transitions(
             previous_attribute.is_some_and(|attribute| attribute.value_type == ValueType::Ref);
         let endpoint_vaet = attribute.value_type == ValueType::Ref;
 
-        for order in [IndexOrder::Avet, IndexOrder::Vaet] {
+        for order in [IndexOrder::Avet, IndexOrder::Savet, IndexOrder::Vaet] {
             let enabled = match order {
-                IndexOrder::Avet => endpoint_avet && !previous_avet,
+                IndexOrder::Avet | IndexOrder::Savet => endpoint_avet && !previous_avet,
                 IndexOrder::Vaet => endpoint_vaet && !previous_vaet,
                 _ => false,
             };
@@ -1637,8 +1695,8 @@ fn recent_stats(
 
 fn index_member(schema: &Schema, datom: &Datom, order: IndexOrder) -> Result<bool, SemanticError> {
     match order {
-        IndexOrder::Eavt | IndexOrder::Aevt => Ok(true),
-        IndexOrder::Avet => {
+        IndexOrder::Eavt | IndexOrder::Aevt | IndexOrder::Saevt => Ok(true),
+        IndexOrder::Avet | IndexOrder::Savet => {
             let attribute = schema.attribute(datom.attribute)?;
             Ok(attribute.indexed || attribute.unique.is_some())
         }
@@ -1737,6 +1795,18 @@ fn primary_cmp_in(left: &Datom, right: &Datom, order: IndexOrder) -> Ordering {
             .index_cmp(&right.value)
             .then(left.attribute.cmp(&right.attribute))
             .then(left.entity.cmp(&right.entity)),
+        IndexOrder::Saevt => left
+            .source
+            .cmp(&right.source)
+            .then(left.attribute.cmp(&right.attribute))
+            .then(left.entity.cmp(&right.entity))
+            .then_with(|| left.value.index_cmp(&right.value)),
+        IndexOrder::Savet => left
+            .source
+            .cmp(&right.source)
+            .then(left.attribute.cmp(&right.attribute))
+            .then_with(|| left.value.index_cmp(&right.value))
+            .then(left.entity.cmp(&right.entity)),
     }
 }
 
@@ -1747,7 +1817,10 @@ fn same_logical_eav(left: &Datom, right: &Datom) -> bool {
 }
 
 fn same_stored_datom(left: &Datom, right: &Datom) -> bool {
-    same_eav(left, right) && left.tx == right.tx && left.added == right.added
+    same_eav(left, right)
+        && left.tx == right.tx
+        && left.source == right.source
+        && left.added == right.added
 }
 
 fn fault(code: &'static str, message: impl Into<String>) -> SemanticError {

@@ -2,10 +2,11 @@
 //! This is destructive to server availability, not to database files. It refuses
 //! to run without explicit disposable-server opt-in and matching data_directory.
 use edb_core::{
-    AttributeName, BackgroundIndexingConfig, CapacityLimits, Connection, DatabaseValue, EntityRef,
-    ErrorCategory, IndexOrder, IndexPrefix, PostgresConnectionConfig, PostgresIoPolicy,
-    PullAttribute, PullPattern, TimePoint, TransactionRequest, TransactionService,
-    TransactionServiceConfig, TxOp, Value, canonical_datom_bytes,
+    AttributeName, BackgroundIndexingConfig, CapacityLimits, Connection, DB_SOURCE_SYSTEM,
+    DB_TX_INSTANT, DatabaseValue, EntityRef, ErrorCategory, IndexOrder, IndexPrefix,
+    IndexTransaction, PostgresConnectionConfig, PostgresIoPolicy, PullAttribute, PullPattern,
+    TimePoint, TransactionRequest, TransactionService, TransactionServiceConfig, TxOp, Value,
+    canonical_datom_bytes,
 };
 use sha2::{Digest, Sha256};
 use std::path::PathBuf;
@@ -110,21 +111,40 @@ struct Fingerprint {
     digest: [u8; 32],
 }
 
-fn fingerprints(phase: &str, value: &DatabaseValue) -> Result<[Fingerprint; 2]> {
-    Ok([
-        fingerprint(phase, "current", value)?,
-        fingerprint(phase, "history", &value.clone().history())?,
-    ])
+fn fingerprints(phase: &str, value: &DatabaseValue) -> Result<Vec<Fingerprint>> {
+    let mut result = Vec::with_capacity(12);
+    for order in [
+        IndexOrder::Eavt,
+        IndexOrder::Aevt,
+        IndexOrder::Avet,
+        IndexOrder::Vaet,
+        IndexOrder::Saevt,
+        IndexOrder::Savet,
+    ] {
+        result.push(fingerprint(phase, "current", value, order)?);
+        result.push(fingerprint(
+            phase,
+            "history",
+            &value.clone().history(),
+            order,
+        )?);
+    }
+    Ok(result)
 }
 
-fn fingerprint(phase: &str, view: &str, value: &DatabaseValue) -> Result<Fingerprint> {
+fn fingerprint(
+    phase: &str,
+    view: &str,
+    value: &DatabaseValue,
+    order: IndexOrder,
+) -> Result<Fingerprint> {
     let started = Instant::now();
     let mut hash = Sha256::new();
     let mut datoms = 0_u64;
-    // Consume every EAVT fact through bounded native cursor pages. As in the
+    // Consume each index through bounded native cursor pages. As in the
     // operations/GC workflows, frame one canonical datom at a time: no whole
     // database collection, tree-packing dependency or cross-format sort conversion.
-    for datom in value.scan_cursor(IndexOrder::Eavt)? {
+    for datom in value.scan_cursor(order)? {
         let encoded = canonical_datom_bytes(&datom?)?;
         hash.update((encoded.len() as u64).to_be_bytes());
         hash.update(encoded);
@@ -133,7 +153,7 @@ fn fingerprint(phase: &str, view: &str, value: &DatabaseValue) -> Result<Fingerp
     let digest: [u8; 32] = hash.finalize().into();
     let hex: String = digest.iter().map(|byte| format!("{byte:02x}")).collect();
     println!(
-        "restart_full_fingerprint phase={phase} view={view} basis={} as_of_t={:?} datoms={datoms} sha256={hex} elapsed_ms={}",
+        "restart_full_fingerprint phase={phase} view={view} index={order:?} basis={} as_of_t={:?} datoms={datoms} sha256={hex} elapsed_ms={}",
         value.basis_t(),
         value.as_of_t(),
         started.elapsed().as_millis()
@@ -224,22 +244,53 @@ fn main() -> Result<()> {
         .prefix_cursor(&sample_prefix)?
         .take(64)
         .collect::<std::result::Result<Vec<_>, _>>()?;
+    let workload_attribute = before.schema().attribute(attribute)?;
+    if workload_attribute.value_type != edb_core::ValueType::Long
+        || workload_attribute.cardinality != edb_core::Cardinality::One
+    {
+        return Err("restart workload requires a cardinality-one Long attribute".into());
+    }
     if sample.is_empty() {
         return Err("existing workload has no facts at the requested Long attribute".into());
     }
     let before_fingerprints = fingerprints("old-before-crash", &before)?;
     let request = TransactionRequest::new(
         format!("{run}-acknowledged"),
-        vec![TxOp::Add {
-            entity: EntityRef::Temp("crash-marker".into()),
-            attribute,
-            value: Value::Long(710_001).into(),
-        }],
-    );
+        vec![
+            TxOp::Add {
+                entity: EntityRef::Temp("crash-source".into()),
+                attribute,
+                value: Value::Long(710_000).into(),
+            },
+            TxOp::Add {
+                entity: EntityRef::Temp("crash-marker".into()),
+                attribute,
+                value: Value::Long(710_001).into(),
+            },
+        ],
+        EntityRef::Temp("crash-source".into()),
+    )
+    .comparing_basis(before.basis_t());
     let writer = start_writer(&connection, &database, &format!("{run}-before"))?;
     let submitter = Connection::attach_configured(connection.clone(), writer.client(), 2)?;
     let acknowledged = submitter.transact(request.clone(), WAIT)?;
     let marker = acknowledged.tempids["crash-marker"];
+    let source = acknowledged.tempids["crash-source"];
+    assert_ne!(source, DB_SOURCE_SYSTEM);
+    assert!(
+        acknowledged
+            .tx_data
+            .iter()
+            .all(|datom| datom.source == source)
+    );
+    assert_eq!(
+        acknowledged
+            .tx_data
+            .iter()
+            .filter(|d| d.attribute == DB_TX_INSTANT as u32)
+            .count(),
+        1
+    );
     let captured = peer.sync_to(acknowledged.basis_t, WAIT)?;
     let log = peer.log();
     let original_log = log
@@ -270,12 +321,39 @@ fn main() -> Result<()> {
     let replacement_start = replacement_started.elapsed();
     let replacement_peer =
         Connection::attach_configured(connection.clone(), replacement.client(), 2)?;
-    let replay = replacement_peer.transact(request, WAIT)?;
+    let replay = replacement_peer.transact(request.clone(), WAIT)?;
     assert!(replay.replayed);
     assert_eq!(replay.basis_t, acknowledged.basis_t);
     assert_eq!(replay.tempids, acknowledged.tempids);
+    assert_eq!(replay.tx_data, acknowledged.tx_data);
+    let mut wrong_source = request;
+    wrong_source.source = EntityRef::Id(DB_SOURCE_SYSTEM);
+    assert_eq!(
+        replacement_peer
+            .transact(wrong_source, WAIT)
+            .unwrap_err()
+            .code,
+        "postgres/idempotency-key-reused"
+    );
     let recovered = peer.sync()?;
     assert_eq!(recovered.basis_t(), acknowledged.basis_t);
+    // The activity index and log belong to one captured basis. No separate
+    // source/time structure or request-source lookup is needed after recovery.
+    let activity = recovered.collect_datoms_with_prefix(&IndexPrefix::Saevt {
+        source,
+        attribute: Some(DB_TX_INSTANT as u32),
+        entity: None,
+        value: None,
+    })?;
+    assert_eq!(activity.len(), 1);
+    assert_eq!(activity[0].entity, edb_core::t_to_tx(acknowledged.basis_t)?);
+    assert_eq!(activity[0].entity, activity[0].tx);
+    assert_eq!(
+        recovered
+            .log_value()?
+            .tx_data(IndexTransaction::Tx(activity[0].entity))?,
+        Some(acknowledged.tx_data.clone())
+    );
     assert_eq!(
         fingerprints("acknowledged-current-after-restart", &recovered)?,
         acknowledged_fingerprints,
@@ -315,6 +393,7 @@ fn main() -> Result<()> {
                 attribute,
                 value: Value::Long(710_002).into(),
             }],
+            edb_core::EntityRef::Id(edb_core::DB_SOURCE_SYSTEM),
         ),
         WAIT,
     )?;
@@ -344,6 +423,32 @@ fn main() -> Result<()> {
             value: None,
         })?;
     assert_eq!(history.len(), 3);
+    assert!(
+        history
+            .iter()
+            .any(|d| d.added && d.value == Value::Long(710_001) && d.source == source)
+    );
+    assert!(
+        history
+            .iter()
+            .any(|d| !d.added && d.value == Value::Long(710_001) && d.source == DB_SOURCE_SYSTEM)
+    );
+    assert!(
+        history
+            .iter()
+            .any(|d| d.added && d.value == Value::Long(710_002) && d.source == DB_SOURCE_SYSTEM)
+    );
+    assert!(
+        current
+            .collect_datoms_with_prefix(&IndexPrefix::Saevt {
+                source,
+                attribute: Some(attribute),
+                entity: Some(marker),
+                value: None,
+            })?
+            .is_empty(),
+        "a source prefix must honor another contributor's retraction"
+    );
     let pattern =
         PullPattern::attributes(vec![PullAttribute::forward(AttributeName::Id(attribute))]);
     assert_ne!(
@@ -387,7 +492,7 @@ fn main() -> Result<()> {
         recovery.tail_range_reads
     );
     println!(
-        "PASS restart-workflow database={database} original_basis={} final_basis={} immediate_pg_crash=true durable_settings=on exact_replay=true old_values=true old_log=true full_current_history_fingerprints=true native_eager=0",
+        "PASS restart-workflow database={database} original_basis={} final_basis={} immediate_pg_crash=true durable_settings=on exact_replay=true old_values=true old_log=true full_current_history_fingerprints=true indexes=6 deferred_source_replay=true changed_source_rejected=true cross_source_replacement=true native_eager=0",
         before.basis_t(),
         changed.basis_t
     );

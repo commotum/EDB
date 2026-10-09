@@ -1,0 +1,16 @@
+
+running 1 test
+
+thread 'rename_retire_and_name_reuse_preserve_sources_and_captured_identity' panicked at tests/database_lifecycle_source_cutover.rs:203:5:
+assertion failed: Peer::connect_configured(&config, &renamed,
+                    0).unwrap().db().values(42, 1000).is_err()
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+test rename_retire_and_name_reuse_preserve_sources_and_captured_identity ... FAILED
+
+failures:
+
+failures:
+    rename_retire_and_name_reuse_preserve_sources_and_captured_identity
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 2 filtered out; finished in 2.60s
+

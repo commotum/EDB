@@ -324,6 +324,7 @@ impl TransactionClient {
         }
         let (request_hash, _) = crate::encoding::canonical_submission_request(
             &request.forms,
+            &request.source,
             request.compare_basis_t,
             request.tx_instant_override,
             self.shared.max_request_bytes,

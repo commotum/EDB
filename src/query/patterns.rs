@@ -4,10 +4,10 @@ use super::*;
 pub(super) fn relation_data_pattern(
     pattern: &RelationPattern,
 ) -> Result<DataPattern, SemanticError> {
-    if pattern.terms.len() > 5 {
+    if pattern.terms.len() > 6 {
         return Err(SemanticError::incorrect(
             "query/pattern-width",
-            "database patterns have at most five datom columns",
+            "database patterns have at most six datom columns",
         ));
     }
     Ok(DataPattern {
@@ -16,7 +16,8 @@ pub(super) fn relation_data_pattern(
         attribute: pattern.terms.get(1).cloned().unwrap_or(Term::Blank),
         value: pattern.terms.get(2).cloned().unwrap_or(Term::Blank),
         transaction: pattern.terms.get(3).cloned(),
-        added: pattern.terms.get(4).cloned(),
+        fact_source: pattern.terms.get(4).cloned(),
+        added: pattern.terms.get(5).cloned(),
     })
 }
 
@@ -105,6 +106,20 @@ pub(super) fn evaluate_pattern(
             if entity.is_none() && term_is_bound(&pattern.entity, &row) {
                 continue;
             }
+            let fact_source = pattern
+                .fact_source
+                .as_ref()
+                .map(|term| resolve_entity(database, term, &row))
+                .transpose()?
+                .flatten();
+            if fact_source.is_none()
+                && pattern
+                    .fact_source
+                    .as_ref()
+                    .is_some_and(|term| term_is_bound(term, &row))
+            {
+                continue;
+            }
             let attribute = resolve_attribute(database, &pattern.attribute, &row)?;
             let bound_value = term_bound_value(&pattern.value, &row);
             let value = bound_value
@@ -121,7 +136,13 @@ pub(super) fn evaluate_pattern(
             } else {
                 None
             };
-            let key = (entity, attribute, value.map(BoundValue::Stored), range);
+            let key = (
+                entity,
+                attribute,
+                value.map(BoundValue::Stored),
+                range,
+                fact_source,
+            );
             bytes = bytes.saturating_add(
                 std::mem::size_of::<Row>()
                     + std::mem::size_of_val(&key)
@@ -134,7 +155,7 @@ pub(super) fn evaluate_pattern(
             }
         }
         state.stats.peak_join_bytes = state.stats.peak_join_bytes.max(bytes);
-        for ((entity, attribute, value, range), rows) in groups {
+        for ((entity, attribute, value, range, fact_source), rows) in groups {
             let value = value.as_ref().and_then(BoundValue::stored);
             state.stats.grouped_probes_saved += rows.len().saturating_sub(1) as u64;
             let (mut datoms, selected) = select_datoms(
@@ -143,6 +164,7 @@ pub(super) fn evaluate_pattern(
                 attribute,
                 value,
                 range,
+                fact_source,
                 state.control.force_scan,
             )?;
             access = selected;
@@ -179,6 +201,8 @@ pub(super) fn evaluate_pattern(
                             &BoundValue::Stored(Value::Ref(datom.tx)),
                             state,
                         )
+                    })? && pattern.fact_source.as_ref().map_or(Ok(true), |term| {
+                        unify_entity_term(database, &mut candidate, term, fact_source, datom.source)
                     })? && pattern.added.as_ref().map_or(Ok(true), |term| {
                         unify_term_checked(
                             &mut candidate,
@@ -202,6 +226,7 @@ pub(super) fn select_datoms<'a>(
     attribute: Option<u32>,
     value: Option<&Value>,
     range: Option<ranges::Range>,
+    fact_source: Option<u64>,
     force_scan: bool,
 ) -> Result<(ranges::Datoms<'a>, String), SemanticError> {
     if !force_scan {
@@ -214,6 +239,45 @@ pub(super) fn select_datoms<'a>(
             return Ok((
                 ranges::Datoms::prefix(database.query_prefix_cursor(&prefix)?),
                 "EAVT seek".into(),
+            ));
+        }
+        if let Some(source) = fact_source {
+            if let Some(attribute) = attribute
+                && let Some(range) = range
+                && database.physical_avet_ready(attribute)
+            {
+                return Ok((
+                    ranges::Datoms::range(database, attribute, range, Some(source))?,
+                    "SAVET range".into(),
+                ));
+            }
+            let (prefix, label) = if let Some(attribute) = attribute
+                && let Some(value) = value
+                && database.physical_avet_ready(attribute)
+            {
+                (
+                    IndexPrefix::Savet {
+                        source,
+                        attribute: Some(attribute),
+                        value: Some(value.clone()),
+                        entity: None,
+                    },
+                    "SAVET seek",
+                )
+            } else {
+                (
+                    IndexPrefix::Saevt {
+                        source,
+                        attribute,
+                        entity: None,
+                        value: None,
+                    },
+                    "SAEVT seek",
+                )
+            };
+            return Ok((
+                ranges::Datoms::prefix(database.query_prefix_cursor(&prefix)?),
+                label.into(),
             ));
         }
         if let Some(attribute) = attribute {
@@ -232,7 +296,7 @@ pub(super) fn select_datoms<'a>(
             }
             if let Some(range) = range {
                 return Ok((
-                    ranges::Datoms::range(database, attribute, range)?,
+                    ranges::Datoms::range(database, attribute, range, None)?,
                     "AVET range".into(),
                 ));
             }

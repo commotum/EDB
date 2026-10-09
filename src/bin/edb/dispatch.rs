@@ -22,7 +22,7 @@ pub(super) fn run(args: Arguments) -> Result<(), SemanticError> {
     match args.command.as_str() {
         "install" => {
             edb_core::storage::PgBlockStore::install(&connection)?;
-            println!("INSTALLED storage_format=edb/opaque-storage/1 tables=2");
+            println!("INSTALLED storage_format=edb/opaque-storage/2 tables=2");
             std::io::stdout().flush().map_err(|_| io_error())?;
             if let Some(writer) = args.options.get("--writer-role") {
                 edb_core::storage::PgBlockStore::connect(&connection)?

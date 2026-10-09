@@ -548,7 +548,7 @@ impl<S: MergeSource> MergeCursor<S> {
             };
             let recent = self.durable.snapshot.recent();
             if !recent.includes(self.order, &datom)?
-                || (self.order == IndexOrder::Avet
+                || (matches!(self.order, IndexOrder::Avet | IndexOrder::Savet)
                     && self
                         .durable
                         .snapshot
@@ -579,7 +579,7 @@ impl<S: MergeSource> MergeCursor<S> {
             let Some(datom) = self.recent.next_with_poll(poll)? else {
                 break;
             };
-            if self.order == IndexOrder::Avet
+            if matches!(self.order, IndexOrder::Avet | IndexOrder::Savet)
                 && self
                     .durable
                     .snapshot

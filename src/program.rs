@@ -19,7 +19,7 @@ const MAX_INSTRUCTIONS: usize = 4_096;
 const MAX_BLOCK_DEPTH: usize = 32;
 /// The single current program format, including the shared query AST.
 /// Earlier development formats require fresh databases.
-pub const PROGRAM_ABI_VERSION: u16 = 12;
+pub const PROGRAM_ABI_VERSION: u16 = 13;
 pub const MAX_QUERY_PATTERNS: usize = 64;
 pub const MAX_QUERY_VARIABLES: usize = 32;
 
@@ -127,6 +127,7 @@ fn canonical_entity_ref_cmp(left: &EntityRef, right: &EntityRef) -> Ordering {
             (EntityRef::Temp(left), EntityRef::Temp(right)) => {
                 left.encode_utf16().cmp(right.encode_utf16())
             }
+            (EntityRef::Edn(left), EntityRef::Edn(right)) => left.cmp(right),
             (
                 EntityRef::Lookup {
                     attribute: left_attribute,
@@ -197,6 +198,7 @@ fn entity_ref_rank(entity: &EntityRef) -> u8 {
         EntityRef::Lookup { .. } => 3,
         EntityRef::Tx => 4,
         EntityRef::LookupInput { .. } => 5,
+        EntityRef::Edn(_) => 6,
     }
 }
 
@@ -1346,9 +1348,12 @@ impl Validation {
         // clone them, including literals in an untaken branch. Arguments are
         // checked separately by the shared runtime budget.
         match instruction {
-            Instruction::PushEntity(entity @ EntityRef::LookupInput { .. })
+            Instruction::PushEntity(
+                entity @ (EntityRef::LookupInput { .. } | EntityRef::Edn(_)),
+            )
             | Instruction::EmitCall {
-                function: CallableRef::Database(entity @ EntityRef::LookupInput { .. }),
+                function:
+                    CallableRef::Database(entity @ (EntityRef::LookupInput { .. } | EntityRef::Edn(_))),
                 ..
             } => {
                 entity_ref_bytes(entity)?;
@@ -1996,12 +2001,14 @@ impl Evaluation<'_, '_, '_, '_> {
                     }
                     match first {
                         Some(datom) => {
-                            if datoms.next_with_budget(self.budget)?.is_some() {
+                            while let Some(contribution) = datoms.next_with_budget(self.budget)? {
                                 self.budget.charge(1)?;
-                                return Err(incorrect(
-                                    "program/not-cardinality-one",
-                                    format!("attribute {attribute} has multiple values"),
-                                ));
+                                if !datom.value.stored_eq(&contribution.value) {
+                                    return Err(incorrect(
+                                        "program/not-cardinality-one",
+                                        format!("attribute {attribute} has multiple values"),
+                                    ));
+                                }
                             }
                             self.push(stack, RuntimeValue::Scalar(datom.value))?;
                         }
@@ -2023,6 +2030,23 @@ impl Evaluation<'_, '_, '_, '_> {
                     let mut values = Vec::new();
                     while let Some(datom) = datoms.next_with_budget(self.budget)? {
                         self.budget.charge(1)?;
+                        // EAVT groups equal values before their source
+                        // contributions. Count values, while admitting every
+                        // candidate through the ordinary controlled cursor.
+                        if values
+                            .iter()
+                            .rev()
+                            .take_while(|previous| {
+                                matches!(previous, RuntimeValue::Scalar(value)
+                                if value.index_cmp(&datom.value).is_eq())
+                            })
+                            .any(|previous| {
+                                matches!(previous, RuntimeValue::Scalar(value)
+                                if value.stored_eq(&datom.value))
+                            })
+                        {
+                            continue;
+                        }
                         if values.len() >= self.budget.max_collection_items {
                             return Err(busy(
                                 "program/collection-limit",
@@ -2210,8 +2234,12 @@ impl Evaluation<'_, '_, '_, '_> {
                     let emitted_bytes = call_output_bytes(function, &arguments)?;
                     self.budget.charge(usize_as_u64(emitted_bytes)?)?;
                     self.budget.reserve_form(emitted_bytes)?;
+                    let mut function = function.clone();
+                    if let CallableRef::Database(reference) = &mut function {
+                        canonicalize_runtime_entity_ref(reference)?;
+                    }
                     self.forms.push(TxForm::ProgramCall(ProgramCall {
-                        function: function.clone(),
+                        function,
                         arguments,
                     }));
                 }
@@ -2234,9 +2262,13 @@ impl Evaluation<'_, '_, '_, '_> {
     fn push(
         &mut self,
         stack: &mut Vec<RuntimeValue>,
-        value: RuntimeValue,
+        mut value: RuntimeValue,
     ) -> Result<(), SemanticError> {
         self.budget.charge_runtime_value(&value)?;
+        // Canonical wire identity must also determine VM equality and inert
+        // output. Keep references unresolved, but discard author spelling at
+        // this common boundary for both literals and nested argument values.
+        canonicalize_runtime_references(&mut value)?;
         stack.push(value);
         Ok(())
     }
@@ -2333,6 +2365,46 @@ fn stack_effect(instruction: &Instruction) -> (isize, isize) {
             unreachable!("structured instructions are validated separately")
         }
     }
+}
+
+fn canonicalize_runtime_references(value: &mut RuntimeValue) -> Result<(), SemanticError> {
+    match value {
+        RuntimeValue::Entity(reference) => canonicalize_runtime_entity_ref(reference)?,
+        RuntimeValue::Vector(values) => {
+            for value in values {
+                canonicalize_runtime_references(value)?;
+            }
+        }
+        RuntimeValue::Map(entries) => {
+            for (_, value) in entries {
+                canonicalize_runtime_references(value)?;
+            }
+        }
+        RuntimeValue::Scalar(_) | RuntimeValue::Null | RuntimeValue::Query(_) => {}
+    }
+    Ok(())
+}
+
+fn canonicalize_runtime_entity_ref(reference: &mut EntityRef) -> Result<(), SemanticError> {
+    match reference {
+        EntityRef::Edn(text) => *text = crate::edn_transaction::canonical_entity_ref(text)?,
+        EntityRef::LookupInput { value, .. } => canonicalize_runtime_tx_value(value)?,
+        _ => {}
+    }
+    Ok(())
+}
+
+fn canonicalize_runtime_tx_value(value: &mut TxValue) -> Result<(), SemanticError> {
+    match value {
+        TxValue::Entity(reference) => canonicalize_runtime_entity_ref(reference)?,
+        TxValue::Tuple(slots) => {
+            for value in slots.iter_mut().flatten() {
+                canonicalize_runtime_tx_value(value)?;
+            }
+        }
+        TxValue::Scalar(_) => {}
+    }
+    Ok(())
 }
 
 fn pop(stack: &mut Vec<RuntimeValue>) -> Result<RuntimeValue, SemanticError> {
@@ -2633,6 +2705,22 @@ fn database_entity_id(
     budget: &mut ProgramBudget<'_>,
 ) -> Result<u64, SemanticError> {
     match entity_ref(value)? {
+        EntityRef::Edn(text) => {
+            budget.charge(1)?;
+            let entity = match database {
+                ProgramRead::Eager(db) => {
+                    crate::edn_transaction::lower_entity_ref(&db.database_value(), &text)?
+                }
+                ProgramRead::Exact(db) => crate::edn_transaction::lower_entity_ref(db, &text)?,
+                ProgramRead::AttributePredicate => {
+                    return Err(incorrect(
+                        "program/predicate-database-read",
+                        "attribute predicates cannot resolve database references",
+                    ));
+                }
+            };
+            database_entity_id(database, RuntimeValue::Entity(entity), budget)
+        }
         EntityRef::Id(entity) => Ok(entity),
         EntityRef::Ident(ident) => database.entid(&ident).ok_or_else(|| {
             incorrect(
@@ -3260,6 +3348,12 @@ fn entity_ref_bytes_at_depth(entity: &EntityRef, depth: usize) -> Result<usize, 
             checked_size_add(checked_size_add(6, keyword.name.len())?, namespace)
         }
         EntityRef::Temp(tempid) => checked_size_add(6, tempid.len()),
+        EntityRef::Edn(text) => {
+            let canonical = crate::edn_transaction::canonical_entity_ref(text)?;
+            // Admission also accounts for the retained caller spelling;
+            // comments/whitespace can outweigh its canonical wire payload.
+            checked_size_add(6, text.len().max(canonical.len()))
+        }
         EntityRef::Lookup { value, .. } => checked_size_add(6, encoded_value_bytes(value, depth)?),
         EntityRef::LookupInput { value, .. } => {
             checked_size_add(6, tx_value_bytes_at_depth(value, depth + 1)?)

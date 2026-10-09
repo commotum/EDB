@@ -52,6 +52,7 @@ pub struct DataPattern {
     pub attribute: Term,
     pub value: Term,
     pub transaction: Option<Term>,
+    pub fact_source: Option<Term>,
     pub added: Option<Term>,
 }
 
@@ -63,13 +64,14 @@ impl DataPattern {
             attribute,
             value,
             transaction: None,
+            fact_source: None,
             added: None,
         }
     }
 }
 
-/// A pattern over ordinary relation data, without a datom's five-column limit.
-/// Database sources still use their E/A/V/T/assertion semantics.
+/// A pattern over ordinary relation data, without a datom's six-column limit.
+/// Database sources still use their E/A/V/T/S/assertion semantics.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct RelationPattern {
     pub source: String,
@@ -116,7 +118,7 @@ pub enum Function {
     GetSome,
     /// Transaction entities in the named immutable log's [start, end) range.
     TxIds,
-    /// E/A/V/T/assertion tuples for one transaction in the named immutable log.
+    /// E/A/V/T/S/assertion tuples for one transaction in the named immutable log.
     TxData,
     /// Ranked entity/value/transaction/score hits from an eventually consistent
     /// search index, checked against the clause's supplied database view.
@@ -324,6 +326,7 @@ pub(super) fn collect_clause_variables(clause: &Clause, output: &mut BTreeSet<Va
         Clause::Pattern(pattern) => {
             terms.extend([&pattern.entity, &pattern.attribute, &pattern.value]);
             terms.extend(pattern.transaction.iter());
+            terms.extend(pattern.fact_source.iter());
             terms.extend(pattern.added.iter());
         }
         Clause::Predicate { args, .. }

@@ -1,0 +1,9 @@
+   Compiling edb-core v0.1.0 (/tmp/edb-cutover-impl-20261007)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 4.83s
+     Running tests/io_stats_source_cutover.rs (/tmp/edb-cutover-impl-20261007-target/debug/deps/io_stats_source_cutover-c0c4f21693d731fb)
+
+running 1 test
+test source_index_io_follows_lazy_cursor_context_and_cache_state ... ignored, requires EDB_TEST_POSTGRES_URL for a disposable PostgreSQL database
+
+test result: ok. 0 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.00s
+

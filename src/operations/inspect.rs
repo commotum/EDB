@@ -3,15 +3,13 @@
 use super::{GarbageInventory, IntegrityProblem, IntegrityReport, OperationalMetrics};
 use crate::storage::descriptors::{IndexDescriptor, SnapshotMetadata};
 use crate::storage::log::LogRoot;
-use crate::storage::ownership::{BlockCollector, object_children};
-use crate::storage::receipts::{ExactReceipt, RequestIndex, basis_receipt_key};
-use crate::storage::root::{Block, DatabaseRoot, DatabaseValueRoot};
+use crate::storage::ownership::BlockCollector;
+use crate::storage::root::DatabaseRoot;
 use crate::storage::{BlockReadConfig, BlockReader, ObjectId, PgBlockStore};
 use crate::{
-    Database, DatabaseCatalog, Datom, DurableTransaction, ErrorCategory, IndexOrder,
-    MaintenanceControl, PostgresConnectionConfig, Schema, SemanticError, View,
+    DatabaseCatalog, Datom, ErrorCategory, IndexOrder, MaintenanceControl,
+    PostgresConnectionConfig, SemanticError, View,
 };
-use std::collections::BTreeSet;
 use std::time::Duration;
 
 pub(super) fn inspect(
@@ -90,68 +88,24 @@ pub(super) fn inspect(
         if !deep {
             return Ok(());
         }
-        log.validate_structure(&mut store)?;
-
-        // One graph walk validates all retained roots/receipts/programs,
-        // while keeping only identities rather than every payload.
-        let mut seen = BTreeSet::new();
-        let mut pending = vec![root_id];
-        let mut bytes = 0u64;
-        while let Some(id) = pending.pop() {
-            control.check()?;
-            if !seen.insert(id) {
-                continue;
-            }
-            let payload = required(&mut store, id)?;
-            bytes = bytes.saturating_add(payload.len() as u64);
-            pending.extend(object_children(&mut store, id, &payload)?);
-        }
-        metrics.reachable_objects = Some(seen.len() as u64);
-        metrics.reachable_bytes = Some(bytes);
-        for descriptor in &indexes.trees {
-            crate::index::tree::validate_tree_streaming(descriptor, |id| {
-                control.check()?;
-                required(&mut store, *id)
-            })?;
-        }
-
-        let mut oracle = Database::new(Schema::new())?;
-        let mut transaction_bytes = 0u64;
-        let mut range = log.range(&mut store, 1, root.basis.saturating_add(1))?;
-        while let Some(record) = range.next_record() {
-            let record = record?;
-            control.check()?;
-            transaction_bytes = transaction_bytes.saturating_add(record.encoded_bytes);
-            let before = oracle
-                .reserved_allocation()
-                .ok_or_else(|| fault("Replay lacks allocation checkpoint"))?;
-            let after = crate::reserved_allocation::ReservedAllocation::from_frontier(
-                record.entry.reserved_frontier,
-                record.entry.eidx_frontier,
-            )?;
-            oracle = oracle.apply_committed_with_allocation_frontiers(
-                &DurableTransaction {
-                    database_id: entry.database_id.clone(),
-                    basis_t: record.entry.basis_t,
-                    previous_hash: [0; 32],
-                    eidx_frontier: record.entry.eidx_frontier,
-                    tempids: Default::default(),
-                    tx_data: record.entry.tx_data,
-                },
-                before,
-                after,
-                metadata.generation != 0,
-            )?;
-        }
-        drop(range);
-        oracle.validate_invariants()?;
-        if oracle.basis_t() != root.basis
-            || oracle.eidx_frontier() != metadata.eidx_frontier
-            || oracle.last_tx_instant() != metadata.last_tx_instant
-        {
-            return Err(fault("Replayed log differs from captured metadata"));
-        }
-        metrics.transaction_bytes = Some(transaction_bytes);
+        let selected_config = config.clone();
+        let mut factory = || {
+            Ok(Box::new(PgBlockStore::connect(&selected_config)?)
+                as Box<dyn crate::storage::ObjectReader + Send>)
+        };
+        let verified = super::integrity::verify_publication(
+            root_id,
+            &[],
+            &mut store,
+            &mut factory,
+            true,
+            control,
+        )?;
+        metrics.reachable_objects = Some(verified.objects_read as u64);
+        metrics.reachable_bytes = Some(verified.bytes_read);
+        metrics.transaction_bytes = Some(verified.transaction_bytes);
+        metrics.requests = Some(verified.requests);
+        let oracle = verified.database;
         let snapshot = reader.capture_root(&capture)?;
         let value = snapshot.database_value();
         if value.schema() != oracle.schema() {
@@ -169,82 +123,29 @@ pub(super) fn inspect(
             IndexOrder::Aevt,
             IndexOrder::Avet,
             IndexOrder::Vaet,
+            IndexOrder::Saevt,
+            IndexOrder::Savet,
         ] {
             control.check()?;
-            compare(
-                &value.datoms(order)?,
-                &super::projection::derive_index_projection(&oracle, &current, order)?,
-            )?;
+            // Unrestricted AVET/SAVET reads omit projections whose shared
+            // backfill is pending at this captured value. Compare the visible
+            // projection, rather than treating incomplete maintenance as loss.
+            let visible_projection = |source: &[Datom]| {
+                let mut expected =
+                    super::projection::derive_index_projection(&oracle, source, order)?;
+                if matches!(order, IndexOrder::Avet | IndexOrder::Savet) {
+                    expected.retain(|datom| value.physical_avet_ready(datom.attribute));
+                }
+                Ok::<_, SemanticError>(expected)
+            };
+            compare(&value.datoms(order)?, &visible_projection(&current)?)?;
             compare(
                 &value.clone().history().datoms(order)?,
-                &super::projection::derive_index_projection(&oracle, &history, order)?,
+                &visible_projection(&history)?,
             )?;
         }
         metrics.current_datoms = Some(current.len() as u64);
         metrics.history_datoms = Some(history.len() as u64);
-        let index = RequestIndex::from_root(root.receipts);
-        let mut after = None;
-        let mut request_keys = 0u64;
-        loop {
-            let page = index.scan(&mut store, after, 128)?;
-            if page.is_empty() {
-                break;
-            }
-            for (key, id) in &page {
-                control.check()?;
-                let bytes = required(&mut store, *id)?;
-                let envelope = Block::decode(id, &bytes)?;
-                if envelope.kind == crate::storage::excision::TOMBSTONE_KIND {
-                    if !envelope.links.is_empty()
-                        || envelope.payload.len() != 32
-                        || envelope.payload[..16] != root.identity
-                    {
-                        return Err(fault("Receipt tombstone is malformed or foreign"));
-                    }
-                    request_keys += 1;
-                    continue;
-                }
-                let receipt = ExactReceipt::load_from_bytes(&mut store, *id, &bytes)?;
-                if receipt.identity != root.identity || receipt.basis > root.basis {
-                    return Err(fault("Receipt coordinate differs from its publication"));
-                }
-                let record = log
-                    .read_record(&mut store, receipt.basis)?
-                    .ok_or_else(|| fault("Receipt transaction is absent"))?;
-                if record.id != receipt.transaction {
-                    return Err(fault("Receipt transaction differs from captured log"));
-                }
-                let before = DatabaseValueRoot::decode(
-                    &receipt.before,
-                    &required(&mut store, receipt.before)?,
-                )?;
-                let after = DatabaseValueRoot::decode(
-                    &receipt.after,
-                    &required(&mut store, receipt.after)?,
-                )?;
-                if before.identity != root.identity
-                    || after.identity != root.identity
-                    || before.basis + 1 != receipt.basis
-                    || after.basis != receipt.basis
-                {
-                    return Err(fault("Receipt before/after coordinates disagree"));
-                }
-                for entity in receipt.tempids.values() {
-                    if crate::eid_to_part(*entity)? != crate::TX_PARTITION
-                        && crate::eid_to_eidx(*entity)? >= record.entry.eidx_frontier
-                    {
-                        return Err(fault(
-                            "Receipt tempid exceeds its authenticated allocation frontier",
-                        ));
-                    }
-                }
-                if *key != basis_receipt_key(&root.identity, receipt.basis) {
-                    request_keys += 1;
-                }
-            }
-            after = page.last().map(|(key, _)| *key);
-        }
-        metrics.requests = Some(request_keys);
         Ok::<(), SemanticError>(())
     })();
     if let Err(error) = checked {

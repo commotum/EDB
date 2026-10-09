@@ -375,8 +375,8 @@ impl DatabaseValue {
     /// Open a lazy forward cursor over one complete logical index.
     ///
     /// Construction does not visit a tree child or scan eager history.
-    /// Temporal predicates and custom filters are applied before incremental
-    /// current retraction collapse, matching recovered `windowed`.
+    /// An as-of bound selects history for global current visibility; since and
+    /// custom predicates then select the surviving source contributions.
     pub fn scan_cursor(
         &self,
         order: IndexOrder,
@@ -403,8 +403,6 @@ impl DatabaseValue {
             inner: DatabaseValueScanCursorInner::Window(Box::new(DatabaseValueWindowCursor::new(
                 self,
                 DatabaseValueWindowSource::Scan(Box::new(source)),
-                order,
-                false,
             ))),
             observer: self.read_observer.clone(),
             physical_context: None,
@@ -442,7 +440,6 @@ impl DatabaseValue {
                 self.read_context.clone(),
             );
         }
-        let order = boundary.order();
         let source_boundary = if self.history {
             boundary.clone()
         } else {
@@ -454,12 +451,8 @@ impl DatabaseValue {
             None,
             self.read_context.clone(),
         )?;
-        let window = DatabaseValueWindowCursor::new(
-            self,
-            DatabaseValueWindowSource::Scan(Box::new(source)),
-            order,
-            false,
-        );
+        let window =
+            DatabaseValueWindowCursor::new(self, DatabaseValueWindowSource::Scan(Box::new(source)));
         let window = if self.history {
             window
         } else {
@@ -486,10 +479,9 @@ impl DatabaseValue {
     /// Open the lazy reverse complement of [`Self::seek_cursor`].
     ///
     /// Traversal starts after the highest match of the virtual components and
-    /// proceeds toward the beginning of the index. Temporal/custom predicates
-    /// filter raw history before current retraction collapse, matching
-    /// recovered `rseek-datoms` rather than reversing a collected forward
-    /// result.
+    /// proceeds toward the beginning of the index. Global current visibility precedes since/custom selection, including
+    /// retractions outside the source or transaction boundary. History reads
+    /// retain raw events in reverse index order.
     pub fn reverse_seek_cursor(
         &self,
         boundary: &IndexBoundary,
@@ -512,15 +504,12 @@ impl DatabaseValue {
                 self.read_context.clone(),
             );
         }
-        let order = boundary.order();
         let source =
             self.basis_reverse_boundary_cursor(true, boundary, None, self.read_context.clone())?;
         Ok(DatabaseValueScanCursor {
             inner: DatabaseValueScanCursorInner::Window(Box::new(DatabaseValueWindowCursor::new(
                 self,
                 DatabaseValueWindowSource::Scan(Box::new(source)),
-                order,
-                true,
             ))),
             observer: self.read_observer.clone(),
             physical_context: None,
@@ -569,8 +558,29 @@ impl DatabaseValue {
             Some((value, _)) => IndexComponents::Two(attribute, value.clone()),
             None => IndexComponents::One(attribute),
         });
+        self.query_value_start_cursor(boundary, lower.is_some_and(|(_, inclusive)| !inclusive))
+    }
+
+    /// The source-leading counterpart of the query-only AVET lower bound.
+    pub(crate) fn query_savet_start_cursor(
+        &self,
+        source: u64,
+        attribute: u32,
+        lower: Option<(&Value, bool)>,
+    ) -> Result<DatabaseValueScanCursor<'_>, SemanticError> {
+        let boundary = IndexBoundary::Savet(match lower {
+            Some((value, _)) => IndexComponents::Three(source, attribute, value.clone()),
+            None => IndexComponents::Two(source, attribute),
+        });
+        self.query_value_start_cursor(boundary, lower.is_some_and(|(_, inclusive)| !inclusive))
+    }
+
+    fn query_value_start_cursor(
+        &self,
+        boundary: IndexBoundary,
+        after: bool,
+    ) -> Result<DatabaseValueScanCursor<'_>, SemanticError> {
         self.validate_raw_boundary_access(&boundary)?;
-        let after = lower.is_some_and(|(_, inclusive)| !inclusive);
         let source = self.basis_seek_boundary_cursor_biased(
             !self.direct_current(),
             &boundary,
@@ -589,8 +599,6 @@ impl DatabaseValue {
             inner: DatabaseValueScanCursorInner::Window(Box::new(DatabaseValueWindowCursor::new(
                 self,
                 DatabaseValueWindowSource::Scan(Box::new(source)),
-                IndexOrder::Avet,
-                false,
             ))),
             observer: self.read_observer.clone(),
             physical_context: None,
@@ -618,8 +626,6 @@ impl DatabaseValue {
                 DatabaseValueWindowCursor::new(
                     self,
                     DatabaseValueWindowSource::Prefix(Box::new(source)),
-                    prefix.order(),
-                    false,
                 ),
             )),
             observer: self.read_observer.clone(),

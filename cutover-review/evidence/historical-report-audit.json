@@ -1,0 +1,94 @@
+{
+  "file": "docs-2/DATOMIC_TIME_AND_SOURCE_REPORT.md",
+  "sha256": "337f37354fb5df17a902227fced7100bcec72bce66c348ea1eb9d8e84138afc2",
+  "required_sha256": "337f37354fb5df17a902227fced7100bcec72bce66c348ea1eb9d8e84138afc2",
+  "preserved": true,
+  "integration_copy_sha256": "337f37354fb5df17a902227fced7100bcec72bce66c348ea1eb9d8e84138afc2",
+  "absolute_links": [
+    {
+      "path": "/home/jake/Developer/edb-old/ATOMIC/datomic_pro_docs/00_start_here/00_introduction.md",
+      "line": 34,
+      "exists": true,
+      "line_in_range": true,
+      "line_text": "A Datomic database is a single universal relation of facts called datoms. Datoms can be either assertions indicating that something is known to be true at a point in time or retractions indicating that something is no longer known to be true. Datoms are atomic and immutable. Datomic transactions atomically add a set of datoms to a database, they never update or remove anything. Each datom relates an entity id (E) to a value (V) via an attribute (A). Attributes have a schema; value type and cardinalities must be declared before an attribute is used. A value can be one of various built-in types, including entity ids. The E/A/V portion of a datom is similar to the triples of a traditional triple store. Each datom also includes the id of the transaction entity (Tx) that added it, and a boolean for whether the data is an assertion or retraction. Datoms sharing a common E can be projected into an entity, which is an associative (A-\\>V) view of all assertions with a common entity id as of a given point in time. Datomic ensures that transactions are serialized in a [total order](https://en.wikipedia.org/wiki/Total_order), and this order can be accessed programmatically through the time t of each datom. Transactions are themselves entities, recording the wall clock time of the transaction along with any additional datoms you choose to add."
+    },
+    {
+      "path": "/home/jake/Developer/EDB/src/model/identity.rs",
+      "line": 88,
+      "exists": true,
+      "line_in_range": true,
+      "line_text": "/// Convert logical transaction time to its reified transaction entity ID."
+    },
+    {
+      "path": "/home/jake/Developer/EDB/src/model/datom.rs",
+      "line": 8,
+      "exists": true,
+      "line_in_range": true,
+      "line_text": "pub struct Datom {"
+    },
+    {
+      "path": "/home/jake/Developer/EDB/src/index/tree/mod.rs",
+      "line": 3838,
+      "exists": true,
+      "line_in_range": true,
+      "line_text": "    fn encoded_len_with(&self, value_len: usize) -> Result<usize, SemanticError> {"
+    },
+    {
+      "path": "/home/jake/Developer/EDB/src/storage/log.rs",
+      "line": 29,
+      "exists": true,
+      "line_in_range": true,
+      "line_text": "pub struct LogEntry {"
+    },
+    {
+      "path": "/home/jake/Developer/EDB/src/index/recent/btset.rs",
+      "line": 14,
+      "exists": true,
+      "line_in_range": true,
+      "line_text": "#[derive(Clone, Debug)]"
+    },
+    {
+      "path": "/home/jake/Developer/EDB/src/transaction/assess/mod.rs",
+      "line": 415,
+      "exists": true,
+      "line_in_range": true,
+      "line_text": "    let basis_t = base.basis_t().checked_add(1).ok_or_else(|| {"
+    },
+    {
+      "path": "/home/jake/Developer/EDB/src/transactor/authority/mod.rs",
+      "line": 653,
+      "exists": true,
+      "line_in_range": true,
+      "line_text": "                    let (log, canonical_data) = prior_log.append_canonical("
+    },
+    {
+      "path": "/home/jake/Developer/edb-old/ATOMIC/datomic_pro_docs/02_core_concepts/01_programming_with_data_and_edn.md",
+      "line": 9,
+      "exists": true,
+      "line_in_range": true,
+      "line_text": "Datomic is designed to be directly programmable using data. That means your application's code can use ordinary data structures to communicate with Datomic. [Extensible Data Notation](https://github.com/edn-format/edn) (EDN) is a way of representing these data structures as text. Example transactions, queries, query results, and sample data throughout this Developer Guide are presented in EDN. You can also construct the necessary data structures programmatically using any of the languages supported by Datomic."
+    },
+    {
+      "path": "/home/jake/Developer/EDB/src/database_value/value.rs",
+      "line": 16,
+      "exists": true,
+      "line_in_range": true,
+      "line_text": "/// One exact immutable database value used by read-side APIs."
+    },
+    {
+      "path": "/home/jake/Developer/EDB/src/transaction/assess/mod.rs",
+      "line": 2448,
+      "exists": true,
+      "line_in_range": true,
+      "line_text": "fn material_changes("
+    },
+    {
+      "path": "/home/jake/Developer/EDB/src/transaction/assess/mod.rs",
+      "line": 2704,
+      "exists": true,
+      "line_in_range": true,
+      "line_text": "    match conflict.map(|conflict| conflict.kind) {"
+    }
+  ],
+  "git_diff": ""
+}

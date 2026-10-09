@@ -1,0 +1,12 @@
+    Blocking waiting for file lock on build directory
+   Compiling edb-core v0.1.0 (/tmp/edb-cutover-impl-20261007)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 1.76s
+     Running tests/index_pull_source_cutover.rs (target/debug/deps/index_pull_source_cutover-2b41ef277e1f464b)
+
+running 3 tests
+test index_pull_zero_limit_validates_without_visits_and_offset_cancellation_is_fused ... ok
+test index_pull_source_and_temporal_views_resolve_withdrawals_before_full_boundaries ... ok
+test index_pull_projects_the_selected_captured_view_and_resets_entity_allowance ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.15s
+

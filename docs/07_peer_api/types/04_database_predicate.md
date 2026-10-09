@@ -29,12 +29,13 @@ Parameters:
   removed**. Database reads through this argument do not recursively invoke
   this predicate or any earlier chained predicate.
 - `val`: a datom. Its fields are `entity: u64`, `attribute: u32`, `value: Value`,
-  `tx: u64` (a transaction entity ID), and `added: bool`. The callback can see
-  assertions and retractions, including when filtering a point-in-time value.
+  `tx: u64` (a transaction entity ID), `source: u64` (a source entity ID), and
+  `added: bool`. For a current or `as_of` value, the callback sees surviving
+  assertions. For a history value, it can see assertions and retractions.
 
 Returns `true` if the datom matches the predicate; `false` excludes it. Returning
 `true` does not guarantee that the datom appears in the read result: other
-chained predicates and point-in-time retraction collapse still apply.
+chained predicates and the read's index range still apply.
 
 The callback returns a Boolean, not a `Result`. If it performs fallible database
 reads, the application must decide how to handle their errors. To propagate
@@ -54,12 +55,17 @@ times, and callers should not depend on invocation counts or a particular
 traversal order. Captured data must satisfy `Send + Sync + 'static`; move owned
 data into the closure when it must outlive the call to `filter`.
 
-Temporal bounds are checked before custom predicates: only datoms with
+Query and Pull cancellation is cooperative. An executing callback must return
+before the caller can observe cancellation or an elapsed deadline.
+
+Current and `as_of` reads first resolve the shared record across all sources,
+honoring every retraction through the selected point in time. Temporal bounds
+and custom predicates then select the surviving contributions: only datoms with
 `since < t <= as_of`, where those bounds are present, reach the callback.
-Custom predicates run before point-in-time retraction collapse. Rejecting a
-retraction can therefore expose an older assertion; arbitrary filters can even
-leave several values visible for a cardinality-one attribute. A history value
-returns accepted assertions and retractions without that collapse.
+Filtering by source, transaction, or any other condition cannot restore a
+withdrawn fact. Several sources may contribute the same current value;
+cardinality still counts distinct values. A history value applies temporal
+bounds and predicates directly to assertions and retractions.
 
 The callback database has the temporal/history settings of the value **being
 read**, including view operations applied after `filter`. Entity navigation
@@ -75,16 +81,16 @@ metadata predicates, temporal examples, and security considerations.
 This predicate accepts only datoms about the installed `:person/name` attribute:
 
 ```rust
-use edb_core::{Database, IndexOrder, Keyword, SemanticError};
+use edb_core::{Database, EntityRef, IndexOrder, Keyword, SemanticError};
 
 fn example() -> Result<(), SemanticError> {
     let installed = Database::bootstrap()?.with_edn(r#"[
       {:db/ident :person/name :db/valueType :db.type/string
        :db/cardinality :db.cardinality/one}
-    ]"#, 1_000)?.db_after;
+    ]"#, 1_000, EntityRef::Ident(Keyword::new("db.source", "system")))?.db_after;
     let populated = installed.with_edn(r#"[
       {:db/id "person" :person/name "Ada"}
-    ]"#, 2_000)?.db_after;
+    ]"#, 2_000, EntityRef::Ident(Keyword::new("db.source", "system")))?.db_after;
     let db = populated.database_value();
     let name = db.schema().resolve_ident(&Keyword::new("person", "name"))
         .expect("installed attribute");

@@ -97,6 +97,10 @@ fn deploy_graph(
 
 /// Resolve an acknowledged request before inspecting deployment dependencies.
 /// Staging and its bounded collector retry are internal to installation.
+#[allow(
+    clippy::too_many_arguments,
+    reason = "Source extends the established operation argument order"
+)]
 pub(crate) fn install(
     operator: &super::PostgresOperator,
     client: &crate::TransactionClient,
@@ -104,6 +108,7 @@ pub(crate) fn install(
     ident: crate::Keyword,
     program: &Program,
     dependencies: &[Program],
+    source: crate::EntityRef,
     timeout: std::time::Duration,
 ) -> Result<crate::ServiceTransactionReport, SemanticError> {
     let config = &operator.connection;
@@ -144,9 +149,11 @@ pub(crate) fn install(
                 value: crate::Value::Function(hash).into(),
             },
         ],
+        source,
     );
     let (digest, _) = crate::encoding::canonical_submission_request(
         &request.forms,
+        &request.source,
         request.compare_basis_t,
         request.tx_instant_override,
         crate::storage::log::MAX_LOG_TRANSACTION_BYTES,

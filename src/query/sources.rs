@@ -5,7 +5,7 @@ use crate::{Datom, IndexTransaction, LogValue, TimePoint};
 #[derive(Clone, Debug)]
 pub enum QuerySourceValue {
     Database(DatabaseValue),
-    /// E/A/V(/T/assertion) rows. Values are literal: raw tuples have no schema
+    /// E/A/V(/T/S/assertion) rows. Values are literal: raw tuples have no schema
     /// and do not perform keyword/entity/lookup-ref resolution.
     Tuples(Arc<Vec<Vec<Value>>>),
     /// Arbitrary-width relations whose cells may be general query values.
@@ -71,6 +71,7 @@ pub(super) fn datom_tuple(datom: Datom) -> Vec<Value> {
         Value::Ref(u64::from(datom.attribute)),
         datom.value,
         Value::Ref(datom.tx),
+        Value::Ref(datom.source),
         Value::Bool(datom.added),
     ]
 }
@@ -139,6 +140,16 @@ pub(super) fn log_function(
                     "tx-data requires one transaction",
                 ));
             };
+            let width = match binding {
+                Binding::Relation(variables) if variables.len() > 6 => {
+                    return Err(SemanticError::incorrect(
+                        "query/function-binding",
+                        "tx-data relation binding has at most six columns",
+                    ));
+                }
+                Binding::Relation(variables) => Some(variables.len()),
+                _ => None,
+            };
             let tx = match point(tx)? {
                 Some(TimePoint::T(t)) => IndexTransaction::T(t),
                 Some(TimePoint::Tx(tx)) => IndexTransaction::Tx(tx),
@@ -153,7 +164,10 @@ pub(super) fn log_function(
             for datom in log.tx_data(tx)?.unwrap_or_default() {
                 state.check(1)?;
                 state.stats.datoms_examined += 1;
-                let tuple = datom_tuple(datom);
+                let mut tuple = datom_tuple(datom);
+                if let Some(width) = width {
+                    tuple.truncate(width);
+                }
                 state.charge_value_bytes(tuple.iter().fold(0usize, |bytes, value| {
                     bytes
                         .saturating_add(std::mem::size_of::<Value>())
@@ -166,6 +180,11 @@ pub(super) fn log_function(
             }
         }
         _ => unreachable!("log function dispatch"),
+    }
+    // tx-data alone permits omitted trailing datom columns in relation bindings.
+    // Scalar/collection bindings retain the complete six-column datom relation.
+    if matches!(binding, Binding::Relation(_)) {
+        return Ok(rows);
     }
     let value = QueryValue::Collection(
         rows.into_iter()

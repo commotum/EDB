@@ -1,0 +1,7 @@
+--version succeeds without PostgreSQL configuration
+--help succeeds without PostgreSQL configuration
+transact missing source rejected before configuration/storage
+with missing source rejected before configuration/storage
+install documented shape accepted; explicit missing configuration stops before I/O
+create documented shape accepted; explicit missing configuration stops before I/O
+transactor documented shape accepted; explicit missing configuration stops before I/O

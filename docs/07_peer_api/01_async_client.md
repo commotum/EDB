@@ -24,10 +24,12 @@ Synchronous API functions have the following common semantics:
 
 The following example shows a simple transaction using the synchronous API.
 It assumes `connection` has an attached writer and the
-[movie schema](../01_tutorials/06_transact_schema.md) is already installed:
+[movie schema](../01_tutorials/06_transact_schema.md) is already installed.
+Entity `99` identifies the source supplied once for the transaction. The movie
+facts and automatic transaction instant carry that source:
 
 ```rust,ignore
-use edb_core::TransactionRequest;
+use edb_core::{EntityRef, TransactionRequest};
 use std::time::Duration;
 
 let request = TransactionRequest::from_edn(
@@ -36,6 +38,7 @@ let request = TransactionRequest::from_edn(
          :movie/title "The Goonies"
          :movie/genre "action/adventure"
          :movie/release-year 1985}]"#,
+    EntityRef::Id(99),
 )?;
 let result = connection.transact(request, Duration::from_secs(30))?;
 
@@ -45,8 +48,8 @@ let goonies_id = result.tempids["goonies"];
 
 For a separately running writer, use `transact_socket`, `transact_remote` or
 `RemoteWriter`; see [transaction transports](#transaction-transports).
-Keep the request key and exact data for retries of this logical request. A new
-transaction needs a new key.
+Keep the request key, exact data and source for retries of this logical request.
+A new transaction needs a new key.
 
 ## Asynchronous API
 
@@ -281,8 +284,8 @@ Fresh operation admission returns `async/operation-capacity` (`Busy`) if all
 slots are occupied. Such a transaction was not submitted. Once `transact`
 returns an `AsyncTransaction`, dropping it abandons the result, not the queued
 transaction. The worker still attempts it unless its deadline expired before
-submission. Retain the exact request key and data when explicitly retrying an
-unknown outcome. No facade method invents a new retry key.
+submission. Retain the exact request key, data and source when explicitly retrying
+an unknown outcome. No facade method invents a new retry key.
 
 Dropping an ordinary read future can skip its not-yet-started read. A running
 query remains cooperative: its existing `QueryControl.cancel`, work/value

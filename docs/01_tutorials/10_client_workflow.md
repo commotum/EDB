@@ -105,7 +105,7 @@ native connection with `Connection::connect_configured`. This takes:
 Create the connection in `src/main.rs`:
 
 ```rust
-use edb_core::{Connection, TransactionRequest, postgres_config_from_env};
+use edb_core::{Connection, EntityRef, TransactionRequest, postgres_config_from_env};
 use edb_core::edn::write_edn;
 use edb_core::edn_value::transaction_report_to_edn;
 use std::time::Duration;
@@ -143,14 +143,16 @@ Rust futures and streams. You supply the executor that polls those futures.
 ## Transacting
 
 The client's transaction methods take a `TransactionRequest`. Create one from
-the EDN transaction collection and a request key with
+the EDN transaction collection, a request key, and one explicit source with
 `TransactionRequest::from_edn`.
 
 `movie-schema.edn` is defined in the peer tutorial's
 [transacting schema](06_transact_schema.md) section. Save that file in your
 application's working directory. It defines `:movie/title` and `:movie/genre`
 as cardinality-one strings and `:movie/release-year` as a cardinality-one long,
-along with their documentation strings. Follow that guide starting from the
+along with their documentation strings. Supply `:db.source/system` once as the
+request's source; all schema facts and the automatically generated transaction
+instant carry that source. Follow that guide starting from the
 schema section, using these client calls to submit the same data.
 
 Insert this code before `Ok(())` in `main`:
@@ -158,7 +160,8 @@ Insert this code before `Ok(())` in `main`:
 ```rust
 let endpoint = std::env::var("EDB_TUTORIAL_ENDPOINT")?;
 let movie_schema = std::fs::read_to_string("movie-schema.edn")?;
-let request = TransactionRequest::from_edn("tutorial-movie-schema", &movie_schema)?;
+let source = EntityRef::from_edn(":db.source/system")?;
+let request = TransactionRequest::from_edn("tutorial-movie-schema", &movie_schema, source)?;
 let committed = conn.transact_socket(&endpoint, request, Duration::from_secs(30))?;
 
 println!("Committed at {}, replayed={}", committed.basis_t, committed.replayed);
@@ -183,28 +186,30 @@ flag and a separately fallible local report. The report contains:
 | `tempids` | `:edb/tempids` | Temporary IDs mapped to assigned entity IDs |
 
 For a freshly created database, the printed report has this shape. IDs, time
-and basis depend on your database; the timestamp below is illustrative:
+and basis depend on your database; the timestamp below is illustrative.
+In this schematic report, `source-id` denotes the resolved entity ID of
+`:db.source/system`:
 
-```edn
+```text
 {:edb/db-before-t 0
  :edb/db-after-t 1
  :edb/tx-data
- [[0 13 #edb/ref 1000 13194139533313 true]
-  [0 13 #edb/ref 1001 13194139533313 true]
-  [0 13 #edb/ref 1002 13194139533313 true]
-  [1000 10 :movie/genre 13194139533313 true]
-  [1000 40 #edb/ref 23 13194139533313 true]
-  [1000 41 #edb/ref 35 13194139533313 true]
-  [1000 62 "The genre of the movie" 13194139533313 true]
-  [1001 10 :movie/title 13194139533313 true]
-  [1001 40 #edb/ref 23 13194139533313 true]
-  [1001 41 #edb/ref 35 13194139533313 true]
-  [1001 62 "The title of the movie" 13194139533313 true]
-  [1002 10 :movie/release-year 13194139533313 true]
-  [1002 40 #edb/ref 22 13194139533313 true]
-  [1002 41 #edb/ref 35 13194139533313 true]
-  [1002 62 "The year the movie was released in theaters" 13194139533313 true]
-  [13194139533313 50 #inst "1970-01-01T00:00:01.000Z" 13194139533313 true]]
+ [[0 13 #edb/ref 1000 13194139533313 source-id true]
+  [0 13 #edb/ref 1001 13194139533313 source-id true]
+  [0 13 #edb/ref 1002 13194139533313 source-id true]
+  [1000 10 :movie/genre 13194139533313 source-id true]
+  [1000 40 #edb/ref 23 13194139533313 source-id true]
+  [1000 41 #edb/ref 35 13194139533313 source-id true]
+  [1000 62 "The genre of the movie" 13194139533313 source-id true]
+  [1001 10 :movie/title 13194139533313 source-id true]
+  [1001 40 #edb/ref 23 13194139533313 source-id true]
+  [1001 41 #edb/ref 35 13194139533313 source-id true]
+  [1001 62 "The title of the movie" 13194139533313 source-id true]
+  [1002 10 :movie/release-year 13194139533313 source-id true]
+  [1002 40 #edb/ref 22 13194139533313 source-id true]
+  [1002 41 #edb/ref 35 13194139533313 source-id true]
+  [1002 62 "The year the movie was released in theaters" 13194139533313 source-id true]
+  [13194139533313 50 #inst "1970-01-01T00:00:01.000Z" 13194139533313 source-id true]]
  :edb/tempids {"__map/00000000000000000000" 1000
               "__map/00000000000000000001" 1001
               "__map/00000000000000000002" 1002}}
@@ -212,7 +217,7 @@ and basis depend on your database; the timestamp below is illustrative:
 
 The report includes three attribute definitions, their schema installation
 facts, and the transaction time. Each datom is
-`[entity attribute value transaction added?]`; `#edb/ref` marks an entity
+`[entity attribute value transaction source added?]`; `#edb/ref` marks an entity
 reference. The schema maps omit `:db/id`, so EDB generates temporary IDs. Their
 names and allocation order are implementation details.
 
@@ -245,10 +250,12 @@ From the EDB checkout, the equivalent command is:
 ```sh
 target/release/edb transact --database edn-demo \
   --endpoint "$EDB_TUTORIAL_ENDPOINT" \
-  --request-key tutorial-movie-schema --file /path/to/hello-edb/movie-schema.edn
+  --request-key tutorial-movie-schema --source ':db.source/system' \
+  --file /path/to/hello-edb/movie-schema.edn
 ```
 
-Keep the same request key and transaction data when retrying after a lost reply.
+Keep the same request key, transaction data, and source when retrying after a
+lost reply.
 These Rust and CLI examples share the peer tutorial's key, so repeating the same
 request retrieves its retained receipt. Use a new key for a new transaction.
 A confirmed commit remains committed if `committed.report` is an error; report

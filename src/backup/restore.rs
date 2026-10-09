@@ -429,6 +429,7 @@ impl PortableBackup {
                 .iter()
                 .filter(|g| {
                     g.key != work_key
+                        && g.key != crate::storage::ownership::STATE_REF
                         && !g.key.starts_with("catalog/names/")
                         && !g.key.starts_with("catalog/overflow/")
                 })

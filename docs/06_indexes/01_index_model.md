@@ -2,29 +2,39 @@
 
 This page provides an explanation of each of the indexes EDB maintains.
 
-EDB maintains four indexes that contain ordered sets of datoms. Each of these
-indexes is named based on the sort order used. E, A, and V are sorted in ascending
-order, while T is sorted in descending order:
+EDB maintains six indexes that contain ordered sets of datoms. Each of these
+indexes is named based on the leading sort order used. Each index retains all six
+datom components, `[e a v t s added?]`. E, A, V, and S sort ascending;
+T sorts descending. The four source-independent orders place S after T; the
+source-first orders place S first. Assertions sort before retractions:
 
 | Index | Sort order | Contains |
 | --- | --- | --- |
-| EAVT | entity / attribute / value / tx | all datoms in the selected view |
-| AEVT | attribute / entity / value / tx | all datoms in the selected view |
-| AVET | attribute / value / entity / tx | `:db/unique` or `:db/index` attributes whose projection is ready |
-| VAET | value / attribute / entity / tx | `:db.type/ref` attributes |
+| EAVT | entity / attribute / value / tx / source / added? | all datoms in the selected view |
+| AEVT | attribute / entity / value / tx / source / added? | all datoms in the selected view |
+| AVET | attribute / value / entity / tx / source / added? | `:db/unique` or `:db/index` attributes whose projection is ready |
+| VAET | value / attribute / entity / tx / source / added? | `:db.type/ref` attributes |
+| SAEVT | source / attribute / entity / value / tx / added? | all datoms in the selected view |
+| SAVET | source / attribute / value / entity / tx / added? | the same ready indexed or unique attributes as AVET |
 
-Entity and attribute components sort by their numeric IDs, not by their ident
-names. Values use EDB's value comparison. For the same E/A/V and transaction,
-assertions sort before retractions; stored value representation breaks any
-remaining ties. A datom's `tx` is a transaction entity ID; logical T and transaction
-IDs have distinct native representations.
+Entity, attribute, and source components sort by their numeric IDs, not by their
+ident names. Values use EDB's value comparison. For the same E/A/V, transaction,
+and source, `added? = true` sorts before `false`; stored value representation
+breaks any remaining ties. A datom's `tx` is a transaction entity ID; logical T
+and transaction IDs have distinct native representations.
 
 The tables below show illustrative slices of a music database, not output from
 an installed sample dataset. Small entity and transaction numbers stand in for
-allocated IDs. Attribute names stand in for numeric attribute IDs; these examples
+allocated IDs; source entity 99 identifies the contributor in these examples.
+Attribute names stand in for numeric attribute IDs; these examples
 assume `:release/artistCredit`, `:release/artists`, `:release/name`, and
 `:release/year` have ascending attribute IDs. Rows outside each illustrated slice
 are omitted.
+
+All current indexes describe the same shared record. Cardinality and uniqueness
+apply across sources. A retraction of an E/A/V withdraws that value's contributions
+from every source before an index prefix or filter selects a contributor. History
+retains each assertion's original source and the retracting transaction's source.
 
 ## EAVT
 
@@ -35,13 +45,13 @@ predefined set of columns.
 
 The example below shows the scalar facts about entity 42 grouped together:
 
-| E | A | V | Tx | Op |
-| --- | --- | --- | --- | --- |
-| 41 | `:release/name` | "Abbey Road" | 1007 | assert |
-| 42 | `:release/artistCredit` | "The Beatles" | 1007 | assert |
-| 42 | `:release/name` | "Magical Mystery Tour" | 1007 | assert |
-| 42 | `:release/year` | 1967 | 1007 | assert |
-| 43 | `:release/name` | "Let It Be" | 1234 | assert |
+| E | A | V | Tx | S | Added? |
+| --- | --- | --- | --- | --- | --- |
+| 41 | `:release/name` | "Abbey Road" | 1007 | 99 | true |
+| 42 | `:release/artistCredit` | "The Beatles" | 1007 | 99 | true |
+| 42 | `:release/name` | "Magical Mystery Tour" | 1007 | 99 | true |
+| 42 | `:release/year` | 1967 | 1007 | 99 | true |
+| 43 | `:release/name` | "Let It Be" | 1234 | 99 | true |
 
 EAVT is also useful in master or detail lookups, since the references to detail
 entities are just ordinary values alongside the scalar attributes of the master
@@ -60,13 +70,13 @@ all `:release/name` attributes are grouped together. This allows EDB to query fo
 all values of the `:release/name` attribute by traversing one contiguous attribute
 range.
 
-| A | E | V | Tx | Op |
-| --- | --- | --- | --- | --- |
-| `:release/artistCredit` | 42 | "The Beatles" | 1007 | assert |
-| `:release/name` | 41 | "Abbey Road" | 1007 | assert |
-| `:release/name` | 42 | "Magical Mystery Tour" | 1007 | assert |
-| `:release/name` | 43 | "Let It Be" | 1234 | assert |
-| `:release/year` | 42 | 1967 | 1007 | assert |
+| A | E | V | Tx | S | Added? |
+| --- | --- | --- | --- | --- | --- |
+| `:release/artistCredit` | 42 | "The Beatles" | 1007 | 99 | true |
+| `:release/name` | 41 | "Abbey Road" | 1007 | 99 | true |
+| `:release/name` | 42 | "Magical Mystery Tour" | 1007 | 99 | true |
+| `:release/name` | 43 | "Let It Be" | 1234 | 99 | true |
+| `:release/year` | 42 | 1967 | 1007 | 99 | true |
 
 ## AVET
 
@@ -75,17 +85,18 @@ and value. The example below shows a portion of the AVET index allowing lookup
 by `:release/name`. Two entities can have the same name when the attribute is
 indexed without being unique.
 
-| A | V | E | Tx | Op |
-| --- | --- | --- | --- | --- |
-| `:release/name` | "Abbey Road" | 41 | 1007 | assert |
-| `:release/name` | "Let It Be" | 43 | 1234 | assert |
-| `:release/name` | "Let It Be" | 55 | 2367 | assert |
-| `:release/name` | "Magical Mystery Tour" | 42 | 1007 | assert |
-| `:release/year` | 1967 | 42 | 1007 | assert |
-| `:release/year` | 1984 | 55 | 2367 | assert |
+| A | V | E | Tx | S | Added? |
+| --- | --- | --- | --- | --- | --- |
+| `:release/name` | "Abbey Road" | 41 | 1007 | 99 | true |
+| `:release/name` | "Let It Be" | 43 | 1234 | 99 | true |
+| `:release/name` | "Let It Be" | 55 | 2367 | 99 | true |
+| `:release/name` | "Magical Mystery Tour" | 42 | 1007 | 99 | true |
+| `:release/year` | 1967 | 42 | 1007 | 99 | true |
+| `:release/year` | 1984 | 55 | 2367 | 99 | true |
 
-AVET adds another maintained ordering of an attribute's datoms. To maintain AVET
-for an attribute, specify `:db/index true` or a value for `:db/unique` when
+AVET adds another maintained ordering of an attribute's datoms. To maintain
+AVET and SAVET for an attribute, specify `:db/index true` or a value for
+`:db/unique` when
 [installing](../03_schema/02_schema_reference.md) or
 [altering](../03_schema/03_changing_schema.md) the attribute. The table assumes
 both `:release/name` and `:release/year` are indexed. Reference type alone does
@@ -93,11 +104,11 @@ not put an attribute in AVET.
 
 For durable databases, enabling an index can require background projection of
 existing datoms. `DatabaseValue::has_avet` reports whether the attribute's AVET
-projection is usable in that exact captured value. Schema intent and physical
-readiness are different observations. Attribute-qualified AVET boundaries and
-seeks reject unavailable projections, as do durable prefix cursors. An eager
-in-memory prefix for a known unindexed attribute instead returns no matches;
-an unrestricted scan omits unavailable attributes. See
+projection, shared with SAVET, is usable in that exact captured value. Schema
+intent and physical readiness are different observations. Attribute-qualified
+AVET and SAVET boundaries and seeks reject unavailable projections, as do
+durable prefix cursors. An eager in-memory prefix for a known unindexed attribute
+instead returns no matches; an unrestricted scan omits unavailable attributes. See
 [readiness and database views](04_index_apis.md#readiness-and-database-views)
 for the errors returned by each API. A later publication does not update an
 already captured value.
@@ -110,17 +121,60 @@ navigation of relationships in reverse. Assuming that The Beatles are entity
 100, the following table shows how their releases would be grouped together in
 this index:
 
-| V | A | E | Tx | Op |
-| --- | --- | --- | --- | --- |
-| 100 | `:release/artists` | 41 | 1007 | assert |
-| 100 | `:release/artists` | 42 | 1007 | assert |
-| 100 | `:release/artists` | 43 | 1234 | assert |
-| 200 | `:release/artists` | 55 | 2367 | assert |
+| V | A | E | Tx | S | Added? |
+| --- | --- | --- | --- | --- | --- |
+| 100 | `:release/artists` | 41 | 1007 | 99 | true |
+| 100 | `:release/artists` | 42 | 1007 | 99 | true |
+| 100 | `:release/artists` | 43 | 1234 | 99 | true |
+| 200 | `:release/artists` | 55 | 2367 | 99 | true |
 
 VAET is maintained for reference attributes without requiring `:db/index true`.
 An integer stored under `:db.type/long` is not a reference and does not enter
 VAET. References inside tuple values do not make the tuple attribute a
 `:db.type/ref` attribute.
+
+## SAEVT
+
+The SAEVT index groups a source's contributions, then groups them by attribute.
+It covers all attributes, just as EAVT and AEVT do. Fixing source and attribute
+provides an entity-ordered range of contributions for that attribute.
+
+| S | A | E | V | Tx | Added? |
+| --- | --- | --- | --- | --- | --- |
+| 99 | `:release/artistCredit` | 42 | "The Beatles" | 1007 | true |
+| 99 | `:release/name` | 41 | "Abbey Road" | 1007 | true |
+| 99 | `:release/name` | 42 | "Magical Mystery Tour" | 1007 | true |
+| 99 | `:release/name` | 43 | "Let It Be" | 1234 | true |
+| 99 | `:release/year` | 42 | 1967 | 1007 | true |
+
+Source activity uses the `[source :db/txInstant]` range. Each submitted
+transaction contributes one immutable timestamp assertion with its source.
+The entity component in that range is a transaction entity; its ID increases
+with logical transaction order. Reverse traversal gives the most recent
+transactions first. Retrieve each complete transaction from the log using that
+entity ID, at the same captured basis. Pagination follows transaction order,
+while the timestamp value supplies its displayed date. See
+[source activity](00_indexes_and_log.md#source-activity).
+
+## SAVET
+
+The SAVET index groups contributions by source, attribute, and value. It supports
+exact attribute/value matches and value ranges within a source, with entities
+ordered within each matching value.
+
+| S | A | V | E | Tx | Added? |
+| --- | --- | --- | --- | --- | --- |
+| 99 | `:release/name` | "Abbey Road" | 41 | 1007 | true |
+| 99 | `:release/name` | "Let It Be" | 43 | 1234 | true |
+| 99 | `:release/name` | "Let It Be" | 55 | 2367 | true |
+| 99 | `:release/name` | "Magical Mystery Tour" | 42 | 1007 | true |
+| 99 | `:release/year` | 1967 | 42 | 1007 | true |
+| 99 | `:release/year` | 1984 | 55 | 2367 | true |
+
+SAVET has the same `:db/index` or `:db/unique` coverage and projection readiness
+as AVET. `DatabaseValue::has_avet` checks that shared readiness in the captured
+value. The source prefix restricts access to visible contributions; it does not
+create separate cardinality, uniqueness, or retraction rules for each source.
 
 ## Implementation
 
@@ -144,9 +198,12 @@ leaf hashes. Old roots continue to describe their original values; an iterator's
 position can change without changing the index it traverses.
 
 Current and history indexes are distinct projections. A current view exposes
-facts still asserted at its basis; a history view exposes retained assertions and
-retractions. `:db/noHistory` can omit superseded facts from indexed history during
-consolidation, while the transaction log retains the transaction events.
+source-bearing facts still asserted in the shared record at its basis; a history
+view exposes retained assertions and retractions. `:db/noHistory` can omit
+superseded facts from indexed history during consolidation, while the transaction
+log retains the transaction events. Omitting a retraction also omits all older
+source contributions it withdrew. Consolidation makes that decision from the
+complete E/A/V group and applies the same omissions to every history index.
 [Excision and storage retention](../08_operations/04_maintenance_controls.md)
 are separate policies and can remove retained information. See
 [database filters](../02_core_concepts/03_database_filters.md) for time windows.
@@ -167,7 +224,7 @@ from the construction of covering trees. EDB:
   hard size limits; large values can require larger leaves.
 - Stores encoded index nodes in PostgreSQL-backed object storage, rather than
   requiring a SQL row lookup for each returned datom.
-- Maintains current and history trees for each of the four orders.
+- Maintains current and history trees for each of the six orders.
 - Updates covering trees through background indexing jobs. Preparation writes
   immutable candidate objects; guarded publication adopts a valid candidate.
 - Reuses unaffected subtrees where possible. Actual work depends on changes,
@@ -214,10 +271,11 @@ scan, but this does not make current-query cost independent of recent changes,
 filtering or retention work. Temporal and custom views can consume history to
 determine visible facts.
 
-Recent current-view reads buffer one logical E/A/V event group to select the
-newest operation for each distinct stored value representation. This avoids
-materializing the entire index, but cursor memory can grow with the size of
-that group; it is not limited to a single datom.
+Current-view reads resolve the complete logical E/A/V event group across all
+sources before selecting visible source-bearing datoms or applying filters.
+An assertion from another source remains a distinct contribution, but a later
+E/A/V retraction clears all earlier contributions. Cursor memory can grow with
+the size of the group; it is not limited to a single datom.
 
 The [optional local SSD cache](../09_optional/00_local_cache.md) can reuse
 immutable object bytes across processes. It supplements in-memory caching and
@@ -290,7 +348,7 @@ an index or change committed facts.
 
 ## Usage Notes
 
-- Attributes that need direct AVET access by value must be marked
+- Attributes that need direct AVET or SAVET access by value must be marked
   `:db/index true` or `:db/unique`, and their projection must be ready. Datalog can
   still evaluate value conditions through other available access paths.
 - EDB's combination of indexes supports access patterns associated with several

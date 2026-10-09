@@ -1,89 +1,134 @@
 # EDB — Extensible Database
 
-AI development is hampered by having to predefine structures and evaluations
-before we know what we are looking for. We need to capture observations, explore
-relationships, and revise our questions as we learn. Our database should make
-room for that discovery.
+EDB is a general-purpose temporal database inspired by
+[Datomic](https://docs.datomic.com/datomic-overview.html) and written entirely in
+Rust. It stores immutable facts with explicit time and source attribution, for
+applications whose records, relationships, and history matter.
 
-**EDB is an extensible database: a counterpart to EDN, Extensible Data Notation.**
-EDN provides a language of values. EDB builds on that foundation with a language
-of facts, their descriptions, their sources, and their changes through time. New knowledge
-should fit without requiring a new kind of database structure.
+Datomic made time part of the data model: a change preserves the earlier
+statement and records what replaced or withdrew it. EDB extends that model to
+source. Each fact records who supplied it, and each retraction records who
+withdrew it. Attribution stays with the statement as the database changes.
 
-Our design starts with three requirements: **small, self-descriptive, and
-composable.**
+**What Datomic did for time, EDB does for source: makes it explicit.**
 
-## 1. Small
+## From EDN to EDB
 
-The fundamental unit is a fact:
+[EDN, Extensible Data Notation](https://github.com/edn-format/edn), is a
+language-neutral format based on
+[Clojure's data syntax](https://clojure.org/reference/reader#_extensible_data_notation_edn)
+and used by Datomic for data interchange. It represents values through numbers,
+strings, keywords, collections, and tagged elements. Collections compose those
+values; tags give new values a defined interpretation using the same notation.
+Readers in different languages can exchange the data without a Clojure runtime.
+
+EDB takes that approach from values to recorded knowledge. Facts connect
+entities, attributes, and values; schema describes those attributes through
+ordinary facts. Transactions and sources are entities too. The vocabulary can
+grow through the same model used to describe the application itself.
+
+That is the meaning of **Extensible Database**: new knowledge can bring new
+attributes and relationships without requiring a different kind of database
+structure. EDB uses EDN to express schema, transactions, queries, and Pull
+patterns as data, alongside its typed Rust API.
+
+## Facts with time and source
+
+The unit of information is an immutable fact called a *datom*:
 
 ```text
 [Entity  Attribute  Value  Transaction  Source  Added?]
 ```
 
-Each transaction has one explicitly supplied source. Every assertion and
-retraction it produces retains that source alongside its transaction, with
-`true` for an assertion and `false` for a retraction.
+| Dimension | Meaning |
+| --- | --- |
+| Entity | The subject the statement describes. |
+| Attribute | The property or relationship being described. |
+| Value | The information supplied. |
+| Transaction | The change that asserted or retracted the fact. |
+| Source | The contributor to whom that change is attributed. |
+| Added? | `true` for an assertion; `false` for a retraction. |
 
-An entity's identity answers “What thing are we talking about?” Its facts answer
-“What do we know about it?” Learning something new adds facts without redefining
-the thing or prescribing every attribute it might ever have.
+An application supplies one source for each transaction. Every assertion and
+retraction it produces carries that source, including generated changes. A
+source can describe a person, an institution, an importer, or an LLM through
+ordinary database attributes.
 
-**The vocabulary can grow without continually enlarging the rules for
-constructing it.** Small describes the common foundation, not a limit on what
-we can express.
+Consider a museum catalog. An importer supplies a painting's year, an LLM adds
+a description, and Julia later corrects the year. These illustrative datoms use
+symbolic entity and transaction IDs; assume `:painting/year` has cardinality one:
 
-## 2. Self-descriptive
+```edn
+[painting :painting/year        1916             T1 catalog-importer true]
+[painting :painting/description "Water lilies."  T2 llm              true]
+[painting :painting/year        1916             T3 julia            false]
+[painting :painting/year        1917             T3 julia            true]
+```
 
-The database contains descriptions of its own attributes. Names, types,
-cardinalities, and documentation are data, expressed through the same model and
-transaction mechanism as application facts.
+Julia's retraction and replacement occur atomically. The current record has
+year `1917` and the LLM's description. Retained history contains the importer's
+original assertion and Julia's correction, each with its own attribution. The
+same model answers “What did we know then?” and “Who supplied or withdrew it?”
 
-An attribute is itself an entity with facts describing it. Programs can inspect
-those definitions as the vocabulary grows. Schema becomes part of the knowledge
-we can query and extend.
+Contributors maintain one shared record. If two sources assert the same value,
+EDB preserves both contributions while exposing one value in the entity view.
+A retraction withdraws that value across sources. Cardinality and uniqueness
+apply to the shared record, and source-filtered current reads still honor
+retractions by other contributors.
 
-**New information arrives with a way to describe it.**
+Source identifies who supplied the database statement. A painting's artist or a
+book's publisher is described through domain attributes; the importer who
+records those relationships is their source.
 
-## 3. Composable
+## The Datomic foundations
 
-Facts combine without losing their identities or meanings. One person can have
-customer and employee attributes; adding either does not change what
-`:person/name` means. References connect that person to an organization whose
-own facts and relationships remain accessible.
+EDB carries forward Datomic's approach to data and application reads:
 
-**A whole can participate as a part, while its own parts remain understandable.**
-New combinations use the same described relationships. Datalog joins and reusable
-rules carry that principle into asking questions.
+- **Immutable database values.** Capture a consistent view and pass it through
+  application code. Later transactions do not change that value. As-of, since,
+  and history views expose retained changes through the same query engine.
+- **Schema as data.** Attributes declare types, cardinality, uniqueness, and
+  other constraints. Their definitions are queryable entities, and any entity
+  can have any installed attribute subject to those constraints.
+- **Datalog and Pull.** Join facts with reusable rules, query relationships,
+  and project nested results. Entity references connect records directly.
+- **Atomic transactions.** One active transactor validates and serializes
+  changes. Transaction functions and predicates can compute and check changes
+  against the database; local `with` operations let applications inspect
+  speculative results before submission.
+- **Indexed facts and an accessible log.** EAVT, AEVT, AVET, and VAET support
+  entity, attribute, value, and reverse-reference access. EDB adds SAEVT and
+  SAVET for source access. Every index retains the complete datom; the log
+  exposes transactions and their changes in chronological order.
 
-## Knowledge grows through time and contribution
+## A native Rust engine
 
-Changes are assertions and retractions. Source identifies who supplied those
-statements, while domain attributes describe distinct roles such as authorship
-and publishing. Transactions and sources are entities too, described with
-ordinary facts. Immutable database values let us ask questions against a
-consistent point in time; retained history preserves earlier statements and
-their attribution.
+Datalog, Pull, entity navigation, transaction assessment, and indexing run in
+the Rust engine. Application peers execute reads locally and cache immutable
+index objects. Additional peers can serve independent read workloads, while
+one active transactor orders writes for each database.
 
-Contributors maintain one shared record. Two sources supplying the same value
-remain distinct contributions without multiplying the value. A later retraction
-withdraws that value across sources and records who withdrew it.
+PostgreSQL provides durable storage for immutable objects and the references
+that publish database state. Queries run in EDB; cold reads load the required
+objects from storage. Immutable indexes share unchanged structure between
+versions, and background indexing incorporates changes separately from each
+commit. This architecture supports efficient reads through local execution,
+working-set caches, and reuse of stored structure.
 
-Extensibility still requires discipline: attributes have constraints, and changes
-must preserve the model's invariants. The aim is a foundation that supports
-learning without requiring us to anticipate everything we will learn.
-
-**The database can know more without requiring a new way of saying what it knows.**
+The native library, async adapters, and EDN command-line interface share the
+same model and engine. In-memory databases support local exploration; portable
+backups support offline reads. See the
+[introduction](docs/00_start_here/00_introduction.md) for architecture and
+deployment choices.
 
 ## Start here
 
-EDB is implemented in Rust, with PostgreSQL providing durable storage. It is in
-first-release development; format changes may require fresh databases.
+EDB is in first-release development. Storage format changes may require fresh
+databases; unsupported older formats are rejected explicitly.
 
-- [Guide](docs/00_start_here/00_introduction.md)
 - [Setup](docs/00_start_here/01_setup.md) and [peer library](docs/00_start_here/02_peer_library.md)
-- [Documentation reference](docs/README.md)
-- [In-memory tutorial](docs/01_tutorials/02_in_memory.md) and [durable peer tutorial](docs/01_tutorials/03_peer_tutorial.md)
+- [In-memory tutorial](docs/01_tutorials/02_in_memory.md)
 - [EDN tutorial](docs/01_tutorials/00_edn_workflow.md)
 - [Rust application tutorial](docs/01_tutorials/01_application_workflow.md)
+- [Documentation reference](docs/README.md)
 - [Deployment](docs/08_operations/00_deployment.md) and [administration](docs/08_operations/01_administration.md)

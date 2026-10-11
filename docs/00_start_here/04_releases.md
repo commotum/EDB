@@ -1,7 +1,10 @@
 # EDB releases
 
-EDB is in first-release development. The current source checkout declares
-version `0.1.0`; this is a package version, not a published release history.
+EDB 0.1.0 is the first experimental source release. See the
+[release notes](../releases/0.1.0.md) for scope and compatibility limits, and
+[GitHub Releases](https://github.com/commotum/EDB/releases/tag/v0.1.0) for the
+tagged source archives. The release tag identifies the source revision;
+development checkouts may share the package version.
 
 ## EDB software
 

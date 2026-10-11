@@ -178,8 +178,9 @@ integration, and the [documentation reference](docs/README.md) links to the
 full guide, including [deployment](docs/08_operations/00_deployment.md) and
 [administration](docs/08_operations/01_administration.md).
 
-EDB is in first-release development. Storage format changes may require fresh
-databases; unsupported older formats are rejected explicitly. History access is
+EDB [0.1.0](docs/releases/0.1.0.md) is an experimental source release. Storage
+format changes may require fresh databases; unsupported older formats are
+rejected explicitly. History access is
 subject to the database's retention and excision policies, described in the
 [database values guide](docs/02_core_concepts/00_database_values.md) and
 [operations documentation](docs/08_operations/00_deployment.md#excision).

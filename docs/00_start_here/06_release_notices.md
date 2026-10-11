@@ -7,12 +7,13 @@ This document **is not** a comprehensive change log. See the
 [change log](05_change_log.md) for development status and
 [EDB releases](04_releases.md) for the current package and build instructions.
 
-## Current Development Version: 0.1.0
+## Experimental Release: 0.1.0
 
-EDB is in first-release development. The `edb-core` package declares version
-`0.1.0`, with `publish = false` and license `MIT`. The peer library and
-`edb` executable share this package version. It does not identify a published
-release, release date, or compatibility guarantee between development builds.
+EDB 0.1.0 is an experimental source release. The `edb-core` package declares
+version `0.1.0`, with `publish = false` and license `MIT`. The peer library and
+`edb` executable share this package version. The `v0.1.0` tag identifies the
+release; a shared package version is not a compatibility guarantee between
+development builds. See the [release notes](../releases/0.1.0.md).
 
 Build requirements are described in [setup](01_setup.md#rust-and-native-build-requirements).
 EDB uses a Rust library and executable; there is no JVM or Clojure runtime

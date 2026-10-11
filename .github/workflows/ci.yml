@@ -1,0 +1,92 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: '1'
+  RUSTDOCFLAGS: '-D warnings'
+
+jobs:
+  verify:
+    name: Linux / Rust ${{ matrix.rust }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        rust: ['1.90.0', stable]
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: edb_ci
+          POSTGRES_PASSWORD: edb-ci-only
+          POSTGRES_DB: edb_tests
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U edb_ci -d edb_tests"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      EDB_TEST_POSTGRES_URL: 'host=127.0.0.1 port=5432 user=edb_ci password=edb-ci-only dbname=edb_tests sslmode=disable'
+      EDB_TEST_RESTORE_POSTGRES_URL: 'host=127.0.0.1 port=5432 user=edb_ci password=edb-ci-only dbname=edb_restore sslmode=disable'
+      EDB_TEST_LIFECYCLE_POSTGRES_URL: 'host=127.0.0.1 port=5432 user=edb_ci password=edb-ci-only dbname=edb_lifecycle sslmode=disable'
+      PGHOST: 127.0.0.1
+      PGPORT: '5432'
+      PGUSER: edb_ci
+      PGPASSWORD: edb-ci-only
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - name: Install native dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes libssl-dev pkg-config postgresql-client
+      - name: Install Rust
+        env:
+          EDB_CI_RUST: ${{ matrix.rust }}
+        run: |
+          rustup toolchain install "$EDB_CI_RUST" --profile minimal --component rustfmt --component clippy --no-self-update
+          rustup override set "$EDB_CI_RUST"
+          rustc --version
+          cargo --version
+      - name: Create isolated restore and lifecycle databases
+        run: |
+          createdb edb_restore
+          createdb edb_lifecycle
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+      - name: Lint all targets
+        run: cargo clippy --locked --all-targets -- -D warnings
+      - name: Run ordinary tests
+        run: cargo test --locked --all-targets
+      - name: Run PostgreSQL and runtime integration tests
+        run: cargo test --locked --all-targets -- --ignored --test-threads=1
+      - name: Check doctests
+        run: cargo test --locked --doc
+      - name: Build API documentation
+        run: cargo doc --locked --no-deps
+      - name: Build optimized library and CLI
+        run: cargo build --locked --release --lib --bin edb
+      - name: Check CLI version and help
+        run: |
+          test "$(target/release/edb --version)" = 'edb 0.1.0'
+          target/release/edb --help
+      - name: Exercise the optimized CLI workflow
+        run: cargo test --locked --release --test edn_workflow_cutover -- --ignored --test-threads=1

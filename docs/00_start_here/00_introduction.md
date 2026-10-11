@@ -233,7 +233,7 @@ changes. Persisted native programs and compiled Rust callbacks are explicit
 extension mechanisms; see [stored programs](../04_transactions/01_persisted_programs.md)
 and [native computation](../07_peer_api/02_native_computation.md).
 
-This first-release development line uses current native storage, request and
+This experimental release uses current native storage, request and
 program formats. Unsupported historical formats fail explicitly; installation
 never resets data. Format changes may require fresh databases. There is no
 automatic historical-upgrade promise.

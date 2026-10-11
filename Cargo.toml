@@ -2,6 +2,11 @@
 name = "edb-core"
 version = "0.1.0"
 edition = "2024"
+rust-version = "1.90"
+description = "A temporal, fact-oriented database with Datalog queries and first-class source attribution"
+repository = "https://github.com/commotum/EDB"
+readme = "README.md"
+keywords = ["database", "datalog", "temporal", "provenance", "edn"]
 license = "MIT"
 publish = false
 

@@ -10,6 +10,14 @@ with the library named `edb_core` and the executable named `edb`. The package is
 MIT-licensed and marked `publish = false`; these instructions use the local
 checkout rather than a package-registry release.
 
+For the 0.1.0 source release:
+
+```sh
+git clone https://github.com/commotum/EDB.git
+cd EDB
+git checkout v0.1.0
+```
+
 Throughout the documentation, shell commands are run from the root directory
 of the EDB checkout. Change to this directory now, for example:
 
@@ -124,12 +132,15 @@ they do not provide durable storage or start a transactor.
 
 ## Rust and native build requirements
 
-EDB uses Rust's 2024 edition. Install Rust and Cargo with support for that
-edition and the dependencies selected by `Cargo.lock`. The manifest does not
-declare a minimum supported Rust version or pin a toolchain.
+EDB requires Rust and Cargo 1.90 or newer and uses Rust's 2024 edition. Build
+with the dependencies selected by `Cargo.lock`. CI checks Rust 1.90.0 and the
+current stable toolchain.
 
 The current executable and local transport use Unix APIs. A native build needs
 a linker and the OpenSSL development libraries and headers used by the
 `openssl` dependency. On Linux, OpenSSL discovery commonly uses `pkg-config`.
 These prerequisites are separate from the PostgreSQL server used for durable
 storage. EDB does not require Java or Clojure.
+
+The 0.1.0 release is verified on x86-64 Linux with PostgreSQL 15. Other Unix
+platforms have not been verified for this release; Windows is not supported.

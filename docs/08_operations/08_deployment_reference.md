@@ -454,7 +454,7 @@ compatibility of roots, indexes, durable logs or stored native programs. Consult
 
 ## Upgrading a Live System
 
-EDB is in first-release development. The package version `0.1.0` does not
+EDB 0.1.0 is an experimental release. The package version alone does not
 establish compatibility between source revisions. There is no general supported
 rolling upgrade or mixed-build deployment order. Use peer libraries and
 transactors built from the same source revision and test the intended change
@@ -519,8 +519,8 @@ success for activation and application checks.
 
 Review [release notices](../00_start_here/06_release_notices.md), the
 [change log](../00_start_here/05_change_log.md), and all relevant source changes
-between the deployed and proposed revisions. The current shared package version
-is not a published release history or a compatibility declaration.
+between the deployed and proposed revisions. Use release tags to identify
+released revisions; a shared package version is not a compatibility declaration.
 
 Backups contain native immutable objects. Their successful capture does not
 establish that another build can read them. Keep the original compatible build

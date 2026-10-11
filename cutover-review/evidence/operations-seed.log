@@ -1,6 +1,0 @@
-    Blocking waiting for file lock on build directory
-   Compiling edb-core v0.1.0 (/tmp/edb-cutover-impl-20261007)
-    Finished `dev` profile [unoptimized + debuginfo] target(s) in 7.94s
-     Running `target/debug/examples/operations_workflow`
-maintenance_seed records=128 basis_t=2
-operations_phase=fixture-seed outcome=passed elapsed_ms=1181 cpu_us=969255 sql_calls=1141 result_cell_bytes=119228 sql_elapsed_ns=440056961 baseline=VmHWM:	    6860 kB,VmRSS:	    6860 kB final=VmHWM:	   25720 kB,VmRSS:	   25720 kB

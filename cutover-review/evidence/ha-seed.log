@@ -1,7 +1,0 @@
-SEED index=Eavt current=671 history=673
-SEED index=Aevt current=671 history=673
-SEED index=Avet current=323 history=325
-SEED index=Vaet current=344 history=344
-SEED index=Saevt current=671 history=673
-SEED index=Savet current=323 history=325
-SEED_OK database=ha-crash-source rows=256 sources=2 basis=8 long_attribute=1000 avet_savet_ready=true durable_index=true

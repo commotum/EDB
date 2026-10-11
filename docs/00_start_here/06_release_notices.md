@@ -30,7 +30,7 @@ explicit source, resolved through ordinary entity references, and every fact it
 produces carries that source, including the automatic transaction timestamp.
 Transaction forms retain their ordinary arguments. See
 [transaction source and timestamp](../04_transactions/04_transaction_data.md#reified-transactions) and the
-[data model](../NORTHSTAR.md#the-data-model). Readers reject earlier
+[data model](../02_core_concepts/01_data_model.md#datoms). Readers reject earlier
 formats rather than assigning a source to old facts.
 
 The EDB naming update affects the crate (`edb-core`), executable (`edb`),

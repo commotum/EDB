@@ -1,4 +1,0 @@
-HEALTH address=127.0.0.1:42541 plaintext_status_only=true
-STANDBY database="application-current-local-1202352" waiting_for_authority=true
-READY database="01a1195d-aeb6-732a-a82c-0c12294b79e2" endpoint="/tmp/edb-cutover-application-current-20261007/successor.sock" lineage=01a1195d-aeb6-732a-a82c-0c12294b79e2
-STOPPED

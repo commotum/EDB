@@ -1,9 +1,0 @@
-   Compiling edb-core v0.1.0 (/tmp/edb-cutover-impl-20261007)
-    Finished `test` profile [unoptimized + debuginfo] target(s) in 1.24s
-     Running tests/async_api_source_cutover.rs (target/debug/deps/async_api_source_cutover-63bf248b8d2c240f)
-
-running 1 test
-test async_queries_capture_source_bearing_views_before_execution_or_first_poll ... ok
-
-test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.13s
-

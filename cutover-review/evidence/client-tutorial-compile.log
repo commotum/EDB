@@ -1,4 +1,0 @@
-Literal tutorial sync Rust blocks: rustc --edition=2024 using isolated target dependencies
-PASS
-Literal tutorial async Rust blocks: rustc --edition=2024 using isolated target dependencies
-PASS

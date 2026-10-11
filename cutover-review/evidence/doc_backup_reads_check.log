@@ -1,3 +1,0 @@
-   Compiling edb-core v0.1.0 (/tmp/edb-cutover-impl-20261007)
-    Finished `test` profile [unoptimized + debuginfo] target(s) in 1.12s
-  Executable tests/backup_reads_source_cutover.rs (target/debug/deps/backup_reads_source_cutover-0b1db882c413957f)

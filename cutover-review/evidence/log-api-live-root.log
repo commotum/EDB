@@ -1,9 +1,0 @@
-    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.14s
-     Running tests/log_source_cutover.rs (target/debug/deps/log_source_cutover-a075619a5541b7e0)
-
-running 2 tests
-test captured_log_bounds_lazy_cursor_and_query_shapes_obey_contract ... ok
-test source_activity_composes_same_basis_log_with_stable_reverse_pages ... ok
-
-test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.25s
-

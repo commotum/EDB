@@ -1,9 +1,0 @@
-   Compiling edb-core v0.1.0 (/tmp/edb-cutover-impl-20261007)
-    Finished `test` profile [unoptimized + debuginfo] target(s) in 11.40s
-     Running unittests src/lib.rs (target/debug/deps/edb_core-b77486e83f53582c)
-
-running 1 test
-test application::transport::remote::hints::tests::hints2_roundtrip_preserves_all_six_prefix_orders_and_rejects_hints1 ... ok
-
-test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 60 filtered out; finished in 0.00s
-

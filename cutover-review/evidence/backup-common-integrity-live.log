@@ -1,9 +1,0 @@
-   Compiling edb-core v0.1.0 (/tmp/edb-cutover-impl-20261007)
-    Finished `test` profile [unoptimized + debuginfo] target(s) in 3.96s
-     Running unittests src/lib.rs (target/debug/deps/edb_core-b77486e83f53582c)
-
-running 1 test
-test backup::tests::source_bearing_backup_restore_preserves_pending_and_partial_six_index_publications ... ok
-
-test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 55 filtered out; finished in 91.83s
-

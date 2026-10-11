@@ -4,7 +4,8 @@ EDB stores facts, schema and transactions as database data. Start with the
 [introduction](00_start_here/00_introduction.md), follow a tutorial, or use the
 reference pages below for syntax, APIs and operational behavior.
 
-The [North Star](NORTHSTAR.md) describes EDB's data model and design principles.
+The [data model guide](02_core_concepts/01_data_model.md) describes EDB's facts,
+entities, sources and time model.
 
 ## Start here
 

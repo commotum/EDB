@@ -1,5 +1,0 @@
-    Blocking waiting for file lock on build directory
-   Compiling edb-core v0.1.0 (/tmp/edb-cutover-impl-20261007)
-    Finished `dev` profile [unoptimized + debuginfo] target(s) in 1.58s
-     Running `target/debug/examples/native_workflow`
-PASS workflow-326334-1791418607547244733: schema, controlled transact, tuple references, lookup keys, query, pull, immutable log, index-pull, deferred query transforms, return maps, history, chained native speculation, immutable values, reopen at t=4

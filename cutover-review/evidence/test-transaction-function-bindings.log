@@ -1,9 +1,0 @@
-   Compiling edb-core v0.1.0 (/tmp/edb-cutover-impl-20261007)
-    Finished `test` profile [unoptimized + debuginfo] target(s) in 10.05s
-     Running unittests src/lib.rs (target/debug/deps/edb_core-b77486e83f53582c)
-
-running 1 test
-test program_bindings::source_cutover_tests::binding_replacement_and_nested_invocation_read_the_same_db_before ... ok
-
-test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 48 filtered out; finished in 0.13s
-

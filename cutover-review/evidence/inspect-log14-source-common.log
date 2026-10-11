@@ -1,2 +1,0 @@
-PROGRESS command=inspect phase=consistent-snapshot
-INSPECT healthy=true deep_derived=true basis_t=13 index_basis_t=13 index_lag=0 problems=0 pending_avet_projections=0 generation=0 publication_revision=27 reachable_objects=Some(253) elapsed_ms=4329

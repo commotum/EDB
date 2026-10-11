@@ -1,9 +1,0 @@
-   Compiling edb-core v0.1.0 (/tmp/edb-cutover-impl-20261007)
-    Finished `test` profile [unoptimized + debuginfo] target(s) in 8.03s
-     Running unittests src/bin/edb/main.rs (target/debug/deps/edb-6c906e0b04180958)
-
-running 1 test
-test tests::process_signal_cancels_the_shared_maintenance_token ... ok
-
-test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
-

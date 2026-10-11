@@ -1,2 +1,0 @@
-READY database="01a1195d-aeb6-732a-a82c-0c12294b79e2" endpoint="/tmp/edb-cutover-application-current-20261007/writer.sock" lineage=01a1195d-aeb6-732a-a82c-0c12294b79e2
-STOPPED

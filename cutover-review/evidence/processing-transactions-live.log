@@ -1,8 +1,0 @@
-    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.08s
-     Running tests/processing_transactions_cutover.rs (target/debug/deps/processing_transactions_cutover-ff81fb2d9ca828ee)
-
-running 1 test
-test independent_connection_report_queue_preserves_exact_source_reports_and_removal ... ok
-
-test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 0.71s
-

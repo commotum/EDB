@@ -1,9 +1,0 @@
-   Compiling edb-core v0.1.0 (/tmp/edb-cutover-impl-20261007)
-    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.83s
-     Running tests/rseek_source_cutover.rs (target/debug/deps/rseek_source_cutover-68c377e7c3e5b91c)
-
-running 1 test
-test seek_boundaries_reject_invalid_native_transaction_domains_in_every_order ... ok
-
-test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.11s
-

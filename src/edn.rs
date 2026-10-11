@@ -373,6 +373,23 @@ fn identity(
         budget.depth(depth)?;
         budget.charge(1)?;
     }
+    // Keep scalar conversion scratch out of the recursive validation frames.
+    match value {
+        EdnValue::List(values) | EdnValue::Vector(values) => {
+            sequence_identity(values, false, budget, depth, count_nodes, discarded)
+        }
+        EdnValue::Set(values) => {
+            sequence_identity(values, true, budget, depth, count_nodes, discarded)
+        }
+        EdnValue::Map(entries) => map_identity(entries, budget, depth, count_nodes, discarded),
+        EdnValue::Tagged(tag, value) => {
+            tagged_identity(tag, value, budget, depth, count_nodes, discarded)
+        }
+        _ => leaf_identity(value, budget),
+    }
+}
+
+fn leaf_identity(value: &EdnValue, budget: &mut Budget) -> Result<Vec<u8>, SemanticError> {
     let mut key = Vec::new();
     match value {
         EdnValue::Nil => {
@@ -449,87 +466,116 @@ fn identity(
             append_key(&mut key, digits.as_bytes(), budget)?;
             append_key(&mut key, &exponent.to_be_bytes(), budget)?;
         }
-        EdnValue::List(values) | EdnValue::Vector(values) | EdnValue::Set(values) => {
-            let is_set = matches!(value, EdnValue::Set(_));
-            key.push(if is_set { 11 } else { 10 });
-            let mut children = Vec::new();
-            for value in values {
-                children.push((
-                    identity(value, budget, depth + 1, count_nodes, discarded)?,
-                    (),
+        _ => unreachable!("collection identities use their own traversal"),
+    }
+    Ok(key)
+}
+
+fn sequence_identity(
+    values: &[EdnValue],
+    is_set: bool,
+    budget: &mut Budget,
+    depth: usize,
+    count_nodes: bool,
+    discarded: bool,
+) -> Result<Vec<u8>, SemanticError> {
+    let mut key = Vec::new();
+    key.push(if is_set { 11 } else { 10 });
+    let mut children = Vec::new();
+    for value in values {
+        children.push((
+            identity(value, budget, depth + 1, count_nodes, discarded)?,
+            (),
+        ));
+    }
+    if is_set {
+        sort_keys(&mut children, budget)?;
+        for pair in children.windows(2) {
+            if compare_keys(&pair[0].0, &pair[1].0, budget)?.is_eq() {
+                return Err(SemanticError::incorrect(
+                    "edn/duplicate-element",
+                    "EDN set contains an equal element twice",
                 ));
             }
-            if is_set {
-                sort_keys(&mut children, budget)?;
-                for pair in children.windows(2) {
-                    if compare_keys(&pair[0].0, &pair[1].0, budget)?.is_eq() {
-                        return Err(SemanticError::incorrect(
-                            "edn/duplicate-element",
-                            "EDN set contains an equal element twice",
-                        ));
-                    }
-                }
-            }
-            for (child, ()) in children {
-                append_key(&mut key, &child, budget)?;
-            }
         }
-        EdnValue::Map(entries) => {
-            key.push(12);
-            let mut children = Vec::new();
-            for (k, v) in entries {
-                let k = identity(k, budget, depth + 1, count_nodes, discarded)?;
-                let v = identity(v, budget, depth + 1, count_nodes, discarded)?;
-                children.push((k, v));
-            }
-            sort_keys(&mut children, budget)?;
-            for pair in children.windows(2) {
-                if compare_keys(&pair[0].0, &pair[1].0, budget)?.is_eq() {
-                    return Err(SemanticError::incorrect(
-                        "edn/duplicate-key",
-                        "EDN map contains an equal key twice",
-                    ));
-                }
-            }
-            for (k, v) in children {
-                append_key(&mut key, &k, budget)?;
-                append_key(&mut key, &v, budget)?;
-            }
+    }
+    for (child, ()) in children {
+        append_key(&mut key, &child, budget)?;
+    }
+    Ok(key)
+}
+
+fn map_identity(
+    entries: &[(EdnValue, EdnValue)],
+    budget: &mut Budget,
+    depth: usize,
+    count_nodes: bool,
+    discarded: bool,
+) -> Result<Vec<u8>, SemanticError> {
+    let mut key = Vec::new();
+    key.push(12);
+    let mut children = Vec::new();
+    for (k, v) in entries {
+        let k = identity(k, budget, depth + 1, count_nodes, discarded)?;
+        let v = identity(v, budget, depth + 1, count_nodes, discarded)?;
+        children.push((k, v));
+    }
+    sort_keys(&mut children, budget)?;
+    for pair in children.windows(2) {
+        if compare_keys(&pair[0].0, &pair[1].0, budget)?.is_eq() {
+            return Err(SemanticError::incorrect(
+                "edn/duplicate-key",
+                "EDN map contains an equal key twice",
+            ));
         }
-        EdnValue::Tagged(tag, value) => {
-            budget.token(
-                tag.namespace
-                    .as_ref()
-                    .map_or(0, |ns| ns.len() + 1)
-                    .saturating_add(tag.name.len()),
+    }
+    for (k, v) in children {
+        append_key(&mut key, &k, budget)?;
+        append_key(&mut key, &v, budget)?;
+    }
+    Ok(key)
+}
+
+fn tagged_identity(
+    tag: &Symbol,
+    value: &EdnValue,
+    budget: &mut Budget,
+    depth: usize,
+    count_nodes: bool,
+    discarded: bool,
+) -> Result<Vec<u8>, SemanticError> {
+    let mut key = Vec::new();
+    budget.token(
+        tag.namespace
+            .as_ref()
+            .map_or(0, |ns| ns.len() + 1)
+            .saturating_add(tag.name.len()),
+    )?;
+    validate_symbol(tag, true)?;
+    let child = identity(value, budget, depth + 1, count_nodes, discarded)?;
+    if !discarded {
+        validate_builtin(tag, value)?;
+    }
+    key.push(13);
+    append_key(&mut key, tag.qualified_name().as_bytes(), budget)?;
+    match (tag.namespace.as_deref(), tag.name.as_str(), value) {
+        (None, "uuid", EdnValue::String(text)) if uuid_valid(text) => {
+            budget.token(text.len())?;
+            append_key(&mut key, text.to_ascii_lowercase().as_bytes(), budget)?;
+        }
+        (None, "inst", EdnValue::String(text)) if !discarded => {
+            budget.token(text.len())?;
+            let parsed = instant::parse_instant(text)?;
+            append_key(&mut key, &parsed.seconds.to_be_bytes(), budget)?;
+            append_key(&mut key, &[u8::from(parsed.leap_second)], budget)?;
+            append_key(
+                &mut key,
+                parsed.fraction.trim_end_matches('0').as_bytes(),
+                budget,
             )?;
-            validate_symbol(tag, true)?;
-            let child = identity(value, budget, depth + 1, count_nodes, discarded)?;
-            if !discarded {
-                validate_builtin(tag, value)?;
-            }
-            key.push(13);
-            append_key(&mut key, tag.qualified_name().as_bytes(), budget)?;
-            match (tag.namespace.as_deref(), tag.name.as_str(), value.as_ref()) {
-                (None, "uuid", EdnValue::String(text)) if uuid_valid(text) => {
-                    budget.token(text.len())?;
-                    append_key(&mut key, text.to_ascii_lowercase().as_bytes(), budget)?;
-                }
-                (None, "inst", EdnValue::String(text)) if !discarded => {
-                    budget.token(text.len())?;
-                    let parsed = instant::parse_instant(text)?;
-                    append_key(&mut key, &parsed.seconds.to_be_bytes(), budget)?;
-                    append_key(&mut key, &[u8::from(parsed.leap_second)], budget)?;
-                    append_key(
-                        &mut key,
-                        parsed.fraction.trim_end_matches('0').as_bytes(),
-                        budget,
-                    )?;
-                }
-                _ => {
-                    append_key(&mut key, &child, budget)?;
-                }
-            }
+        }
+        _ => {
+            append_key(&mut key, &child, budget)?;
         }
     }
     Ok(key)

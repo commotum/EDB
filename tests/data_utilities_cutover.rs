@@ -1,5 +1,7 @@
 use edb_core::Keyword;
-use edb_core::edn::{EdnLimits, EdnReadOptions, EdnReader, EdnValue, read_edn, write_edn};
+use edb_core::edn::{
+    EdnLimits, EdnReadOptions, EdnReader, EdnValue, read_edn, write_edn, write_edn_with_limits,
+};
 
 #[test]
 fn constructed_data_is_validated_before_readable_writing() {
@@ -118,4 +120,43 @@ fn stream_admission_is_cumulative_and_depth_remains_bounded() {
     assert!(unicode.next().is_none());
     assert!(EdnReader::new("; comment\n#_ 1").unwrap().next().is_none());
     assert!(read_edn("; comment\n#_ 1").is_err());
+}
+
+#[test]
+fn nested_edn_validation_fits_a_standard_thread_stack() {
+    std::thread::Builder::new()
+        .stack_size(2 * 1024 * 1024)
+        .spawn(|| {
+            let options = EdnReadOptions {
+                limits: EdnLimits {
+                    max_depth: usize::MAX,
+                    ..Default::default()
+                },
+                ..Default::default()
+            };
+            for (open, close) in [
+                ("[", "]"),
+                ("(", ")"),
+                ("{:key ", "}"),
+                ("#{", "}"),
+                ("#tag ", ""),
+            ] {
+                for depth in [128, 129] {
+                    let text = format!("{}1{}", open.repeat(depth), close.repeat(depth));
+                    let mut reader = EdnReader::with_options(&text, &options).unwrap();
+                    let result = reader.next().unwrap();
+                    if depth == 128 {
+                        assert!(result.is_ok(), "{open} at depth {depth}: {result:?}");
+                        let value = result.unwrap();
+                        assert_eq!(write_edn_with_limits(&value, options.limits).unwrap(), text);
+                    } else {
+                        assert_eq!(result.unwrap_err().code, "edn/capacity");
+                    }
+                    assert!(reader.next().is_none());
+                }
+            }
+        })
+        .unwrap()
+        .join()
+        .unwrap();
 }

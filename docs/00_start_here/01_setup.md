@@ -113,6 +113,11 @@ Once you are able to start and stop EDB processes, you can
 database, or follow the
 [Rust application tutorial](../01_tutorials/01_application_workflow.md).
 
+Before installing application schema, you can
+[bootstrap an application source](../01_tutorials/00_edn_workflow.md#bootstrap-an-application-source)
+with built-in attributes. The first transaction describes the contributor and
+uses its tempid as the source; later schema and data transactions use its ident.
+
 ## Integrate the library
 
 Add the checkout as a local dependency in your application's `Cargo.toml`,

@@ -13,6 +13,11 @@ through a tempid and supplies that tempid as its source. Later requests supply
 its ident. The source is independent of project ownership and other domain
 relationships.
 
+This is [source bootstrapping](00_edn_workflow.md#bootstrap-an-application-source):
+the source contributes its own description in the first transaction. The EDN
+walkthrough shows a standalone source transaction and Pull verification; this
+example includes the source description in the schema transaction.
+
 Build both programs:
 
 ```sh

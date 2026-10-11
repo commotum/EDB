@@ -27,6 +27,12 @@ A *datom* is an immutable atomic fact that represents the addition or retraction
 
 The application explicitly supplies one source for each transaction, including transactions with empty data. Every assertion or retraction it produces carries that source, including function results, generated changes, and the automatic transaction timestamp. A source is an ordinary entity that can represent a person, institution, publication, LLM, or another contributor of database statements. Its description uses the same installed attributes as other entities, with its own history and attribution. Different sources contribute to the same record through separate transactions. Canonical genesis attributes its vocabulary and schema facts to the ordinary entity `:db.source/system`; internal bootstrap transactions use that source as well.
 
+A source can be established and used in the same transaction: describe it with
+a tempid in entity position and supply that tempid as the transaction's source.
+Built-in `:db/ident` and `:db/doc` let an application bootstrap its first
+contributor before installing custom schema. Later transactions can use the
+source's persistent ident. See [bootstrapping an application source](../01_tutorials/00_edn_workflow.md#bootstrap-an-application-source).
+
 ### Example Datom
 
 | **E** | 42 |

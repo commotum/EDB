@@ -36,6 +36,11 @@ Submit these movie maps with the built-in `:db.source/system` entity as the
 transaction's source. EDB automatically asserts the transaction's selected
 timestamp with that same source.
 
+If you [bootstrapped an application source](00_edn_workflow.md#bootstrap-an-application-source)
+in the schema step, use `--source ':application.source/contributor'` in the
+command below as well. That ident resolves to the contributor already stored
+in the database; do not reuse the bootstrap tempid as a source-only string.
+
 This is an example of the power of working directly with data—anything you might
 do to assemble a collection of movie maps could be substituted for the file
 `first-movies.edn`. You can also pass that data to intermediate functions for

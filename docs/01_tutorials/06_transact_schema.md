@@ -31,6 +31,14 @@ Each transaction supplies one source for all of its assertions and retractions.
 For this tutorial, we'll use the built-in source entity `:db.source/system`
 when submitting the schema.
 
+To attribute the schema to an application contributor, first
+[bootstrap a source](00_edn_workflow.md#bootstrap-an-application-source), using
+this tutorial's database and endpoint. Then use
+`--source ':application.source/contributor'` in the schema command below and
+keep that ident for subsequent data transactions. The report below uses
+`:db.source/system`; choosing your own source changes its source ID and adds
+the earlier bootstrap transaction to the database history.
+
 - Our first attribute, "title", will be defined as:
 
   ```edn

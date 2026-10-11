@@ -34,6 +34,9 @@ The supplied [schema](../../examples/edn/schema.edn) and
 submission supplies the built-in source entity `:db.source/system` once with
 `--source`; all resulting facts, including the automatic `:db/txInstant`, carry
 that source. Applications can describe and use their own source entities.
+See [bootstrapping an application source](#bootstrap-an-application-source)
+for creating one before installing application schema and using it in place of
+`:db.source/system` in the commands below.
 
 ```sh
 target/release/edb transact --database edn-demo --endpoint /tmp/edb-edn-demo/writer.sock --request-key install-person-schema --source ':db.source/system' --file examples/edn/schema.edn
@@ -58,6 +61,69 @@ speculative database value itself, use the library report's `db_after`.
 `transact --remote` uses existing verified-TLS discovery and credential files in
 place of `--endpoint`. There is no plaintext TCP mode. Text is converted to the native submission representation before
 delivery through the normal transport.
+
+## Bootstrap an application source
+
+Every transaction needs a source, but that source does not have to exist before
+the transaction. Establish it in an entity map and supply the same tempid as the
+transaction's source. EDB resolves both references to one entity, so the source
+can contribute the facts describing itself.
+
+This example assumes an existing logical database and a running transactor.
+Use your configured peer connection, with `EDB_DATABASE` and `EDB_ENDPOINT` set
+to that database and its transaction endpoint. The commands below use `edb`.
+
+```sh
+edb transact \
+  --database "$EDB_DATABASE" \
+  --endpoint "$EDB_ENDPOINT" \
+  --request-key bootstrap-contributor \
+  --source '"contributor"' \
+  --file - <<'EDN'
+[{:db/id "contributor"
+  :db/ident :application.source/contributor
+  :db/doc "Application contributor"}]
+EDN
+```
+
+`:db/ident` and `:db/doc` are built-in attributes, so this transaction needs no
+application schema. The string `"contributor"` is a transaction-local tempid;
+the CLI's `--source` argument includes its EDN double quotes. It must also appear
+in entity position, here as `:db/id`. Supplying a tempid only as the source fails
+with `transaction/tempid-not-an-entity`. Use the tempid for this first request,
+rather than an ident that the transaction has not yet installed.
+
+The receipt reports `:edb/committed true`, and `:edb/tempids` maps
+`"contributor"` to its resolved entity ID. All facts from this transaction,
+including the source's description and the automatic `:db/txInstant`, carry
+that source ID. Verify the persisted entity with Pull:
+
+```sh
+edb pull \
+  --database "$EDB_DATABASE" \
+  --entity ':application.source/contributor' \
+  --file - <<'EDN'
+[:db/id :db/ident :db/doc]
+EDN
+```
+
+Pull returns the entity ID, `:application.source/contributor`, and
+`"Application contributor"`. For subsequent schema or data transactions, use
+`--source ':application.source/contributor'`. The ident names the persisted
+entity across transactions; the tempid is local to the bootstrap request.
+In Rust, use `EntityRef::Temp("contributor".into())` for that request and
+`EntityRef::Ident(Keyword::new("application.source", "contributor"))` afterward.
+
+If the bootstrap reply is lost, retry the same data and source tempid with the
+same `bootstrap-contributor` request key. Do not switch to the ident on that
+retry: the supplied source is part of request identity. See
+[transactions and exact retries](#transactions-and-exact-retries).
+
+The source map can also accompany schema definitions in the same first
+transaction, as in the [Rust application workflow](01_application_workflow.md).
+Any custom attributes used to describe the source must already be installed in
+db-before. The [transaction-data reference](../04_transactions/04_transaction_data.md#bootstrapping-a-source)
+describes the resolution rules.
 
 ## Transactions and exact retries
 

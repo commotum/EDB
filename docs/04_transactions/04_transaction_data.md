@@ -352,6 +352,30 @@ A tempid used as a reference value or source must also be established in entity 
 
 An assertion of a unique identity can resolve a tempid to an existing entity rather than allocate a new one. Unique value does not supply this upsert behavior. Multiple identities for one tempid must agree on the same existing entity. See [Value and Identity Rules](../03_schema/01_identity_and_values.md), particularly the rules for composite identity.
 
+### Bootstrapping a source
+
+An application can establish its first source using only built-in attributes.
+Supply the EDN string `"contributor"` as the transaction's source (CLI
+`--source '"contributor"'`) alongside this transaction data:
+
+```edn
+[{:db/id "contributor"
+  :db/ident :application.source/contributor
+  :db/doc "Application contributor"}]
+```
+
+The map establishes the tempid in entity position. Source resolution assigns
+the same entity ID to the map and the transaction source, attributing the
+description and automatic transaction timestamp to that new entity. No
+application schema or earlier transaction using `:db.source/system` is needed.
+Additional forms in the transaction receive the same source.
+
+After commit, refer to the source with `:application.source/contributor` or its
+resolved entity ID. The string tempid is local to the first transaction. An
+exact retry of that request must keep the original source tempid, data and
+request key. See the [EDN bootstrap walkthrough](../01_tutorials/00_edn_workflow.md#bootstrap-an-application-source)
+for submission, Pull verification and later requests.
+
 ## Idents
 
 Idents name entities with keywords that are unique within a database. Idents are intended for entities that will be named as literals in source code.

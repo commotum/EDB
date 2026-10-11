@@ -232,7 +232,7 @@ fn execute_program_calls(
         .iter()
         .map(|call| Ok((program_call_digest(call)?, call)))
         .collect::<Result<Vec<_>, SemanticError>>()?;
-    ordered.sort_by(|left, right| left.0.cmp(&right.0));
+    ordered.sort_by_key(|entry| entry.0);
 
     let mut forms = Vec::new();
     for (_, call) in ordered {

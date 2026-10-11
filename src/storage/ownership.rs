@@ -794,7 +794,7 @@ impl State {
             return Err(fault("Invalid ownership checkpoint size"));
         }
         let mut pointers = Vec::new();
-        for part in p[23 + length..p.len() - 8].chunks_exact(33) {
+        for part in p[23 + length..p.len() - 8].as_chunks::<33>().0 {
             if part[0] > 1 || (part[0] == 0 && part[1..].iter().any(|b| *b != 0)) {
                 return Err(fault("Invalid ownership checkpoint pointer"));
             }
@@ -1024,10 +1024,7 @@ impl Record {
             id,
             count: u64::from_be_bytes(p[32..40].try_into().unwrap()),
             retired_ms: u64::from_be_bytes(p[40..48].try_into().unwrap()),
-            children: p[48..]
-                .chunks_exact(32)
-                .map(|b| b.try_into().unwrap())
-                .collect(),
+            children: p[48..].as_chunks::<32>().0.to_vec(),
         };
         if result.children.windows(2).any(|w| w[0] >= w[1]) {
             return Err(fault("Noncanonical ownership record"));
@@ -1264,10 +1261,7 @@ impl Event {
         {
             return Err(fault("Invalid ownership event lengths"));
         }
-        let ids: Vec<ObjectId> = bytes[16..]
-            .chunks_exact(32)
-            .map(|v| v.try_into().unwrap())
-            .collect();
+        let ids: Vec<ObjectId> = bytes[16..].as_chunks::<32>().0.to_vec();
         Ok(Self {
             at_ms: u64::from_be_bytes(bytes[8..16].try_into().unwrap()),
             removed: ids[..removed].to_vec(),

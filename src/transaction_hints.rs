@@ -391,11 +391,13 @@ impl HintWorkerSlot {
 struct WorkerPermit(HintWorkerSlot);
 impl WorkerPermit {
     fn acquire(slot: &HintWorkerSlot) -> Option<Self> {
+        #[allow(deprecated, reason = "Atomic::try_update is unavailable on Rust 1.90")]
         slot.active
             .fetch_update(Ordering::AcqRel, Ordering::Acquire, |active| {
                 (active < slot.maximum).then_some(active + 1)
             })
             .ok()?;
+        #[allow(deprecated, reason = "Atomic::try_update is unavailable on Rust 1.90")]
         if ACTIVE_PREFETCH_WORKERS
             .fetch_update(Ordering::AcqRel, Ordering::Acquire, |active| {
                 (active < MAX_ACTIVE_PREFETCH_WORKERS).then_some(active + 1)
@@ -662,6 +664,7 @@ fn prefetch(
             }
             // Reserve before asking the cursor for another datom, so even
             // concurrent reads never multiply the operation-wide count cap.
+            #[allow(deprecated, reason = "Atomic::try_update is unavailable on Rust 1.90")]
             if job
                 .reserved_datoms
                 .fetch_update(Ordering::AcqRel, Ordering::Acquire, |count| {
@@ -682,6 +685,7 @@ fn prefetch(
                     let bytes = datom.retained_bytes();
                     stats.max_inflight_datom_bytes = stats.max_inflight_datom_bytes.max(bytes);
                     stats.retained_read_bytes = stats.retained_read_bytes.saturating_add(bytes);
+                    #[allow(deprecated, reason = "Atomic::try_update is unavailable on Rust 1.90")]
                     let _ = job.read_bytes.fetch_update(
                         Ordering::AcqRel,
                         Ordering::Acquire,

@@ -814,7 +814,7 @@ fn parse_name(name: &str) -> Result<(Digest, Digest), SemanticError> {
     }
     fn digest(bytes: &[u8]) -> Result<Digest, SemanticError> {
         let mut out = [0; 32];
-        for (out, pair) in out.iter_mut().zip(bytes.chunks_exact(2)) {
+        for (out, pair) in out.iter_mut().zip(bytes.as_chunks::<2>().0) {
             let digit = |byte: u8| match byte {
                 b'0'..=b'9' => Some(byte - b'0'),
                 b'a'..=b'f' => Some(byte - b'a' + 10),

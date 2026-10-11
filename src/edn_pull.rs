@@ -254,7 +254,7 @@ fn attribute(
         }
         let mut attr = attribute_name(name, path)?;
         let mut seen = BTreeSet::new();
-        for option in options.chunks_exact(2) {
+        for option in options.as_chunks::<2>().0 {
             let EdnValue::Keyword(key) = &option[0] else {
                 return Err(form_error(
                     "edn/pull-option",

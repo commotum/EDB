@@ -697,7 +697,9 @@ fn build_node<'a>(
             Task::Map(count) => {
                 let children = completed.split_off(completed.len() - 2 * count);
                 let mut entries = children
-                    .chunks_exact(2)
+                    .as_chunks::<2>()
+                    .0
+                    .iter()
                     .map(|pair| (pair[0], pair[1]))
                     .collect::<Vec<_>>();
                 let mut failure = None;

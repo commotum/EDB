@@ -123,12 +123,8 @@ fn decode_identity(
             && (block.payload.len() - 41).is_multiple_of(32) =>
         {
             let roots = &block.payload[41..];
-            if roots.chunks_exact(32).any(|id| id == [0; 32])
-                || roots
-                    .chunks_exact(32)
-                    .zip(roots.chunks_exact(32).skip(1))
-                    .any(|(left, right)| left >= right)
-            {
+            let roots = roots.as_chunks::<32>().0;
+            if roots.contains(&[0; 32]) || roots.windows(2).any(|pair| pair[0] >= pair[1]) {
                 return Err(fault("Noncanonical retired content roots"));
             }
             None
@@ -205,7 +201,7 @@ pub(crate) fn creation_conditions(
         let epoch = u64::from_be_bytes(descriptor.payload[33..41].try_into().unwrap());
         let proof = crate::storage::ownership::reclamation_sweep_guard(store, epoch)?;
         let mut reclaimed = proof.is_some();
-        for bytes in descriptor.payload[41..].chunks_exact(32) {
+        for bytes in descriptor.payload[41..].as_chunks::<32>().0 {
             reclaimed &= !store.object_exists(object_id(bytes)?)?;
         }
         if !reclaimed {

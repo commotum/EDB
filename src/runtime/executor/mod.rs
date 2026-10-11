@@ -162,6 +162,7 @@ impl AsyncExecutor {
 
     pub(crate) fn reserve(&self) -> Result<Reservation, SemanticError> {
         let count = &self.shared.operations;
+        #[allow(deprecated, reason = "Atomic::try_update is unavailable on Rust 1.90")]
         let previous = count.fetch_update(Ordering::AcqRel, Ordering::Acquire, |value| {
             (value < self.shared.config.max_operations).then_some(value + 1)
         });
@@ -189,6 +190,7 @@ impl AsyncExecutor {
         &self,
         make: impl FnOnce() -> T,
     ) -> Result<Owned<T>, SemanticError> {
+        #[allow(deprecated, reason = "Atomic::try_update is unavailable on Rust 1.90")]
         self.shared
             .resources
             .fetch_update(Ordering::AcqRel, Ordering::Acquire, |value| {

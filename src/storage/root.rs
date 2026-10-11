@@ -93,9 +93,9 @@ impl Block {
         }
         let payload_start = HEADER_BYTES + count * OBJECT_ID_BYTES;
         let links = bytes[HEADER_BYTES..payload_start]
-            .chunks_exact(OBJECT_ID_BYTES)
-            .map(|link| link.try_into().unwrap())
-            .collect();
+            .as_chunks::<OBJECT_ID_BYTES>()
+            .0
+            .to_vec();
         Ok(Self {
             kind,
             links,

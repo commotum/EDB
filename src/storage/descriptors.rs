@@ -192,8 +192,10 @@ impl IndexDescriptor {
             generation: u64::from_be_bytes(p[24..32].try_into().unwrap()),
             trees,
             pending_avet: p[900..work_start]
-                .chunks_exact(4)
-                .map(|v| u32::from_be_bytes(v.try_into().unwrap()))
+                .as_chunks::<4>()
+                .0
+                .iter()
+                .map(|v| u32::from_be_bytes(*v))
                 .collect(),
             avet_work,
             fulltext: (p[final_offset] != 0).then(|| *block.links.last().unwrap()),

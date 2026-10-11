@@ -692,7 +692,9 @@ fn decode_hex(text: &str) -> Result<Vec<u8>, SemanticError> {
         return Err(invalid("hexadecimal data must contain complete bytes"));
     }
     text.as_bytes()
-        .chunks_exact(2)
+        .as_chunks::<2>()
+        .0
+        .iter()
         .map(|pair| {
             let high = char::from(pair[0])
                 .to_digit(16)

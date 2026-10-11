@@ -14,11 +14,11 @@ and where to put them. Choosing storage and managing access to that storage is
 the responsibility of the user.
 
 The current manifest declares version `0.1.0`, `publish = false`, and
-`license = "UNLICENSED"`. It does not configure a public or private package
-registry. These instructions describe internal source distribution for users
-already authorized to access the code; they do not grant redistribution rights
-or change the package's publication settings. Retain the license files and
-notices supplied with third-party dependencies.
+`license = "MIT"`. It does not configure a public or private package
+registry. EDB's [MIT License](../../../LICENSE) permits redistribution subject
+to its terms, including retaining the copyright and permission notices. These
+instructions do not change the package's publication settings. Retain the
+license files and notices supplied with third-party dependencies.
 
 ## Gathering Dependencies
 
@@ -31,7 +31,7 @@ into the automation systems you have in place for consuming new EDB revisions.
 
 1. Prepare a separate staging directory containing the reviewed EDB source
    snapshot. Include the complete source tree, including SQL files under
-   `src/`, the manifest, lockfile, and any examples or tests you intend to build.
+   `src/`, the manifest, lockfile, `LICENSE`, and any examples or tests you intend to build.
    Keep the original checkout separate from this staging directory.
 2. Record the source revision and any local changes included in the snapshot.
    The package version alone does not distinguish different development

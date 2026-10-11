@@ -12,7 +12,7 @@
 ## Current Development Version: 0.1.0
 
 The `edb-core` Cargo package declares version `0.1.0`, with `publish = false`
-and license `UNLICENSED`. The Rust peer library and `edb` executable share this
+and license `MIT`. The Rust peer library and `edb` executable share this
 package version. It does not identify a published release or a release date.
 
 Current behavior and operating limits are described in the feature references:

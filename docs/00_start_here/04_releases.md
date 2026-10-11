@@ -6,7 +6,7 @@ version `0.1.0`; this is a package version, not a published release history.
 ## EDB software
 
 The `edb-core` Cargo package contains the Rust peer library and the `edb`
-executable. It is marked `publish = false` and `UNLICENSED`. Use a local source
+executable. It is MIT-licensed and marked `publish = false`. Use a local source
 checkout as described in [setup](01_setup.md).
 
 The package includes:

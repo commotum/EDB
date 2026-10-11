@@ -183,3 +183,7 @@ databases; unsupported older formats are rejected explicitly. History access is
 subject to the database's retention and excision policies, described in the
 [database values guide](docs/02_core_concepts/00_database_values.md) and
 [operations documentation](docs/08_operations/00_deployment.md#excision).
+
+## License
+
+EDB is licensed under the [MIT License](LICENSE).

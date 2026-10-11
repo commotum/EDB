@@ -7,7 +7,7 @@ building EDB as well as running a transactor.
 
 Build EDB from a local source checkout. The current Cargo package is `edb-core`,
 with the library named `edb_core` and the executable named `edb`. The package is
-marked `publish = false` and `UNLICENSED`; these instructions use the local
+MIT-licensed and marked `publish = false`; these instructions use the local
 checkout rather than a package-registry release.
 
 Throughout the documentation, shell commands are run from the root directory

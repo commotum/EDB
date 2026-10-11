@@ -10,7 +10,7 @@ This document **is not** a comprehensive change log. See the
 ## Current Development Version: 0.1.0
 
 EDB is in first-release development. The `edb-core` package declares version
-`0.1.0`, with `publish = false` and license `UNLICENSED`. The peer library and
+`0.1.0`, with `publish = false` and license `MIT`. The peer library and
 `edb` executable share this package version. It does not identify a published
 release, release date, or compatibility guarantee between development builds.
 
